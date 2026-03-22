@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Blueprint — Portal de ADRs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+
+:root {
+    --primary: #5BA4D9;
+    --primary-dark: #3182B1;
+    --primary-light: rgba(91, 164, 217, 0.12);
+    --secondary: #5BB8C4;
+    --success: #6ABF3B;
+    --success-light: rgba(106, 191, 59, 0.12);
+    --success-border: rgba(106, 191, 59, 0.3);
+    --warning: #F4AC00;
+    --warning-light: rgba(244, 172, 0, 0.12);
+    --warning-border: rgba(244, 172, 0, 0.3);
+    --danger: #E85D54;
+    --danger-light: rgba(232, 93, 84, 0.12);
+    --danger-border: rgba(232, 93, 84, 0.3);
+    --info: #38BDF8;
+    --info-light: rgba(56, 189, 248, 0.12);
+    --info-border: rgba(56, 189, 248, 0.3);
+    --bg: #0f1319;
+    --card-bg: #1a1f2e;
+    --text: #e2e8f0;
+    --text-muted: #8b9ab5;
+    --border: #2a3244;
+    --purple: #9B96FF;
+    --purple-light: rgba(155, 150, 255, 0.12);
+    --orange: #FF9473;
+    --teal: #2DD4BF;
+    --header-bg: linear-gradient(135deg, #1a2332 0%, #15202e 50%, #1a2838 100%);
+    --progress-track: #2a3244;
+}
+[data-theme="light"] {
+    --primary: #3182B1;
+    --primary-dark: #256a94;
+    --primary-light: rgba(49, 130, 177, 0.1);
+    --secondary: #418F9D;
+    --success: #4C7E1B;
+    --success-light: rgba(76, 126, 27, 0.08);
+    --success-border: rgba(76, 126, 27, 0.25);
+    --warning: #F4AC00;
+    --warning-light: rgba(244, 172, 0, 0.08);
+    --warning-border: rgba(244, 172, 0, 0.25);
+    --danger: #C72F25;
+    --danger-light: rgba(199, 47, 37, 0.08);
+    --danger-border: rgba(199, 47, 37, 0.25);
+    --info: #0EA5E8;
+    --info-light: rgba(14, 165, 232, 0.08);
+    --info-border: rgba(14, 165, 232, 0.25);
+    --bg: #f4f6f9;
+    --card-bg: #ffffff;
+    --text: #212B37;
+    --text-muted: #6E829F;
+    --border: #e2e8f0;
+    --purple: #7B76FE;
+    --purple-light: rgba(123, 118, 254, 0.08);
+    --orange: #FE7C58;
+    --teal: #00D8D8;
+    --header-bg: linear-gradient(135deg, #3182B1 0%, #256a94 50%, #418F9D 100%);
+    --progress-track: #e9ecef;
+}
+
+html, body, div, span, h1, h2, h3, h4, h5, h6, p, a, img, ul, ol, li,
+header, footer, nav, section, article, aside, button, input, select, textarea,
+table, tr, td, th, form, label, fieldset, legend { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Poppins', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+a { text-decoration: none; color: inherit; }
+.container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+.header { background: var(--header-bg); color: white; padding: 36px 0 32px; position: relative; overflow: hidden; }
+.header::before { content: ''; position: absolute; top: -50%; right: -10%; width: 500px; height: 500px; background: rgba(255,255,255,0.03); border-radius: 50%; z-index: 0; }
+.header-content { position: relative; z-index: 1; }
+.header-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; }
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header-logo { height: 60px; width: auto; opacity: 0.95; flex-shrink: 0; }
+.logo-light { display: none; }
+.logo-dark { display: inline-block; }
+[data-theme="light"] .logo-dark { display: none; }
+[data-theme="light"] .logo-light { display: inline-block; }
+.header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
+.header .subtitle { font-size: 0.95rem; opacity: 0.85; font-weight: 300; margin-top: 2px; }
+.header-right { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.header-badge { background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(10px); }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; margin-top: 28px; }
+.stat-card { background: var(--card-bg); border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); border: 1px solid var(--border); display: flex; align-items: center; gap: 14px; }
+.stat-card-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; color: white; flex-shrink: 0; }
+.stat-card-info { flex: 1; }
+.stat-card-number { font-size: 1.12rem; font-weight: 700; line-height: 1.1; }
+.stat-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+
+.bg-primary { background: var(--primary); }
+.bg-success { background: var(--success); }
+.bg-info { background: var(--info); }
+.bg-warning { background: var(--warning); }
+.bg-danger { background: var(--danger); }
+.bg-secondary { background: var(--secondary); }
+.bg-purple { background: var(--purple); }
+.bg-orange { background: var(--orange); }
+
+.section { margin-bottom: 24px; }
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.section-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: white; flex-shrink: 0; }
+.section-title { font-weight: 600; font-size: 1.05rem; }
+.section-count { font-size: 0.7rem; background: var(--primary-light); color: var(--primary); padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+
+.adr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
+
+.adr-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.03); overflow: hidden; transition: all 0.25s ease; cursor: pointer; display: flex; flex-direction: column; }
+.adr-card:hover { border-color: var(--primary); box-shadow: 0 4px 20px rgba(91, 164, 217, 0.15); transform: translateY(-2px); }
+[data-theme="light"] .adr-card:hover { box-shadow: 0 4px 20px rgba(49, 130, 177, 0.12); }
+.adr-card-header { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.adr-card-number { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; color: white; flex-shrink: 0; letter-spacing: -0.3px; }
+.adr-card-title-group { flex: 1; min-width: 0; }
+.adr-card-id { font-size: 0.7rem; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; }
+.adr-card-title { font-size: 0.9rem; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adr-card-body { padding: 14px 18px; flex: 1; }
+.adr-card-desc { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.adr-card-footer { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-top: 1px solid var(--border); background: var(--bg); }
+.adr-card-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.adr-tag { font-size: 0.65rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.adr-tag-accepted { background: var(--success-light); color: var(--success); border: 1px solid var(--success-border); }
+.adr-card-arrow { color: var(--text-muted); font-size: 1.2rem; transition: transform 0.2s; }
+.adr-card:hover .adr-card-arrow { transform: translateX(4px); color: var(--primary); }
+
+.card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.03); overflow: hidden; margin-bottom: 20px; }
+.card-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.card-header-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: white; flex-shrink: 0; }
+.card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+.card-body { padding: 18px; }
+
+.about-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.about-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; }
+.about-item-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: white; flex-shrink: 0; }
+.about-item-text { flex: 1; }
+.about-item-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+.about-item-value { font-size: 0.88rem; font-weight: 500; margin-top: 2px; }
+
+.badge { display: inline-flex; align-items: stretch; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.30); font-family: 'Poppins', sans-serif; margin-bottom: 10px; }
+.badge-bar { width: 5px; flex-shrink: 0; }
+.badge-body { display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; background: var(--card-bg); }
+.badge-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: var(--bg); flex-shrink: 0; }
+.badge-text { display: flex; flex-direction: column; gap: 1px; }
+.badge-name { font-weight: 700; font-size: 13px; color: var(--text); }
+.badge-role { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.badge-date { font-size: 10.5px; color: var(--text-muted); }
+.badge-seal { display: flex; align-items: center; justify-content: center; padding: 7px 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; writing-mode: vertical-rl; text-orientation: mixed; color: var(--bg); }
+.badge-footer .badge-bar, .badge-footer .badge-icon, .badge-footer .badge-seal { background: var(--primary); }
+
+.search-container { margin-bottom: 24px; }
+.search-input { width: 100%; padding: 12px 18px 12px 44px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-family: 'Poppins', sans-serif; font-size: 0.88rem; outline: none; transition: border-color 0.2s; }
+.search-input:focus { border-color: var(--primary); }
+.search-input::placeholder { color: var(--text-muted); }
+.search-wrapper { position: relative; }
+.search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 1.1rem; }
+
+@media print {
+    body { background: white; color: #212B37; }
+    .header { background: #3182B1 !important; }
+    .adr-card { break-inside: avoid; }
+    .stat-card { break-inside: avoid; }
+    .badge-footer { break-inside: avoid; }
+    .search-container { display: none; }
+}
+@media (max-width: 768px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .adr-grid { grid-template-columns: 1fr; }
+    .about-grid { grid-template-columns: 1fr; }
+    .header h1 { font-size: 1.2rem; }
+}
+
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="header-top">
+                    <div class="header-left">
+                        <img class="header-logo logo-dark" src="assets/logo-dark-medium.png" alt="Logo">
+                        <img class="header-logo logo-light" src="assets/logo-light-medium.png" alt="Logo">
+                        <div>
+                            <h1>RAG Blueprint — ADRs</h1>
+                            <div class="subtitle">Architecture Decision Records da Base de Conhecimento Corporativa</div>
+                        </div>
+                    </div>
+                    <div class="header-right">
+                        <div class="header-badge"><i class="ri-git-repository-line"></i> rag-blueprint</div>
+                        <div class="header-badge"><i class="ri-calendar-line"></i> 2026</div>
+                        <div class="header-badge" style="cursor:pointer" onclick="toggleTheme()"><i id="theme-icon" class="ri-sun-line"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+
+        <!-- STATS -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-card-icon bg-primary"><i class="ri-file-list-3-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number">11</div>
+                    <div class="stat-card-label">ADRs Publicados</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon bg-success"><i class="ri-checkbox-circle-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number">Accepted</div>
+                    <div class="stat-card-label">Status Geral</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon bg-purple"><i class="ri-database-2-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number">GraphRAG</div>
+                    <div class="stat-card-label">Arquitetura</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon bg-secondary"><i class="ri-shield-check-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number">QA Completo</div>
+                    <div class="stat-card-label">Cada ADR com 3 visões</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEARCH -->
+        <div class="search-container">
+            <div class="search-wrapper">
+                <i class="ri-search-line search-icon"></i>
+                <input type="text" class="search-input" id="search" placeholder="Buscar ADR por nome, tema ou palavra-chave..." oninput="filterCards()">
+            </div>
+        </div>
+
+        <!-- ADR LISTING -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-icon bg-primary"><i class="ri-article-line"></i></div>
+                <div class="section-title">Architecture Decision Records</div>
+                <span class="section-count">11 documentos</span>
+            </div>
+
+            <div class="adr-grid" id="adr-grid">
+
+                <a href="adrs/ADR-001_pipeline_geracao_conhecimento_4_fases.html" class="adr-card" data-search="adr-001 pipeline geração conhecimento 4 fases draft docs presentation ingestão">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-primary">001</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-001</div>
+                            <div class="adr-card-title">Pipeline de Geração de Conhecimento em 4 Fases</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Define o pipeline de maturidade documental: Draft → Docs → Presentation, com 4 fases de transformação do conhecimento bruto em base estruturada.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-002_soberania_dados_cloud_vs_onprem.html" class="adr-card" data-search="adr-002 soberania residência dados cloud on-premises lgpd segurança infraestrutura">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-info">002</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-002</div>
+                            <div class="adr-card-title">Soberania e Residência de Dados: Cloud vs On-Premises</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Decisão sobre modelo de hospedagem da base de conhecimento, considerando LGPD, soberania de dados e custos operacionais.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-003_modelo_dados_base_vetorial.html" class="adr-card" data-search="adr-003 modelo dados base vetorial graphrag neo4j grafo chunk document embedding">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-purple">003</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-003</div>
+                            <div class="adr-card-title">Modelo de Dados da Base Vetorial (GraphRAG)</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Define os nós (Document, Chunk, System, Module, ADR, Task, Owner, Team) e relações do grafo de conhecimento no Neo4j.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-004_seguranca_classificacao_dados.html" class="adr-card" data-search="adr-004 segurança classificação dados confidencialidade public internal restricted confidential acesso">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-danger">004</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-004</div>
+                            <div class="adr-card-title">Estratégia de Segurança e Classificação de Dados</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Estratégia de classificação por níveis de confidencialidade (public, internal, restricted, confidential) com filtros pré-retrieval.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-005_front_matter_contrato_metadados.html" class="adr-card" data-search="adr-005 front matter contrato metadados yaml schema governança tags doc_type system module">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-warning">005</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-005</div>
+                            <div class="adr-card-title">Front Matter como Contrato de Metadados</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Padronização do front matter YAML como contrato obrigatório para todos os documentos Markdown da base de conhecimento.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-006_pipeline_ingestao_fonte_base_vetorial.html" class="adr-card" data-search="adr-006 pipeline ingestão fonte base vetorial parse chunking embeddings persistência indexação observabilidade">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-success">006</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-006</div>
+                            <div class="adr-card-title">Pipeline de Ingestão: Da Fonte à Base Vetorial</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Especifica as 7 etapas do pipeline de ingestão: Descoberta, Parse, Chunking, Embeddings, Persistência, Indexação e Observabilidade.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-007_retrieval_hibrido_agentes.html" class="adr-card" data-search="adr-007 retrieval híbrido agentes especializados busca vetorial grafo reranking prompt rag">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-secondary">007</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-007</div>
+                            <div class="adr-card-title">Retrieval Híbrido e Agentes Especializados</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Fluxo de recuperação híbrida (vetor + grafo) com reranking e agentes por domínio para consumo inteligente da base de conhecimento.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-008_governanca_ciclo_vida_rollback.html" class="adr-card" data-search="adr-008 governança papéis ciclo vida rollback aprovação revisão deprecação versionamento">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-orange">008</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-008</div>
+                            <div class="adr-card-title">Governança: Papéis, Ciclo de Vida e Rollback</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Define papéis de governança, ciclo de vida documental (draft → approved → deprecated) e estratégia de rollback.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-009_selecao_modelos_embedding.html" class="adr-card" data-search="adr-009 seleção modelos embedding vetorização openai ada multilingual dimensões benchmark">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-info">009</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-009</div>
+                            <div class="adr-card-title">Seleção de Modelos de Embedding</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Critérios e decisão para seleção dos modelos de embedding, considerando suporte multilingual, dimensionalidade e custo.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-010_git_flow_base_conhecimento.html" class="adr-card" data-search="adr-010 git flow base conhecimento branch merge pr review ci cd automação">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-purple">010</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-010</div>
+                            <div class="adr-card-title">Git Flow da Base de Conhecimento</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Estratégia de branching e merge para a base de conhecimento, integrando Git como fonte da verdade com o pipeline de ingestão.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+                <a href="adrs/ADR-011_segregacao_kbs_por_confidencialidade.html" class="adr-card" data-search="adr-011 segregação kbs confidencialidade multi-tenant isolamento acesso permissão repositório">
+                    <div class="adr-card-header">
+                        <div class="adr-card-number bg-danger">011</div>
+                        <div class="adr-card-title-group">
+                            <div class="adr-card-id">ADR-011</div>
+                            <div class="adr-card-title">Segregação de KBs por Confidencialidade</div>
+                        </div>
+                    </div>
+                    <div class="adr-card-body">
+                        <div class="adr-card-desc">Estratégia de segregação de Knowledge Bases por nível de confidencialidade, com isolamento físico e lógico por repositório.</div>
+                    </div>
+                    <div class="adr-card-footer">
+                        <div class="adr-card-tags"><span class="adr-tag adr-tag-accepted">Accepted</span></div>
+                        <i class="ri-arrow-right-s-line adr-card-arrow"></i>
+                    </div>
+                </a>
+
+            </div>
+        </div>
+
+        <!-- ABOUT -->
+        <div class="section" style="margin-top: 12px;">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-secondary"><i class="ri-information-line"></i></div>
+                    <div class="card-title">Sobre este Portal</div>
+                </div>
+                <div class="card-body">
+                    <div class="about-grid">
+                        <div class="about-item">
+                            <div class="about-item-icon bg-primary"><i class="ri-git-branch-line"></i></div>
+                            <div class="about-item-text">
+                                <div class="about-item-label">Origem da Verdade</div>
+                                <div class="about-item-value">Git — documentos Markdown com front matter estruturado</div>
+                            </div>
+                        </div>
+                        <div class="about-item">
+                            <div class="about-item-icon bg-purple"><i class="ri-database-2-line"></i></div>
+                            <div class="about-item-text">
+                                <div class="about-item-label">Base Operacional</div>
+                                <div class="about-item-value">Neo4j — grafo + vetor + metadados</div>
+                            </div>
+                        </div>
+                        <div class="about-item">
+                            <div class="about-item-icon bg-success"><i class="ri-robot-2-line"></i></div>
+                            <div class="about-item-text">
+                                <div class="about-item-label">Consumidores</div>
+                                <div class="about-item-value">Agentes de IA com recuperação híbrida controlada</div>
+                            </div>
+                        </div>
+                        <div class="about-item">
+                            <div class="about-item-icon bg-warning"><i class="ri-flow-chart"></i></div>
+                            <div class="about-item-text">
+                                <div class="about-item-label">Pipeline</div>
+                                <div class="about-item-value">Draft (.txt) → Docs (.md) → Presentation (.html)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER BADGE -->
+        <div class="badge badge-footer" style="margin-bottom:40px; margin-top:10px; display:flex; width:100%;">
+            <div class="badge-bar"></div>
+            <div class="badge-body" style="flex:1; justify-content:space-between;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="badge-icon">FR</div>
+                    <div class="badge-text">
+                        <span class="badge-name">Fabio A. B. Rodrigues</span>
+                        <span class="badge-role">Arquitetura e Produtividade Corporativa</span>
+                        <span class="badge-date">Portal gerado em: 22/03/2026</span>
+                    </div>
+                </div>
+                <div style="text-align:right; font-size:11px; color:var(--text-muted);">
+                    RAG Corporativo &middot; Knowledge Base<br>
+                    11 ADRs &middot; Base de Conhecimento GraphRAG
+                </div>
+            </div>
+            <div class="badge-seal">Portal</div>
+        </div>
+
+    </div>
+
+    <script>
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const icon = document.getElementById('theme-icon');
+    if (html.getAttribute('data-theme') === 'light') {
+        html.removeAttribute('data-theme');
+        icon.className = 'ri-sun-line';
+        localStorage.setItem('caefe-theme', 'dark');
+    } else {
+        html.setAttribute('data-theme', 'light');
+        icon.className = 'ri-moon-line';
+        localStorage.setItem('caefe-theme', 'light');
+    }
+}
+
+function filterCards() {
+    const query = document.getElementById('search').value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    document.querySelectorAll('.adr-card').forEach(card => {
+        const searchData = (card.getAttribute('data-search') + ' ' + card.textContent).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        card.style.display = searchData.includes(query) ? '' : 'none';
+    });
+}
+
+(function() {
+    const saved = localStorage.getItem('caefe-theme');
+    if (saved === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('theme-icon').className = 'ri-moon-line';
+        });
+    }
+})();
+
+    </script>
+</body>
+</html>
