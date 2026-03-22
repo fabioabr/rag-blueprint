@@ -1,0 +1,147 @@
+
+================================================================================
+🏷️ METADADOS FORTES — Governança e Filtragem
+================================================================================
+    📂 Série: RAG Blueprint Series
+    📌 Documento: B4 — Metadados Fortes
+    📅 Data: 17/03/2026
+    📋 Versão: 1.1
+
+
+================================================================================
+🎯 OBJETIVO DA FASE 2
+================================================================================
+
+Adicionar governança, filtragem e rastreabilidade ao pipeline.
+Transformar a busca semântica pura em busca filtrada por metadados.
+
+  ✅ Front matter padronizado e validado em todos os .md
+  ✅ Filtros pré-retrieval por sistema, módulo, confidencialidade
+  ✅ Rastreio completo de commit e origem
+  ✅ Métricas de qualidade da base
+
+
+================================================================================
+📌 2.1 — INCREMENTO NO PIPELINE
+================================================================================
+
+  O pipeline Prata→Ouro recebe as seguintes evoluções:
+
+  ETAPA P→O.2 (PARSE) — melhorias:
+    🔸 Validação rigorosa do front matter:
+       → Todos os campos obrigatórios presentes
+       → doc_type dentro dos valores válidos
+       → status dentro dos valores válidos
+       → confidentiality dentro dos valores válidos
+    🔸 Relatório de conformidade por repositório
+    🔸 Rejeição com log de documentos não-conformes
+
+  ETAPA P→O.5 (PERSISTÊNCIA) — melhorias:
+    🔸 Atualizar document_id apenas quando checksum muda
+    🔸 Manter histórico de ingestões (timestamp, commit_hash anterior)
+
+  ETAPA P→O.6 (INDEXAÇÃO) — melhorias:
+    🔸 Índice composto para filtros frequentes:
+       → (system, module, confidentiality)
+    🔸 Full-text index em Document.title e Chunk.content
+       (preparação para keyword search)
+
+  ETAPA P→O.7 (OBSERVABILIDADE) — melhorias:
+    🔸 Documentos sem front matter válido (% de conformidade)
+    🔸 Distribuição de documentos por doc_type, system, module
+    🔸 Divergência entre Git e Neo4j (docs no Git que não estão no Neo4j)
+    🔸 Latência de retrieval (tempo da busca)
+
+
+================================================================================
+📌 2.2 — BUSCA FILTRADA
+================================================================================
+
+Evolução da busca: vetorial + filtros por metadados
+
+  Pergunta do usuário
+        ↓
+  Identificar filtros aplicáveis:
+     → sistema, módulo, tipo de doc, confidencialidade
+        ↓
+  Aplicar filtro de confidencialidade (P.6 — pré-retrieval)
+        ↓
+  Vector search com filtros (WHERE doc.system = X AND ...)
+        ↓
+  Retornar chunks + metadados
+        ↓
+  Enviar para LLM com contexto filtrado
+
+Cypher conceitual (com filtros):
+
+  CALL db.index.vector.queryNodes('chunk_embedding_index', 20, $queryVector)
+  YIELD node AS chunk, score
+  MATCH (chunk)-[:PART_OF]->(doc:Document)
+  WHERE doc.confidentiality IN $allowedLevels
+    AND doc.system = $targetSystem
+  RETURN chunk.content, chunk.heading_path, doc.title, score
+  ORDER BY score DESC
+  LIMIT 10
+
+
+================================================================================
+📌 2.3 — MODELO DE METADADOS UNIFICADO
+================================================================================
+
+Definição do modelo de metadados que será usado em todas as fases:
+
+  Campos obrigatórios (todo documento, toda fonte):
+    🔸 id — identificador único
+    🔸 title — título
+    🔸 system — sistema corporativo de origem
+    🔸 doc_type — tipo do documento
+    🔸 author / owner — responsável
+    🔸 team — equipe
+    🔸 created_at — data de criação
+    🔸 updated_at — última atualização
+    🔸 status — draft, in-review, approved, deprecated
+    🔸 confidentiality — public, internal, restricted, confidential
+    🔸 tags — tags livres
+
+  Campos opcionais (quando aplicável):
+    🔸 module — módulo funcional
+    🔸 domain — domínio de negócio
+    🔸 version — versão do documento
+    🔸 classification — categoria da taxonomia
+    🔸 clickup_task_id — vínculo com tasks
+    🔸 repo, branch, commit_hash, path, checksum — rastreio Git
+    🔸 valid_from, valid_until — vigência temporal
+
+
+================================================================================
+📌 2.4 — CRITÉRIOS DE CONCLUSÃO DA FASE 2
+================================================================================
+
+  ✅ 100% dos .md ingeridos possuem front matter válido (ou estão sinalizados)
+  ✅ Busca filtrada por sistema + módulo + confidencialidade funcionando
+  ✅ Métricas de conformidade e distribuição operando
+  ✅ Modelo de metadados unificado documentado e aprovado
+  ✅ Full-text index criado (preparação para keyword search)
+
+================================================================================
+
+
+================================================================================
+📎 DOCUMENTOS RELACIONADOS
+================================================================================
+
+  Depende de:
+    → B03 — Camada Ouro (modelo de dados e pipeline são pré-requisito)
+
+  Evolui:
+    → B03 — Camada Ouro (adiciona filtros e validação rigorosa ao pipeline)
+
+  Habilita:
+    → B05 — Knowledge Graph (metadados validados habilitam o grafo)
+
+  Relacionados:
+    → B02 — Camada Prata (front matter gerado no pipeline de conversão)
+    → B06 — GraphRAG (busca filtrada evolui para hybrid search)
+    → B08 — Pendências (P9: taxonomia corporativa)
+    → B10 — API e Interface (filtros disponíveis na camada de acesso)
+    → B14 — Segurança (confidencialidade como filtro pré-retrieval)

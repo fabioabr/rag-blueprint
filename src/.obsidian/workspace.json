@@ -1,0 +1,209 @@
+{
+  "main": {
+    "id": "7a7532cd09ac2d75",
+    "type": "split",
+    "children": [
+      {
+        "id": "196ea1bcd1a9f777",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4cd042498974526b",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Visualização em gráfico"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "5d19acc38c88334e",
+    "type": "split",
+    "children": [
+      {
+        "id": "a180b48029c19c68",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a3f000ee126703fd",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de arquivos"
+            }
+          },
+          {
+            "id": "dfc759884e27661f",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Procurar"
+            }
+          },
+          {
+            "id": "6e84523555a0aa8b",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "eaa5d9dd9555f33e",
+    "type": "split",
+    "children": [
+      {
+        "id": "88d97fb09ba58e27",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7c481e00f0872e46",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Links inversos"
+            }
+          },
+          {
+            "id": "f733255ece8c4b00",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Links de saída"
+            }
+          },
+          {
+            "id": "df1002ff165f69da",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "ef11ae4dd869552c",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas as propriedades"
+            }
+          },
+          {
+            "id": "b16954929bbc2865",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Sumário"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir a troca rápida": false,
+      "graph:Abrir visualização em gráfico": false,
+      "canvas:Criar novo canvas": false,
+      "daily-notes:Abrir a nota de hoje": false,
+      "templates:Inserir modelo": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Criar nova base": false
+    }
+  },
+  "active": "4cd042498974526b",
+  "lastOpenFiles": [
+    "Arquitetura/approval-flow/3 - presentation/visao_produto_fluxo_aprovacao_acessos.html",
+    "Arquitetura/approval-flow/3 - presentation/visao_produto_fluxo_aprovacao_acessos.html.tmp.8196.1773928789104",
+    "Novo(a) Documento de Texto.txt",
+    "Arquitetura/rag-blueprint/2 - docs/B09_referencias.md",
+    "Arquitetura/rag-blueprint/2 - docs/B10_api_interface_acesso.md",
+    "Arquitetura/rag-blueprint/2 - docs/B11_deployment_infraestrutura.md",
+    "Arquitetura/rag-blueprint/2 - docs/B12_testes_validacao_slas.md",
+    "Arquitetura/rag-blueprint/2 - docs/B13_operacoes.md",
+    "Arquitetura/approval-flow/1 - draft/visao_produto_fluxo_aprovacao_acessos.txt",
+    "Arquitetura/approval-flow/3 - presentation",
+    "Arquitetura/approval-flow/2 - docs",
+    "Arquitetura/approval-flow/1 - draft",
+    "Arquitetura/approval-flow",
+    "Arquitetura/rag-blueprint/2 - docs/B06_graphrag_maturidade.md",
+    "Arquitetura/rag-blueprint/3 - presentation/B09_referencias.html.bak",
+    "Arquitetura/rag-blueprint/3 - presentation/B07_visao_consolidada.html.bak",
+    "Arquitetura/rag-blueprint/3 - presentation/B16_roadmap_implementacao.html.tmp.27756.1773881771583",
+    "Arquitetura/rag-blueprint/2 - docs/PLANO_enriquecimento_htmls.md",
+    "Arquitetura/rag-blueprint/2 - docs/B01_camada_bronze.md",
+    "Arquitetura/rag-blueprint/2 - docs/B00_introducao.md",
+    "Arquitetura/rag-blueprint/4 - ADRs/ADR-001_modelo_bronze_prata_ouro.md",
+    "2026-03-18.md",
+    "Sem título.canvas",
+    "CLAUDE.md",
+    "Arquitetura/rag-blueprint/2 - docs/B05_knowledge_graph.md",
+    "Arquitetura/rag-blueprint/2 - docs/B04_metadados_governanca.md",
+    "Arquitetura/rag-blueprint/2 - docs/B02_camada_prata.md"
+  ]
+}

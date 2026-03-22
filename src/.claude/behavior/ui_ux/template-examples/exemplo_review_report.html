@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análise de Lacunas — RAG Blueprint Series</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #5BA4D9;
+            --primary-dark: #3182B1;
+            --primary-light: rgba(91, 164, 217, 0.12);
+            --secondary: #5BB8C4;
+            --success: #6ABF3B;
+            --success-light: rgba(106, 191, 59, 0.12);
+            --success-border: rgba(106, 191, 59, 0.3);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.12);
+            --warning-border: rgba(244, 172, 0, 0.3);
+            --danger: #E85D54;
+            --danger-light: rgba(232, 93, 84, 0.12);
+            --danger-border: rgba(232, 93, 84, 0.3);
+            --info: #38BDF8;
+            --info-light: rgba(56, 189, 248, 0.12);
+            --info-border: rgba(56, 189, 248, 0.3);
+            --bg: #0f1319;
+            --card-bg: #1a1f2e;
+            --text: #e2e8f0;
+            --text-muted: #8b9ab5;
+            --border: #2a3244;
+            --purple: #9B96FF;
+            --purple-light: rgba(155, 150, 255, 0.12);
+            --orange: #FF9473;
+            --teal: #2DD4BF;
+            --header-bg: linear-gradient(135deg, #1a2332 0%, #15202e 50%, #1a2838 100%);
+            --progress-track: #2a3244;
+            --milestone-future: #4a5568;
+            --alert-warning-text: #f0c040;
+            --alert-danger-text: #f08a84;
+            --alert-info-text: #6ecbf5;
+            --alert-success-text: #8ad45a;
+            --pill-success-text: #8ad45a;
+            --pill-info-text: #6ecbf5;
+            --pill-warning-text: #f0c040;
+            --area-warning-text: #f0c040;
+        }
+
+        [data-theme="light"] {
+            --primary: #3182B1;
+            --primary-dark: #256a94;
+            --primary-light: rgba(49, 130, 177, 0.1);
+            --secondary: #418F9D;
+            --success: #4C7E1B;
+            --success-light: rgba(76, 126, 27, 0.08);
+            --success-border: rgba(76, 126, 27, 0.25);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.08);
+            --warning-border: rgba(244, 172, 0, 0.25);
+            --danger: #C72F25;
+            --danger-light: rgba(199, 47, 37, 0.08);
+            --danger-border: rgba(199, 47, 37, 0.25);
+            --info: #0EA5E8;
+            --info-light: rgba(14, 165, 232, 0.08);
+            --info-border: rgba(14, 165, 232, 0.25);
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text: #212B37;
+            --text-muted: #6E829F;
+            --border: #e2e8f0;
+            --purple: #7B76FE;
+            --purple-light: rgba(123, 118, 254, 0.08);
+            --orange: #FE7C58;
+            --teal: #00D8D8;
+            --header-bg: linear-gradient(135deg, #3182B1 0%, #256a94 50%, #418F9D 100%);
+            --progress-track: #e9ecef;
+            --milestone-future: #adb5bd;
+            --alert-warning-text: #8a6600;
+            --alert-danger-text: #a52820;
+            --alert-info-text: #0878a8;
+            --alert-success-text: #3a6112;
+            --pill-success-text: #3a6112;
+            --pill-info-text: #0878a8;
+            --pill-warning-text: #9a6d00;
+            --area-warning-text: #8a6600;
+        }
+
+        html, body, div, span, h1, h2, h3, h4, h5, h6, p, a, img, ul, ol, li,
+        header, footer, nav, section, article, aside, button, input, select, textarea,
+        table, tr, td, th, form, label, fieldset, legend { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Poppins', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+        /* HEADER */
+        .header { background: var(--header-bg); color: white; padding: 36px 0 0; position: relative; overflow: hidden; }
+        .header::before { content: ''; position: absolute; top: -50%; right: -10%; width: 500px; height: 500px; background: rgba(255,255,255,0.03); border-radius: 50%; z-index: 0; }
+        .header-content { position: relative; z-index: 1; }
+        .header-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-logo { height: 36px; width: auto; opacity: 0.95; flex-shrink: 0; filter: brightness(0) invert(1); }
+        [data-theme="light"] .header-logo { filter: brightness(0) invert(1); }
+        .header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+        .header .subtitle { font-size: 0.95rem; opacity: 0.85; font-weight: 300; margin-top: 2px; }
+        .header-right { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .header-badge { background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(10px); }
+
+        /* TABS */
+        .tabs-nav { display: flex; gap: 4px; margin-top: 20px; }
+        .tab-btn { padding: 10px 24px; background: rgba(255,255,255,0.1); border: none; border-radius: 10px 10px 0 0; color: rgba(255,255,255,0.7); font-family: 'Poppins', sans-serif; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+        .tab-btn:hover { background: rgba(255,255,255,0.18); color: white; }
+        .tab-btn.active { background: var(--bg); color: var(--primary); font-weight: 600; }
+        .tab-btn i { font-size: 1.1rem; }
+        .tab-content { display: none; padding-top: 24px; padding-bottom: 32px; }
+        .tab-content.active { display: block; }
+
+        /* STATS */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+        .stat-card { background: var(--card-bg); border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); border: 1px solid var(--border); display: flex; align-items: center; gap: 14px; }
+        .stat-card-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; color: white; flex-shrink: 0; }
+        .stat-card-info { flex: 1; }
+        .stat-card-number { font-size: 1.12rem; font-weight: 700; line-height: 1.1; }
+        .stat-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+
+        /* CARDS */
+        .card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.03); overflow: hidden; margin-bottom: 20px; }
+        .card-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg); }
+        .card-header-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: white; flex-shrink: 0; }
+        .card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .card-badge { padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+        .card-body { padding: 18px; }
+
+        /* ALERTS */
+        .alert { padding: 12px 16px; border-radius: 8px; font-size: 0.82rem; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; border: 1px solid; }
+        .alert i { font-size: 1.1rem; flex-shrink: 0; }
+        .alert-warning { background: var(--warning-light); border-color: var(--warning-border); color: var(--alert-warning-text); }
+        .alert-danger { background: var(--danger-light); border-color: var(--danger-border); color: var(--alert-danger-text); }
+        .alert-info { background: var(--info-light); border-color: var(--info-border); color: var(--alert-info-text); }
+        .alert-success { background: var(--success-light); border-color: var(--success-border); color: var(--alert-success-text); }
+
+        /* DELIVERY */
+        .delivery-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .delivery-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .delivery-card.full-width { grid-column: 1 / -1; }
+        .delivery-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+        .delivery-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; color: white; flex-shrink: 0; }
+        .delivery-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .delivery-marco { font-size: 0.65rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; }
+        .delivery-body { padding: 16px 18px; }
+        .delivery-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+        .delivery-item:last-child { border-bottom: none; }
+        .delivery-status { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: white; flex-shrink: 0; margin-top: 1px; }
+        .delivery-item-text { flex: 1; }
+        .delivery-item-detail { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+        .status-done { background: var(--success); }
+        .status-progress { background: var(--primary); }
+        .status-partial { background: var(--warning); }
+        .status-blocked { background: var(--danger); }
+        .status-pending { background: var(--milestone-future); }
+
+        /* SECTIONS */
+        .section { margin-top: 32px; }
+        .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--border); }
+        .section-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; color: white; flex-shrink: 0; }
+        .section-title { font-size: 1.15rem; font-weight: 600; }
+        .section-count { background: var(--bg); padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
+
+        /* PROGRESS */
+        .progress-container { margin-bottom: 16px; }
+        .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .progress-label { font-size: 0.82rem; font-weight: 500; }
+        .progress-value { font-size: 0.82rem; font-weight: 600; }
+        .progress-bar-bg { width: 100%; height: 8px; background: var(--progress-track); border-radius: 4px; overflow: hidden; }
+        .progress-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+
+        /* LEGEND */
+        .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-muted); }
+        .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+        /* AREAS */
+        .areas-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .area-card { background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border); padding: 16px; }
+        .area-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .area-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; color: white; }
+        .area-name { font-weight: 600; font-size: 0.82rem; }
+        .area-item { font-size: 0.75rem; color: var(--text-muted); padding: 3px 0; display: flex; align-items: center; gap: 6px; }
+        .area-item i { font-size: 0.65rem; }
+        .area-item.critical { color: var(--danger); font-weight: 500; }
+        .area-item.warning { color: var(--area-warning-text); }
+
+        /* PILLS */
+        .uc-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+        .uc-pill { display: inline-block; padding: 2px 9px; border-radius: 6px; font-size: 0.68rem; font-weight: 400; white-space: nowrap; line-height: 1.6; border: 1px solid; }
+
+        /* UTILITIES */
+        .bg-primary { background: var(--primary); }
+        .bg-success { background: var(--success); }
+        .bg-info { background: var(--info); }
+        .bg-warning { background: var(--warning); }
+        .bg-danger { background: var(--danger); }
+        .bg-secondary { background: var(--secondary); }
+        .bg-purple { background: var(--purple); }
+        .bg-orange { background: var(--orange); }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .text-success { color: var(--success); }
+        .text-warning { color: var(--warning); }
+        .text-danger { color: var(--danger); }
+        .text-info { color: var(--info); }
+        .text-muted { color: var(--text-muted); }
+        .fw-600 { font-weight: 600; }
+        .fs-12 { font-size: 0.75rem; }
+        .mt-16 { margin-top: 16px; }
+        .mb-8 { margin-bottom: 8px; }
+
+        /* BADGE FOOTER */
+        .badge { display: inline-flex; align-items: stretch; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.30); font-family: 'Poppins', sans-serif; margin-bottom: 10px; }
+        .badge-bar { width: 5px; flex-shrink: 0; }
+        .badge-body { display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; background: var(--card-bg); }
+        .badge-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: var(--bg); flex-shrink: 0; }
+        .badge-text { display: flex; flex-direction: column; gap: 1px; }
+        .badge-name { font-weight: 700; font-size: 13px; color: var(--text); }
+        .badge-role { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+        .badge-date { font-size: 10.5px; color: var(--text-muted); }
+        .badge-seal { display: flex; align-items: center; justify-content: center; padding: 7px 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; writing-mode: vertical-rl; text-orientation: mixed; color: var(--bg); }
+        .badge-footer .badge-bar, .badge-footer .badge-icon, .badge-footer .badge-seal { background: var(--primary); }
+
+        /* CUSTOM: ISSUE DETAIL CARD */
+        .issue-detail { padding: 18px; }
+        .issue-detail h4 { font-size: 0.88rem; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+        .issue-detail p { font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px; }
+        .issue-detail p:last-child { margin-bottom: 0; }
+        .issue-detail .issue-tag { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; margin-right: 4px; }
+        .issue-docs { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; }
+        .issue-docs span { font-weight: 600; color: var(--text); }
+
+        /* RESPONSIVE */
+        @media (max-width: 1024px) {
+            .delivery-grid, .grid-2 { grid-template-columns: 1fr; }
+            .delivery-card.full-width { grid-column: auto; }
+            .areas-grid, .grid-3 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .areas-grid { grid-template-columns: 1fr; }
+            .tabs-nav { flex-wrap: wrap; }
+            .tab-btn { font-size: 0.78rem; padding: 8px 16px; }
+        }
+
+        /* PRINT */
+        @media print {
+            body { background: #1a1f2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .header { padding: 16px 0 0; }
+            .card, .stat-card, .delivery-card { box-shadow: none; break-inside: avoid; }
+            .tab-content { display: block !important; page-break-before: always; }
+            .tabs-nav { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="header-top">
+                    <div class="header-left">
+                        <img class="header-logo" src="data:image/png;base64,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" alt="Empresa XPTO">
+                        <div>
+                            <h1>Análise de Lacunas</h1>
+                            <div class="subtitle">RAG Blueprint Series — Revisão de qualidade dos 17 documentos (B00–B16)</div>
+                        </div>
+                    </div>
+                    <div class="header-right">
+                        <div class="header-badge"><i class="ri-calendar-check-line"></i> 21/03/2026</div>
+                        <div class="header-badge"><i class="ri-file-list-3-line"></i> 34 arquivos analisados</div>
+                        <div class="header-badge"><i class="ri-error-warning-line"></i> 21 itens identificados</div>
+                        <button onclick="toggleTheme()" class="header-badge" style="border:none;cursor:pointer;" title="Alternar tema">
+                            <i id="theme-icon" class="ri-sun-line"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tabs-nav container">
+            <button class="tab-btn active" onclick="switchTab('visao-macro')">
+                <i class="ri-eye-line"></i> Visão Macro
+            </button>
+            <button class="tab-btn" onclick="switchTab('visao-tecnica')">
+                <i class="ri-code-s-slash-line"></i> Visão Técnica
+            </button>
+            <button class="tab-btn" onclick="switchTab('inconsistencias')">
+                <i class="ri-git-branch-line"></i> Inconsistências
+            </button>
+            <button class="tab-btn" onclick="switchTab('lacunas')">
+                <i class="ri-clipboard-line"></i> Lacunas de Conteúdo
+            </button>
+        </div>
+    </header>
+
+    <div class="container">
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ABA 1 — VISÃO MACRO -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <div id="tab-visao-macro" class="tab-content active">
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-primary"><i class="ri-file-text-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number" style="color: var(--primary)">17 / 17</div>
+                        <div class="stat-card-label">Cobertura Draft → Doc</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number" style="color: var(--danger)">3</div>
+                        <div class="stat-card-label">Problemas Críticos</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-warning"><i class="ri-exchange-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number" style="color: var(--warning)">5</div>
+                        <div class="stat-card-label">Inconsistências entre Docs</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-info"><i class="ri-draft-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number" style="color: var(--info)">13</div>
+                        <div class="stat-card-label">Lacunas de Conteúdo</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progresso por categoria -->
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-icon bg-success"><i class="ri-bar-chart-line"></i></div>
+                        <div class="card-title">Qualidade Geral por Documento</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B00 — Introdução</span><span class="progress-value">95%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:95%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B01 — Camada Bronze</span><span class="progress-value">90%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:90%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B02 — Camada Prata</span><span class="progress-value">88%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:88%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B03 — Camada Ouro</span><span class="progress-value">85%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-primary" style="width:85%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B04 — Metadados e Governança</span><span class="progress-value">85%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-primary" style="width:85%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B05 — Knowledge Graph</span><span class="progress-value">80%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-primary" style="width:80%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B06 — GraphRAG Maturidade</span><span class="progress-value">82%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-primary" style="width:82%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B07 — Visão Consolidada</span><span class="progress-value">88%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:88%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B08 — Pendências</span><span class="progress-value">78%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-warning" style="width:78%"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-icon bg-success"><i class="ri-bar-chart-line"></i></div>
+                        <div class="card-title">Qualidade Geral por Documento</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B09 — Referências</span><span class="progress-value">70%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-warning" style="width:70%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B10 — API e Interface de Acesso</span><span class="progress-value">90%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:90%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B11 — Deployment e Infra</span><span class="progress-value">85%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-primary" style="width:85%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B12 — Testes e SLAs</span><span class="progress-value">88%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:88%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B13 — Operações</span><span class="progress-value">90%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:90%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B14 — Segurança e Dados</span><span class="progress-value">82%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-primary" style="width:82%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B15 — Governança e Rollback</span><span class="progress-value">92%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:92%"></div></div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header"><span class="progress-label">B16 — Roadmap Implementação</span><span class="progress-value">92%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-success" style="width:92%"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alertas críticos -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+                    <div class="card-title">Alertas Críticos — Resolver Antes de Avançar</div>
+                    <div class="card-badge" style="background: var(--danger-light); color: var(--danger);">3 itens</div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger">
+                        <i class="ri-bug-line"></i>
+                        <span><strong>#1 — Encoding quebrado no B08.md:</strong> O título H1 está sem acentos ("Pendencias — Recomacoes"), indicando problema de conversão UTF-8. Documento formal com erro visível.</span>
+                    </div>
+                    <div class="alert alert-danger">
+                        <i class="ri-git-branch-line"></i>
+                        <span><strong>#2 — Terminologia inconsistente (source_system vs system):</strong> B04 introduz <code>source_system</code> como campo obrigatório, mas B00/B02/B03 usam <code>system</code>. Implementador não saberá qual usar.</span>
+                    </div>
+                    <div class="alert alert-danger">
+                        <i class="ri-numbers-line"></i>
+                        <span><strong>#3 — Recall@10 diverge entre B12, B15 e B16:</strong> Critério de transição de fase tem 3 valores diferentes (70%, 80%, 85%). Impossível validar transição sem número único.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resumo de distribuição -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-purple"><i class="ri-pie-chart-line"></i></div>
+                    <div class="card-title">Distribuição dos 21 Itens por Severidade</div>
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-card-icon bg-danger"><i class="ri-close-circle-line"></i></div>
+                            <div class="stat-card-info">
+                                <div class="stat-card-number" style="color: var(--danger)">3</div>
+                                <div class="stat-card-label">Críticos</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-icon bg-warning"><i class="ri-error-warning-line"></i></div>
+                            <div class="stat-card-info">
+                                <div class="stat-card-number" style="color: var(--warning)">5</div>
+                                <div class="stat-card-label">Inconsistências</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-icon bg-info"><i class="ri-information-line"></i></div>
+                            <div class="stat-card-info">
+                                <div class="stat-card-number" style="color: var(--info)">8</div>
+                                <div class="stat-card-label">Lacunas — Próxima Iteração</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card-icon bg-secondary"><i class="ri-time-line"></i></div>
+                            <div class="stat-card-info">
+                                <div class="stat-card-number" style="color: var(--secondary)">5</div>
+                                <div class="stat-card-label">Lacunas — Pode Esperar</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ABA 2 — VISÃO TÉCNICA -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <div id="tab-visao-tecnica" class="tab-content">
+
+            <div class="legend">
+                <div class="legend-item"><div class="legend-dot bg-danger"></div> Crítico</div>
+                <div class="legend-item"><div class="legend-dot bg-warning"></div> Inconsistência</div>
+                <div class="legend-item"><div class="legend-dot bg-info"></div> Lacuna — Próxima Iteração</div>
+                <div class="legend-item"><div class="legend-dot bg-secondary"></div> Lacuna — Pode Esperar</div>
+            </div>
+
+            <!-- CRÍTICOS -->
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+                    <div class="section-title">Problemas Críticos</div>
+                    <div class="section-count">3 itens</div>
+                </div>
+            </div>
+
+            <div class="delivery-grid">
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-danger"><i class="ri-bug-line"></i></div>
+                        <div class="delivery-title">#1 — Encoding quebrado no H1 do B08.md</div>
+                        <div class="delivery-marco" style="background: var(--danger-light); color: var(--danger);">Crítico</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>O documento formal <strong>B08_pendencias.md</strong> tem o título H1 grafado como <code>"Pendencias — Recomacoes e Alternativas"</code>, sem os acentos corretos ("Pendências", "Recomendações"). O front matter YAML está correto, mas o corpo do documento apresenta o erro — indicando que a conversão do draft .txt para .md teve problema de encoding UTF-8.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>B08 é o documento mais referenciado da série (13 pendências citadas por praticamente todos os outros docs). Um erro visível no título compromete a credibilidade do material em apresentações e revisões. Além disso, se o encoding falhou no H1, pode haver outros trechos com caracteres corrompidos no corpo do documento que não foram detectados.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>É uma correção de 10 segundos (editar o H1), mas garante integridade do documento mais importante da série. Recomendação: re-converter B08 do draft com encoding UTF-8 explícito e validar todo o corpo.</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> B08.md (direto) — todos os 16 docs restantes referenciam B08</div>
+                    </div>
+                </div>
+
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-danger"><i class="ri-git-branch-line"></i></div>
+                        <div class="delivery-title">#2 — Campo source_system vs system nos metadados</div>
+                        <div class="delivery-marco" style="background: var(--danger-light); color: var(--danger);">Crítico</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>O documento <strong>B04 (Metadados e Governança)</strong>, na seção 2.3, define <code>source_system</code> como campo obrigatório no front matter. Porém, os documentos <strong>B00, B01, B02 e B03</strong> — e o próprio <strong>CLAUDE.md</strong> — usam consistentemente o campo <code>system</code>. Não está claro se são sinônimos, se <code>source_system</code> é um campo adicional, ou se é um erro de nomenclatura.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>O front matter é a <strong>base de toda a governança e filtragem</strong> do RAG. Se o nome do campo diverge entre documentos, o pipeline de ingestão (Prata→Ouro) vai rejeitar documentos válidos ou indexar com campos errados. Além disso, qualquer validação de schema contra o front matter obrigatório vai falhar dependendo de qual documento o desenvolvedor consultar.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>É uma decisão simples: padronizar como <code>system</code> (já é o nome usado em 4 dos 5 docs e no CLAUDE.md). Se <code>source_system</code> tem semântica diferente, B04 precisa explicitar a diferença. Corrigir agora evita que o pipeline seja implementado com dois nomes para o mesmo conceito.</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> B04.md (origem) — B00, B01, B02, B03, CLAUDE.md (divergência)</div>
+                    </div>
+                </div>
+
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-danger"><i class="ri-numbers-line"></i></div>
+                        <div class="delivery-title">#3 — Critério Recall@10 diverge entre documentos</div>
+                        <div class="delivery-marco" style="background: var(--danger-light); color: var(--danger);">Crítico</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>O critério de transição entre fases — medido por <strong>Recall@10</strong> — tem valores diferentes em três documentos:</p>
+                        <p>
+                            <span class="issue-tag" style="background:var(--info-light);color:var(--info);">B12</span> define "&ge; 80%" como meta para Fase 2<br>
+                            <span class="issue-tag" style="background:var(--warning-light);color:var(--warning);">B15</span> define "&ge; 70%" como pré-requisito para transição Fase 1→2<br>
+                            <span class="issue-tag" style="background:var(--purple-light);color:var(--purple);">B16</span> define "&ge; 70%" como critério de conclusão do Marco 1
+                        </p>
+                        <p>Para Fase 2→3, a divergência é ainda maior: B12 diz "&ge; 80%", B15 diz "&ge; 80%", B16 diz "&ge; 85%".</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>O Recall@10 é o <strong>gate principal para avançar de fase</strong>. Se cada documento define um número diferente, a equipe não sabe quando uma fase está "concluída". Isso causa discussões improdutivas e atrasa a transição — ou pior, permite transição prematura se alguém citar o documento com o critério mais baixo.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Escolher um valor único e propagar para os 3 documentos. Sugestão: <strong>70% para Fase 1→2</strong> (MVP, critério realista), <strong>80% para Fase 2→3</strong> (maturidade), <strong>85% para Fase 3→4</strong> (GraphRAG pleno). Documentar em B12 (fonte autoritativa de SLAs) e apenas referenciar em B15 e B16.</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> B12.md, B15.md, B16.md</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ABA 3 — INCONSISTÊNCIAS -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <div id="tab-inconsistencias" class="tab-content">
+
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-warning"><i class="ri-exchange-line"></i></div>
+                    <div class="section-title">Inconsistências entre Documentos</div>
+                    <div class="section-count">5 itens</div>
+                </div>
+            </div>
+
+            <div class="delivery-grid">
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-warning"><i class="ri-git-merge-line"></i></div>
+                        <div class="delivery-title">#4 — Fluxo de .md no Bronze: passa ou não?</div>
+                        <div class="delivery-marco" style="background: var(--warning-light); color: var(--warning);">Inconsistência</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p><strong>B01</strong> afirma que "todo documento passa pela bronze, inclusive .md". Porém, a estrutura de pastas sugerida no mesmo documento trata <code>markdown/</code> como uma subpasta separada — sugerindo que .md já em repositórios Git poderiam ter tratamento diferenciado. <strong>B02</strong> assume que documentos .md chegam do bronze com metadados de conversão, mas isso não faz sentido para .md que já estão no formato final.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Se .md do Git <strong>passam</strong> pelo bronze, o pipeline precisa de lógica para detectar que o arquivo já é .md e tem <code>conversion_quality: 100%</code>. Se <strong>não passam</strong> e vão direto para prata, a premissa de "bronze como fonte única da verdade" se quebra — e o pipeline prata precisa aceitar duas origens.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Clarificar em B01 e B02: ".md de repositórios Git entram pela bronze como cópia, mas com <code>conversion_quality: 100</code> e <code>source_format: markdown</code>, pulando as etapas de conversão". Isso preserva a premissa sem criar complexidade desnecessária.</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> B01.txt/md, B02.txt/md</div>
+                    </div>
+                </div>
+
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-warning"><i class="ri-ruler-line"></i></div>
+                        <div class="delivery-title">#5 — Dimensão de embedding: 1536 vs 1024</div>
+                        <div class="delivery-marco" style="background: var(--warning-light); color: var(--warning);">Inconsistência</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p><strong>B15</strong> assume fixamente <code>1536 dimensões</code> (float32 = 6 KB por vetor) para todos os cálculos de capacity planning. <strong>B12</strong> aceita <code>"1536 ou 1024"</code> nos testes de validação de embedding. Se o modelo mudar de OpenAI (1536) para BGE-M3 (768/1024), todas as estimativas de B15 ficam erradas e o vector index precisa ser recriado.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Capacity planning com dimensão errada subestima ou superestima RAM, disco e latência. Se a troca de modelo acontecer em Fase 2, a re-indexação <strong>não tem procedimento documentado</strong> — B13 (Operações) descreve re-indexação de chunks mas não de embeddings com dimensão diferente.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Parametrizar a dimensão em B15 (ex: "N dimensões, onde N depende do modelo — ver Pendência 1 em B08"). Adicionar em B13 um procedimento de re-embedding quando o modelo muda. Isso desacopla o capacity planning da escolha do modelo.</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> B12.md, B15.md, B13.md</div>
+                    </div>
+                </div>
+
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-warning"><i class="ri-hashtag"></i></div>
+                        <div class="delivery-title">#6 — Contagem de relações: "Todas (11)" sem lista explícita</div>
+                        <div class="delivery-marco" style="background: var(--warning-light); color: var(--warning);">Inconsistência</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p><strong>B07</strong> (Visão Consolidada) usa "Todas (11)" na tabela de evolução de relações, mas não lista quais são as 11. <strong>B05</strong> lista as relações, mas ao contar chegam exatamente 11. O CLAUDE.md lista 11 relações. O problema é que "Todas" é ambíguo sem referência cruzada — se B05 adicionar uma 12ª relação, B07 fica desatualizado sem que ninguém perceba.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Baixo para implementação (a lista está correta em B05), mas cria confusão em revisões e apresentações quando alguém questiona "quais são as 11?".</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Substituir "Todas (11)" por "11 relações (ver B05)" ou listar as relações na tabela. Manter a contagem sincronizada com B05 como fonte autoritativa.</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> B07.txt/md, B05.txt/md</div>
+                    </div>
+                </div>
+
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-warning"><i class="ri-shield-line"></i></div>
+                        <div class="delivery-title">#7 — Fluxo de rollback urgente (PII) fragmentado</div>
+                        <div class="delivery-marco" style="background: var(--warning-light); color: var(--warning);">Inconsistência</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>O procedimento de rollback urgente para dados pessoais (PII) está distribuído em 3 documentos sem fluxo completo em nenhum:</p>
+                        <p><strong>B13</strong> diz "seguir procedimento de incidente completo (B14, §14.13)".<br>
+                        <strong>B15</strong> diz "notificar compliance (B14)".<br>
+                        <strong>B14</strong> tem classificação de incidentes mas falta o playbook completo de comunicação com órgãos reguladores e clientes.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Em um incidente real com vazamento de PII, a equipe precisaria consultar 3 documentos para montar o procedimento. Sem SLA definido, sem responsável claro (quem ativa: ops ou compliance?), e sem playbook de comunicação — o tempo de resposta será maior do que o aceitável.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Definir B14 como o <strong>documento autoritativo</strong> para resposta a incidentes de PII, com playbook completo (passo a passo, SLA por severidade, quem comunica). B13 e B15 devem apenas referenciar "ver B14, §14.13" sem duplicar o procedimento. Em contexto bancário (BACEN), este é um requisito regulatório.</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> B13.md, B14.md, B15.md</div>
+                    </div>
+                </div>
+
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-warning"><i class="ri-speed-line"></i></div>
+                        <div class="delivery-title">#8 — Latência da API: exemplos desconectados dos SLAs</div>
+                        <div class="delivery-marco" style="background: var(--warning-light); color: var(--warning);">Inconsistência</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p><strong>B10</strong> mostra exemplos de resposta da API com valores de latência (142ms para /search, 1850ms para /ask) que parecem arbitrários — não referencia os SLAs formais. <strong>B12</strong> define SLAs reais (p50 &lt; 200ms, p95 &lt; 500ms para /search; p50 &lt; 3s, p95 &lt; 8s para /ask), mas B10 não menciona nem cruza com esses números.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Desenvolvedores lendo B10 podem assumir que 1850ms é latência aceitável para /ask (está dentro do p95 de 8s mas longe do p50 de 3s). Sem referência cruzada, os SLAs de B12 ficam desconhecidos para quem implementa a API.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Adicionar em B10 uma nota nos exemplos: "Valores ilustrativos — para SLAs formais, ver B12, §12.5". Ou melhor: incluir uma tabela resumida de SLAs em B10 referenciando B12 como fonte autoritativa.</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> B10.txt/md, B12.txt/md</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ABA 4 — LACUNAS DE CONTEÚDO -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <div id="tab-lacunas" class="tab-content">
+
+            <!-- PRÓXIMA ITERAÇÃO -->
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-info"><i class="ri-edit-line"></i></div>
+                    <div class="section-title">Próxima Iteração dos Drafts</div>
+                    <div class="section-count">8 itens</div>
+                </div>
+            </div>
+
+            <div class="delivery-grid">
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="ri-brain-line"></i></div>
+                        <div class="delivery-title">#9 — Modelo de embedding não definido</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">B03</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>B03 tem a única pendência marcada explicitamente no texto: <code>"⚠️ PENDÊNCIA: definir modelo de embedding"</code>. Não há decisão sobre qual modelo usar — OpenAI text-embedding-3-small? BGE-M3 local? Qual dimensão? Qual custo?</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>A busca vetorial é o core do MVP (Fase 1). Sem modelo definido, não é possível dimensionar infra, estimar custos, nem implementar o pipeline Prata→Ouro. A Pendência 1 de B08 oferece análise, mas não tem decisão final.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Definir pelo menos a escolha para MVP: "OpenAI text-embedding-3-small para Fase 1, reavaliar BGE-M3 em Fase 2". Isso desbloqueia implementação sem comprometer flexibilidade futura.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="ri-calculator-line"></i></div>
+                        <div class="delivery-title">#10 — Fórmula de conversion_quality</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">B02</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>B02 descreve os sinais que compõem o <code>conversion_quality</code> (formatação preservada, tabelas intactas, imagens extraídas, etc.) e os thresholds (≥80% auto, 30-79% revisão, &lt;30% rejeição) — mas não há fórmula para combinar múltiplos sinais em um score 0-100.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Cada desenvolvedor vai implementar a fórmula de forma diferente. Sem especificação, o QA não consegue validar se o cálculo está correto. O limiar de 80% perde sentido se a fórmula for arbitrária.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Documentar a fórmula: média ponderada dos sinais? Mínimo entre sinais? Regra de corte? Pode ser simples para MVP e refinada depois.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="ri-robot-line"></i></div>
+                        <div class="delivery-title">#11 — Enriquecimento semântico sem "como"</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">B05</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>B05 descreve NER, classificação automática e resumos como capacidades da Fase 3, mas não especifica como: qual modelo de NER? LLM ou classificador treinado? Spacy em português? Qual precisão mínima aceitável?</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>A escolha impacta custo (LLM via API vs modelo local), latência do pipeline e qualidade dos metadados extraídos. Sem definição, a Fase 3 fica especulativa.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Não bloqueia Fase 1-2, mas deve estar definido antes de iniciar Fase 3. Registrar a decisão como ADR quando chegar o momento.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="ri-lock-line"></i></div>
+                        <div class="delivery-title">#12 — RBAC sem integração com IdP</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">B05</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>B05 define perfis (Analista, Gestor, Diretoria, Agente de IA) mas não diz como mapear usuário → perfil. LDAP? OIDC? Manual?</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Sem integração com IdP corporativo, o RBAC será implementado de forma ad-hoc — com risco de segurança e inconsistência com os demais sistemas da empresa.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Fase 3+. Antes de implementar, definir se usará OIDC (padrão corporativo) ou se a camada de aplicação fará o mapeamento manualmente.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="ri-merge-cells-horizontal"></i></div>
+                        <div class="delivery-title">#13 — Hybrid search: fusão sem algoritmo</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">B06</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>B06 descreve que 3 buscas (vetorial, keyword, grafo) rodam em paralelo e os resultados são "fusionados" — mas não define a estratégia: Reciprocal Rank Fusion? Weighted average? Threshold-based?</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>A qualidade do hybrid search depende diretamente do algoritmo de fusão. Sem definição, cada implementação vai produzir resultados diferentes.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Fase 4. Documentar a estratégia quando iniciar implementação do hybrid search. RRF é o padrão da indústria e boa recomendação inicial.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="ri-route-line"></i></div>
+                        <div class="delivery-title">#14 — Agentes sem dispatcher/roteamento</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">B06</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>B06 define 3 agentes especializados por domínio mas não descreve quem roteia a pergunta para o agente certo. Existe um dispatcher? O LLM decide? É baseado em metadados?</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Sem roteamento, ou o usuário precisa saber qual agente usar (péssima UX) ou todas as perguntas vão para um agente genérico (perde o benefício da especialização).</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Fase 4. Definir quando começar a implementar agentes especializados. Padrão: LLM classifica a intenção e roteia.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="ri-links-line"></i></div>
+                        <div class="delivery-title">#15 — Referências técnicas insuficientes</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">B09</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>B09 lista apenas 3 URLs de documentação Neo4j. Faltam referências para: modelos de embedding (OpenAI, BAAI/BGE), reranking (Cohere, BGE-Reranker), chunking (unstructured.io, LangChain), LLM (Claude, Llama), deploy (Docker, K8s).</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Um desenvolvedor novo no projeto não tem ponto de partida para aprender os componentes. B09 deveria ser o "índice de leitura recomendada" da série.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Expandir à medida que decisões são tomadas. Cada pendência resolvida de B08 deve gerar uma entrada em B09 com a documentação oficial do componente escolhido.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="ri-shield-cross-line"></i></div>
+                        <div class="delivery-title">#16 — B14 não é referenciado por B10-B13</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">B14</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>B14 (Segurança) é o documento mais completo da série (1168 linhas), com checklists por fase. Porém, nenhum dos documentos B10 (API), B11 (Deploy), B12 (Testes) ou B13 (Operações) referencia explicitamente o checklist de segurança de B14 nas suas respectivas seções.</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>Segurança fica "isolada" em um documento que ninguém consulta proativamente. Checklists de B14 não são aplicados porque os docs operacionais não os mencionam.</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>Adicionar em cada doc (B10-B13) uma referência: "Antes de implementar, consultar checklist de segurança em B14, §14.12 — Checklist Fase X". Integração simples, impacto alto.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PODE ESPERAR -->
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-secondary"><i class="ri-time-line"></i></div>
+                    <div class="section-title">Pode Esperar — Não Bloqueia Fase 1</div>
+                    <div class="section-count">5 itens</div>
+                </div>
+            </div>
+
+            <div class="delivery-grid">
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-secondary"><i class="ri-key-line"></i></div>
+                        <div class="delivery-title">#17 — Admin endpoints sem auth explícita</div>
+                        <div class="delivery-marco" style="background: var(--primary-light); color: var(--primary);">B10</div>
+                    </div>
+                    <div class="issue-detail">
+                        <p>B10 menciona "autenticação elevada" para endpoints admin mas não define se é role JWT, IP whitelist ou outra estratégia. Pode ser definido durante implementação.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-secondary"><i class="ri-plug-line"></i></div>
+                        <div class="delivery-title">#18 — MCP Server sem schema de ferramentas</div>
+                        <div class="delivery-marco" style="background: var(--primary-light); color: var(--primary);">B10</div>
+                    </div>
+                    <div class="issue-detail">
+                        <p>B10 descreve o MCP Server genericamente mas sem schema exato, parâmetros ou exemplo de integração com Claude Code. Definir quando implementar.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-secondary"><i class="ri-settings-line"></i></div>
+                        <div class="delivery-title">#19 — Sem .env.example ou rotação de secrets</div>
+                        <div class="delivery-marco" style="background: var(--primary-light); color: var(--primary);">B11</div>
+                    </div>
+                    <div class="issue-detail">
+                        <p>B11 lista 23 variáveis de ambiente mas sem arquivo .env.example de referência. Não há estratégia de rotação de secrets. Git LFS em containers não é mencionado.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-secondary"><i class="ri-test-tube-line"></i></div>
+                        <div class="delivery-title">#20 — Sem testes de reranking</div>
+                        <div class="delivery-marco" style="background: var(--primary-light); color: var(--primary);">B12</div>
+                    </div>
+                    <div class="issue-detail">
+                        <p>B12 cobre testes de retrieval simples mas não inclui testes de reranking descrito em B06. Gap para Fase 4 — adicionar quando implementar hybrid search.</p>
+                    </div>
+                </div>
+
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-secondary"><i class="ri-database-line"></i></div>
+                        <div class="delivery-title">#21 — Recovery Neo4j sem detalhes</div>
+                        <div class="delivery-marco" style="background: var(--primary-light); color: var(--primary);">B13</div>
+                    </div>
+                    <div class="issue-detail">
+                        <p>B13 descreve recovery com <code>neo4j-admin database load</code> mas sem lag máximo aceitável, teste de restore, ou estimativa de tempo. Detalhar quando tiver instância real para benchmarking.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div class="container">
+        <div class="badge badge-footer" style="margin-bottom:40px; margin-top:10px; display:flex; width:100%;">
+            <div class="badge-bar"></div>
+            <div class="badge-body" style="flex:1; justify-content:space-between;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="badge-icon">FR</div>
+                    <div class="badge-text">
+                        <span class="badge-name">Fabio A. B. Rodrigues</span>
+                        <span class="badge-role">Arquitetura e Produtividade Corporativa</span>
+                        <span class="badge-date">Criado em: 21/03/2026</span>
+                    </div>
+                </div>
+                <div style="text-align:right; font-size:11px; color:var(--text-muted);">
+                    Empresa XPTO &middot; Análise de Lacunas — RAG Blueprint Series<br>
+                    Revisão de qualidade dos 17 documentos (B00–B16) &middot; 21/03/2026
+                </div>
+            </div>
+            <div class="badge-seal">Criado por</div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            if (html.getAttribute('data-theme') === 'light') {
+                html.removeAttribute('data-theme');
+                icon.className = 'ri-sun-line';
+                localStorage.setItem('caefe-theme', 'dark');
+            } else {
+                html.setAttribute('data-theme', 'light');
+                icon.className = 'ri-moon-line';
+                localStorage.setItem('caefe-theme', 'light');
+            }
+        }
+
+        (function() {
+            const saved = localStorage.getItem('caefe-theme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.getElementById('theme-icon').className = 'ri-moon-line';
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

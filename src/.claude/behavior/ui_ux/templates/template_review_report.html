@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- =================================================================== -->
+    <!-- TEMPLATE: Relatório de Revisão / Análise de Documentos              -->
+    <!-- Uso: drf-reviewer, análise de lacunas, auditoria de qualidade       -->
+    <!-- =================================================================== -->
+    <!-- INSTRUÇÕES DE USO:                                                  -->
+    <!--                                                                     -->
+    <!-- Este template gera relatórios de análise/revisão de documentos.     -->
+    <!-- Usado quando uma skill (ex: drf-reviewer) analisa drafts ou docs    -->
+    <!-- e precisa consolidar os achados em um relatório visual.             -->
+    <!--                                                                     -->
+    <!-- ESTRUTURA FIXA (4 abas):                                            -->
+    <!--   Aba 1 — Visão Macro: KPIs, barras de qualidade, alertas críticos  -->
+    <!--   Aba 2 — Visão Técnica: itens críticos detalhados                  -->
+    <!--   Aba 3 — Inconsistências: divergências entre documentos            -->
+    <!--   Aba 4 — Lacunas: gaps de conteúdo por prioridade                  -->
+    <!--                                                                     -->
+    <!-- COMPONENTES ESPECÍFICOS DESTE TEMPLATE:                             -->
+    <!--   .issue-detail — card expandido com Problema/Impacto/Razão         -->
+    <!--   .issue-tag    — pill inline para marcar docs afetados             -->
+    <!--   .issue-docs   — linha de docs relacionados no rodapé do card      -->
+    <!--                                                                     -->
+    <!-- PLACEHOLDERS ({{VAR}}):                                             -->
+    <!--   Substituir TODOS antes de gerar o HTML final.                     -->
+    <!--   Placeholders não substituídos aparecerão visíveis no relatório.   -->
+    <!-- =================================================================== -->
+    <title>{{TITULO}} — {{EMPRESA}}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        /* ====== DESIGN TOKENS — TEMA ESCURO (padrão) ====== */
+        :root {
+            --primary: #5BA4D9;
+            --primary-dark: #3182B1;
+            --primary-light: rgba(91, 164, 217, 0.12);
+            --secondary: #5BB8C4;
+            --success: #6ABF3B;
+            --success-light: rgba(106, 191, 59, 0.12);
+            --success-border: rgba(106, 191, 59, 0.3);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.12);
+            --warning-border: rgba(244, 172, 0, 0.3);
+            --danger: #E85D54;
+            --danger-light: rgba(232, 93, 84, 0.12);
+            --danger-border: rgba(232, 93, 84, 0.3);
+            --info: #38BDF8;
+            --info-light: rgba(56, 189, 248, 0.12);
+            --info-border: rgba(56, 189, 248, 0.3);
+            --bg: #0f1319;
+            --card-bg: #1a1f2e;
+            --text: #e2e8f0;
+            --text-muted: #8b9ab5;
+            --border: #2a3244;
+            --purple: #9B96FF;
+            --purple-light: rgba(155, 150, 255, 0.12);
+            --orange: #FF9473;
+            --teal: #2DD4BF;
+            --header-bg: linear-gradient(135deg, #1a2332 0%, #15202e 50%, #1a2838 100%);
+            --progress-track: #2a3244;
+            --milestone-future: #4a5568;
+            --alert-warning-text: #f0c040;
+            --alert-danger-text: #f08a84;
+            --alert-info-text: #6ecbf5;
+            --alert-success-text: #8ad45a;
+            --pill-success-text: #8ad45a;
+            --pill-info-text: #6ecbf5;
+            --pill-warning-text: #f0c040;
+            --area-warning-text: #f0c040;
+        }
+
+        /* ====== DESIGN TOKENS — TEMA CLARO ====== */
+        [data-theme="light"] {
+            --primary: #3182B1;
+            --primary-dark: #256a94;
+            --primary-light: rgba(49, 130, 177, 0.1);
+            --secondary: #418F9D;
+            --success: #4C7E1B;
+            --success-light: rgba(76, 126, 27, 0.08);
+            --success-border: rgba(76, 126, 27, 0.25);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.08);
+            --warning-border: rgba(244, 172, 0, 0.25);
+            --danger: #C72F25;
+            --danger-light: rgba(199, 47, 37, 0.08);
+            --danger-border: rgba(199, 47, 37, 0.25);
+            --info: #0EA5E8;
+            --info-light: rgba(14, 165, 232, 0.08);
+            --info-border: rgba(14, 165, 232, 0.25);
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text: #212B37;
+            --text-muted: #6E829F;
+            --border: #e2e8f0;
+            --purple: #7B76FE;
+            --purple-light: rgba(123, 118, 254, 0.08);
+            --orange: #FE7C58;
+            --teal: #00D8D8;
+            --header-bg: linear-gradient(135deg, #3182B1 0%, #256a94 50%, #418F9D 100%);
+            --progress-track: #e9ecef;
+            --milestone-future: #adb5bd;
+            --alert-warning-text: #8a6600;
+            --alert-danger-text: #a52820;
+            --alert-info-text: #0878a8;
+            --alert-success-text: #3a6112;
+            --pill-success-text: #3a6112;
+            --pill-info-text: #0878a8;
+            --pill-warning-text: #9a6d00;
+            --area-warning-text: #8a6600;
+        }
+
+        /* ====== RESET + BASE ====== */
+        html, body, div, span, h1, h2, h3, h4, h5, h6, p, a, img, ul, ol, li,
+        header, footer, nav, section, article, aside, button, input, select, textarea,
+        table, tr, td, th, form, label, fieldset, legend { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Poppins', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+        /* ====== HEADER ====== */
+        .header { background: var(--header-bg); color: white; padding: 36px 0 0; position: relative; overflow: hidden; }
+        .header::before { content: ''; position: absolute; top: -50%; right: -10%; width: 500px; height: 500px; background: rgba(255,255,255,0.03); border-radius: 50%; z-index: 0; }
+        .header-content { position: relative; z-index: 1; }
+        .header-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-logo { height: 36px; width: auto; opacity: 0.95; flex-shrink: 0; filter: brightness(0) invert(1); }
+        [data-theme="light"] .header-logo { filter: brightness(0) invert(1); }
+        .header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+        .header .subtitle { font-size: 0.95rem; opacity: 0.85; font-weight: 300; margin-top: 2px; }
+        .header-right { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .header-badge { background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(10px); color: white; }
+
+        /* ====== TABS ====== */
+        .tabs-nav { display: flex; gap: 4px; margin-top: 20px; }
+        .tab-btn { padding: 10px 24px; background: rgba(255,255,255,0.1); border: none; border-radius: 10px 10px 0 0; color: rgba(255,255,255,0.7); font-family: 'Poppins', sans-serif; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+        .tab-btn:hover { background: rgba(255,255,255,0.18); color: white; }
+        .tab-btn.active { background: var(--bg); color: var(--primary); font-weight: 600; }
+        .tab-btn i { font-size: 1.1rem; }
+        .tab-content { display: none; padding-top: 24px; padding-bottom: 32px; }
+        .tab-content.active { display: block; }
+
+        /* ====== STATS ====== */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+        .stat-card { background: var(--card-bg); border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); border: 1px solid var(--border); display: flex; align-items: center; gap: 14px; }
+        .stat-card-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; color: white; flex-shrink: 0; }
+        .stat-card-info { flex: 1; }
+        .stat-card-number { font-size: 1.12rem; font-weight: 700; line-height: 1.1; }
+        .stat-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+
+        /* ====== CARDS ====== */
+        .card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.03); overflow: hidden; margin-bottom: 20px; }
+        .card-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg); }
+        .card-header-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: white; flex-shrink: 0; }
+        .card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .card-badge { padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+        .card-body { padding: 18px; }
+
+        /* ====== ALERTS ====== */
+        .alert { padding: 12px 16px; border-radius: 8px; font-size: 0.82rem; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; border: 1px solid; }
+        .alert i { font-size: 1.1rem; flex-shrink: 0; }
+        .alert-warning { background: var(--warning-light); border-color: var(--warning-border); color: var(--alert-warning-text); }
+        .alert-danger { background: var(--danger-light); border-color: var(--danger-border); color: var(--alert-danger-text); }
+        .alert-info { background: var(--info-light); border-color: var(--info-border); color: var(--alert-info-text); }
+        .alert-success { background: var(--success-light); border-color: var(--success-border); color: var(--alert-success-text); }
+
+        /* ====== PROGRESS ====== */
+        .progress-container { margin-bottom: 16px; }
+        .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .progress-label { font-size: 0.82rem; font-weight: 500; }
+        .progress-value { font-size: 0.82rem; font-weight: 600; }
+        .progress-bar-bg { width: 100%; height: 8px; background: var(--progress-track); border-radius: 4px; overflow: hidden; }
+        .progress-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+
+        /* ====== DELIVERY CARDS ====== */
+        .delivery-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .delivery-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .delivery-card.full-width { grid-column: 1 / -1; }
+        .delivery-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+        .delivery-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; color: white; flex-shrink: 0; }
+        .delivery-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .delivery-marco { font-size: 0.65rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; }
+        .delivery-body { padding: 16px 18px; }
+        .delivery-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+        .delivery-item:last-child { border-bottom: none; }
+        .delivery-status { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: white; flex-shrink: 0; margin-top: 1px; }
+        .delivery-item-text { flex: 1; }
+        .delivery-item-detail { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+        .status-done { background: var(--success); }
+        .status-progress { background: var(--primary); }
+        .status-partial { background: var(--warning); }
+        .status-blocked { background: var(--danger); }
+        .status-pending { background: var(--milestone-future); }
+
+        /* ====== SECTIONS ====== */
+        .section { margin-top: 32px; }
+        .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--border); }
+        .section-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; color: white; flex-shrink: 0; }
+        .section-title { font-size: 1.15rem; font-weight: 600; }
+        .section-count { background: var(--bg); padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
+
+        /* ====== LEGEND ====== */
+        .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-muted); }
+        .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+        /* ====== ISSUE DETAIL — componente específico deste template ====== */
+        /* Card expandido para detalhar um achado da revisão.               */
+        /* Estrutura interna: h4 (título da seção) + p (conteúdo)           */
+        /* Seções padrão: O Problema | O Impacto | Por que Resolver         */
+        .issue-detail { padding: 18px; }
+        .issue-detail h4 { font-size: 0.88rem; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+        .issue-detail p { font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px; }
+        .issue-detail p:last-child { margin-bottom: 0; }
+        .issue-detail .issue-tag { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; margin-right: 4px; }
+        .issue-docs { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; }
+        .issue-docs span { font-weight: 600; color: var(--text); }
+
+        /* ====== UTILITIES ====== */
+        .bg-primary { background: var(--primary); }
+        .bg-success { background: var(--success); }
+        .bg-info { background: var(--info); }
+        .bg-warning { background: var(--warning); }
+        .bg-danger { background: var(--danger); }
+        .bg-secondary { background: var(--secondary); }
+        .bg-purple { background: var(--purple); }
+        .bg-orange { background: var(--orange); }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .text-success { color: var(--success); }
+        .text-warning { color: var(--warning); }
+        .text-danger { color: var(--danger); }
+        .text-info { color: var(--info); }
+        .text-muted { color: var(--text-muted); }
+
+        /* ====== BADGE FOOTER ====== */
+        .badge { display: inline-flex; align-items: stretch; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.30); font-family: 'Poppins', sans-serif; margin-bottom: 10px; }
+        .badge-bar { width: 5px; flex-shrink: 0; }
+        .badge-body { display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; background: var(--card-bg); }
+        .badge-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: var(--bg); flex-shrink: 0; }
+        .badge-text { display: flex; flex-direction: column; gap: 1px; }
+        .badge-name { font-weight: 700; font-size: 13px; color: var(--text); }
+        .badge-role { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+        .badge-date { font-size: 10.5px; color: var(--text-muted); }
+        .badge-seal { display: flex; align-items: center; justify-content: center; padding: 7px 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; writing-mode: vertical-rl; text-orientation: mixed; color: var(--bg); }
+        .badge-footer .badge-bar, .badge-footer .badge-icon, .badge-footer .badge-seal { background: var(--primary); }
+
+        /* ====== RESPONSIVE ====== */
+        @media (max-width: 1024px) {
+            .delivery-grid, .grid-2 { grid-template-columns: 1fr; }
+            .delivery-card.full-width { grid-column: auto; }
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .tabs-nav { flex-wrap: wrap; }
+            .tab-btn { font-size: 0.78rem; padding: 8px 16px; }
+        }
+
+        /* ====== PRINT ====== */
+        @media print {
+            body { background: #1a1f2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .header { padding: 16px 0 0; }
+            .card, .stat-card, .delivery-card { box-shadow: none; break-inside: avoid; }
+            .tab-content { display: block !important; page-break-before: always; }
+            .tabs-nav { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- =================================================================== -->
+    <!-- HEADER                                                              -->
+    <!-- Placeholders:                                                       -->
+    <!--   {{TITULO}}          — título do relatório (ex: "Análise de Lacunas") -->
+    <!--   {{SUBTITULO}}       — descrição breve (ex: "Revisão dos 17 docs") -->
+    <!--   {{LOGO_BASE64}}     — conteúdo do arquivo logo-base64.txt         -->
+    <!--   {{EMPRESA}}         — nome da empresa (de variaveis.md)           -->
+    <!--   {{DATA}}            — data da análise (ex: "21/03/2026")          -->
+    <!--   {{BADGE_ESCOPO}}    — escopo analisado (ex: "34 arquivos")        -->
+    <!--   {{BADGE_TOTAL}}     — total de itens (ex: "21 itens identificados") -->
+    <!-- =================================================================== -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="header-top">
+                    <div class="header-left">
+                        <img class="header-logo" src="data:image/png;base64,{{LOGO_BASE64}}" alt="{{EMPRESA}}">
+                        <div>
+                            <h1>{{TITULO}}</h1>
+                            <div class="subtitle">{{SUBTITULO}}</div>
+                        </div>
+                    </div>
+                    <div class="header-right">
+                        <div class="header-badge"><i class="ri-calendar-check-line"></i> {{DATA}}</div>
+                        <div class="header-badge"><i class="ri-file-list-3-line"></i> {{BADGE_ESCOPO}}</div>
+                        <div class="header-badge"><i class="ri-error-warning-line"></i> {{BADGE_TOTAL}}</div>
+                        <button onclick="toggleTheme()" class="header-badge" style="border:none;cursor:pointer;" title="Alternar tema">
+                            <i id="theme-icon" class="ri-sun-line"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- =================================================================== -->
+        <!-- TABS — estrutura fixa para relatórios de revisão                    -->
+        <!-- Aba 1: Visão Macro (obrigatória, ativa por padrão)                  -->
+        <!-- Aba 2: Visão Técnica (obrigatória — itens críticos detalhados)      -->
+        <!-- Aba 3: Inconsistências (divergências entre documentos)              -->
+        <!-- Aba 4: Lacunas (gaps de conteúdo, priorizados)                      -->
+        <!-- =================================================================== -->
+        <div class="tabs-nav container">
+            <button class="tab-btn active" onclick="switchTab('visao-macro')">
+                <i class="ri-eye-line"></i> Visão Macro
+            </button>
+            <button class="tab-btn" onclick="switchTab('visao-tecnica')">
+                <i class="ri-code-s-slash-line"></i> Visão Técnica
+            </button>
+            <button class="tab-btn" onclick="switchTab('inconsistencias')">
+                <i class="ri-git-branch-line"></i> Inconsistências
+            </button>
+            <button class="tab-btn" onclick="switchTab('lacunas')">
+                <i class="ri-clipboard-line"></i> Lacunas de Conteúdo
+            </button>
+        </div>
+    </header>
+
+    <div class="container">
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ABA 1 — VISÃO MACRO                                       -->
+        <!-- Conteúdo: KPIs macro, barras de qualidade, alertas         -->
+        <!-- Tom: executivo, objetivo, visão em 30 segundos             -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <div id="tab-visao-macro" class="tab-content active">
+
+            <!-- =================================================================== -->
+            <!-- KPIs MACRO — 4 stat cards fixos                                     -->
+            <!-- Placeholders:                                                       -->
+            <!--   {{KPI_COBERTURA}}   — docs analisados/total (ex: "17 / 17")       -->
+            <!--   {{KPI_CRITICOS}}    — quantidade de itens críticos (ex: "3")       -->
+            <!--   {{KPI_INCONSIST}}   — quantidade de inconsistências (ex: "5")     -->
+            <!--   {{KPI_LACUNAS}}     — quantidade de lacunas (ex: "13")            -->
+            <!-- =================================================================== -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-primary"><i class="ri-file-text-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number" style="color: var(--primary)">{{KPI_COBERTURA}}</div>
+                        <div class="stat-card-label">Cobertura da Análise</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number" style="color: var(--danger)">{{KPI_CRITICOS}}</div>
+                        <div class="stat-card-label">Problemas Críticos</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-warning"><i class="ri-exchange-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number" style="color: var(--warning)">{{KPI_INCONSIST}}</div>
+                        <div class="stat-card-label">Inconsistências</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-info"><i class="ri-draft-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number" style="color: var(--info)">{{KPI_LACUNAS}}</div>
+                        <div class="stat-card-label">Lacunas de Conteúdo</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- =================================================================== -->
+            <!-- BARRAS DE QUALIDADE POR DOCUMENTO                                   -->
+            <!-- Repetir um .progress-container para cada doc analisado.             -->
+            <!-- Usar grid-2 se houver muitos docs (ex: 2 colunas lado a lado).      -->
+            <!-- Cores: bg-success (>=90%), bg-primary (80-89%), bg-warning (<80%)   -->
+            <!-- Placeholders por barra:                                             -->
+            <!--   {{DOC_NOME}}        — nome do documento (ex: "B00 — Introdução")  -->
+            <!--   {{DOC_QUALIDADE}}   — percentual 0-100 (ex: "95")                 -->
+            <!--   {{DOC_COR}}         — classe de cor (ex: "bg-success")            -->
+            <!-- =================================================================== -->
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-icon bg-success"><i class="ri-bar-chart-line"></i></div>
+                        <div class="card-title">Qualidade por Documento</div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Repetir para cada documento (coluna 1): -->
+                        <div class="progress-container">
+                            <div class="progress-header">
+                                <span class="progress-label">{{DOC_NOME}}</span>
+                                <span class="progress-value">{{DOC_QUALIDADE}}%</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill {{DOC_COR}}" style="width:{{DOC_QUALIDADE}}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-icon bg-success"><i class="ri-bar-chart-line"></i></div>
+                        <div class="card-title">Qualidade por Documento</div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Repetir para cada documento (coluna 2): -->
+                        <div class="progress-container">
+                            <div class="progress-header">
+                                <span class="progress-label">{{DOC_NOME}}</span>
+                                <span class="progress-value">{{DOC_QUALIDADE}}%</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill {{DOC_COR}}" style="width:{{DOC_QUALIDADE}}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- =================================================================== -->
+            <!-- ALERTAS CRÍTICOS — resumo rápido dos itens críticos                 -->
+            <!-- Usar .alert-danger para cada item crítico.                          -->
+            <!-- Formato: #N — Título curto: descrição de 1 linha                    -->
+            <!-- =================================================================== -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+                    <div class="card-title">Alertas Críticos — Resolver Antes de Avançar</div>
+                    <div class="card-badge" style="background: var(--danger-light); color: var(--danger);">{{KPI_CRITICOS}} itens</div>
+                </div>
+                <div class="card-body">
+                    <!-- Repetir para cada item crítico: -->
+                    <div class="alert alert-danger">
+                        <i class="ri-close-circle-line"></i>
+                        <span><strong>#{{ITEM_NUM}} — {{ITEM_TITULO_CURTO}}:</strong> {{ITEM_RESUMO_1_LINHA}}</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ABA 2 — VISÃO TÉCNICA                                      -->
+        <!-- Conteúdo: itens críticos com detalhamento completo          -->
+        <!-- Cada item usa delivery-card.full-width + .issue-detail      -->
+        <!-- Estrutura do issue-detail:                                  -->
+        <!--   h4 "O Problema"       — descrição técnica do achado       -->
+        <!--   h4 "O Impacto"        — consequências se não resolver     -->
+        <!--   h4 "Por que Resolver" — justificativa + recomendação      -->
+        <!--   .issue-docs           — lista de docs afetados            -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <div id="tab-visao-tecnica" class="tab-content">
+
+            <div class="legend">
+                <div class="legend-item"><div class="legend-dot bg-danger"></div> Crítico</div>
+                <div class="legend-item"><div class="legend-dot bg-warning"></div> Inconsistência</div>
+                <div class="legend-item"><div class="legend-dot bg-info"></div> Lacuna — Próxima Iteração</div>
+                <div class="legend-item"><div class="legend-dot bg-secondary"></div> Lacuna — Pode Esperar</div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+                    <div class="section-title">Problemas Críticos</div>
+                    <div class="section-count">{{KPI_CRITICOS}} itens</div>
+                </div>
+            </div>
+
+            <div class="delivery-grid">
+                <!-- =================================================================== -->
+                <!-- ITEM CRÍTICO — repetir para cada achado crítico                     -->
+                <!-- Placeholders:                                                       -->
+                <!--   {{ITEM_NUM}}           — número sequencial (ex: "1")              -->
+                <!--   {{ITEM_ICONE}}         — classe Remix Icon (ex: "ri-bug-line")    -->
+                <!--   {{ITEM_TITULO}}        — título descritivo do achado              -->
+                <!--   {{ITEM_SEVERIDADE}}    — "Crítico", "Inconsistência", etc.        -->
+                <!--   {{ITEM_SEV_COR}}       — cor CSS (ex: "danger", "warning")        -->
+                <!--   {{ITEM_PROBLEMA}}      — HTML descrevendo o problema              -->
+                <!--   {{ITEM_IMPACTO}}       — HTML descrevendo o impacto               -->
+                <!--   {{ITEM_RAZAO}}         — HTML com justificativa + recomendação    -->
+                <!--   {{ITEM_DOCS_AFETADOS}} — lista de docs (ex: "B08.md, B03.md")     -->
+                <!-- =================================================================== -->
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-{{ITEM_SEV_COR}}"><i class="{{ITEM_ICONE}}"></i></div>
+                        <div class="delivery-title">#{{ITEM_NUM}} — {{ITEM_TITULO}}</div>
+                        <div class="delivery-marco" style="background: var(--{{ITEM_SEV_COR}}-light); color: var(--{{ITEM_SEV_COR}});">{{ITEM_SEVERIDADE}}</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>{{ITEM_PROBLEMA}}</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>{{ITEM_IMPACTO}}</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>{{ITEM_RAZAO}}</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> {{ITEM_DOCS_AFETADOS}}</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ABA 3 — INCONSISTÊNCIAS                                    -->
+        <!-- Conteúdo: divergências entre documentos                     -->
+        <!-- Mesmo formato da aba 2, com delivery-card + issue-detail    -->
+        <!-- Cor predominante: warning (amarelo)                         -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <div id="tab-inconsistencias" class="tab-content">
+
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-warning"><i class="ri-exchange-line"></i></div>
+                    <div class="section-title">Inconsistências entre Documentos</div>
+                    <div class="section-count">{{KPI_INCONSIST}} itens</div>
+                </div>
+            </div>
+
+            <div class="delivery-grid">
+                <!-- Repetir delivery-card full-width com issue-detail para cada inconsistência -->
+                <!-- Usar delivery-icon bg-warning e delivery-marco com cor warning             -->
+                <div class="delivery-card full-width">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-warning"><i class="{{ITEM_ICONE}}"></i></div>
+                        <div class="delivery-title">#{{ITEM_NUM}} — {{ITEM_TITULO}}</div>
+                        <div class="delivery-marco" style="background: var(--warning-light); color: var(--warning);">Inconsistência</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>{{ITEM_PROBLEMA}}</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>{{ITEM_IMPACTO}}</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>{{ITEM_RAZAO}}</p>
+                        <div class="issue-docs"><span>Docs afetados:</span> {{ITEM_DOCS_AFETADOS}}</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ABA 4 — LACUNAS DE CONTEÚDO                                -->
+        <!-- Conteúdo: gaps organizados por prioridade                   -->
+        <!-- 2 seções:                                                   -->
+        <!--   Seção 1 — Próxima Iteração (cor: info/azul claro)        -->
+        <!--     delivery-card com issue-detail completo                 -->
+        <!--   Seção 2 — Pode Esperar (cor: secondary/cinza-azul)       -->
+        <!--     delivery-card com issue-detail resumido (só 1 parágrafo)-->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <div id="tab-lacunas" class="tab-content">
+
+            <!-- PRÓXIMA ITERAÇÃO -->
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-info"><i class="ri-edit-line"></i></div>
+                    <div class="section-title">Próxima Iteração</div>
+                    <div class="section-count">{{LACUNAS_PROX_QTD}} itens</div>
+                </div>
+            </div>
+
+            <div class="delivery-grid">
+                <!-- Repetir delivery-card (NÃO full-width — grid 2 colunas) para cada lacuna prioritária -->
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-info"><i class="{{ITEM_ICONE}}"></i></div>
+                        <div class="delivery-title">#{{ITEM_NUM}} — {{ITEM_TITULO}}</div>
+                        <div class="delivery-marco" style="background: var(--info-light); color: var(--info);">{{ITEM_DOC_ORIGEM}}</div>
+                    </div>
+                    <div class="issue-detail">
+                        <h4><i class="ri-error-warning-line" style="color:var(--danger);margin-right:6px;"></i> O Problema</h4>
+                        <p>{{ITEM_PROBLEMA}}</p>
+                        <h4><i class="ri-focus-3-line" style="color:var(--warning);margin-right:6px;"></i> O Impacto</h4>
+                        <p>{{ITEM_IMPACTO}}</p>
+                        <h4><i class="ri-question-line" style="color:var(--info);margin-right:6px;"></i> Por que Resolver</h4>
+                        <p>{{ITEM_RAZAO}}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PODE ESPERAR -->
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-secondary"><i class="ri-time-line"></i></div>
+                    <div class="section-title">Pode Esperar</div>
+                    <div class="section-count">{{LACUNAS_ESPERA_QTD}} itens</div>
+                </div>
+            </div>
+
+            <div class="delivery-grid">
+                <!-- Repetir delivery-card (NÃO full-width) para cada lacuna de baixa prioridade -->
+                <!-- issue-detail RESUMIDO: apenas 1 parágrafo descritivo, sem h4 separados       -->
+                <div class="delivery-card">
+                    <div class="delivery-header">
+                        <div class="delivery-icon bg-secondary"><i class="{{ITEM_ICONE}}"></i></div>
+                        <div class="delivery-title">#{{ITEM_NUM}} — {{ITEM_TITULO}}</div>
+                        <div class="delivery-marco" style="background: var(--primary-light); color: var(--primary);">{{ITEM_DOC_ORIGEM}}</div>
+                    </div>
+                    <div class="issue-detail">
+                        <p>{{ITEM_RESUMO}}</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- FOOTER                                                              -->
+    <!-- Placeholders:                                                       -->
+    <!--   {{AUTOR_INICIAIS}}  — iniciais do autor (ex: "FR")                -->
+    <!--   {{AUTOR_NOME}}      — nome completo (ex: "Fabio A. B. Rodrigues")-->
+    <!--   {{AUTOR_CARGO}}     — cargo/área (de variaveis.md)                -->
+    <!--   {{DATA}}            — data do relatório                           -->
+    <!--   {{EMPRESA}}         — nome da empresa                             -->
+    <!--   {{TITULO}}          — título do relatório                          -->
+    <!--   {{SUBTITULO}}       — descrição breve                              -->
+    <!-- =================================================================== -->
+    <div class="container">
+        <div class="badge badge-footer" style="margin-bottom:40px; margin-top:10px; display:flex; width:100%;">
+            <div class="badge-bar"></div>
+            <div class="badge-body" style="flex:1; justify-content:space-between;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="badge-icon">{{AUTOR_INICIAIS}}</div>
+                    <div class="badge-text">
+                        <span class="badge-name">{{AUTOR_NOME}}</span>
+                        <span class="badge-role">{{AUTOR_CARGO}}</span>
+                        <span class="badge-date">Criado em: {{DATA}}</span>
+                    </div>
+                </div>
+                <div style="text-align:right; font-size:11px; color:var(--text-muted);">
+                    {{EMPRESA}} &middot; {{TITULO}}<br>
+                    {{SUBTITULO}} &middot; {{DATA}}
+                </div>
+            </div>
+            <div class="badge-seal">Criado por</div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            if (html.getAttribute('data-theme') === 'light') {
+                html.removeAttribute('data-theme');
+                icon.className = 'ri-sun-line';
+                localStorage.setItem('caefe-theme', 'dark');
+            } else {
+                html.setAttribute('data-theme', 'light');
+                icon.className = 'ri-moon-line';
+                localStorage.setItem('caefe-theme', 'light');
+            }
+        }
+
+        (function() {
+            const saved = localStorage.getItem('caefe-theme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.getElementById('theme-icon').className = 'ri-moon-line';
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

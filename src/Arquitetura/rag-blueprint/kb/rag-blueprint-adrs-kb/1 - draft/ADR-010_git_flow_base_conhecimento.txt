@@ -1,0 +1,1564 @@
+================================================================================
+📋 ADR-010 — Git Flow da Base de Conhecimento
+================================================================================
+
+    Status:             accepted
+    Data da decisão:    22/03/2026
+    Decisor:            Fabio A. B. Rodrigues
+    Escopo:             Versionamento, ambientes e promoção de releases
+    Relaciona-se:       ADR-001 (Pipeline 4 Fases, 2 Repos),
+                        ADR-006 (Pipeline de Ingestão),
+                        ADR-008 (Governança, Ciclo de Vida e Rollback)
+
+#adr #decisao/git-flow #decisao/branching #decisao/ambientes #decisao/release
+
+================================================================================
+🧠 1. CONTEXTO
+================================================================================
+
+--- 1.1. Por que esta ADR existe ---
+
+O ADR-001 estabeleceu a separação física em 2 repositórios:
+
+    Repositório              Propósito
+    -----------              ---------
+    rag-workspace            .beta.md em trabalho, fontes brutas, logs do processo
+                             Editável por humanos (Obsidian) e IA (pipeline)
+
+    rag-knowledge-base       .md finais (fonte da verdade), apresentações, releases
+                             Write apenas via pipeline (service account) + PR
+
+O ADR-001 também definiu que:
+
+  - A promoção de .beta.md → .md é sob demanda, controlada por tags/releases
+  - TAGs no knowledge-base triggeram o pipeline de ingestão na Base Vetorial
+  - A versão da release é registrada nos dados da Base Vetorial
+  - Aprovação via PR (PO + Arquiteto) é obrigatória na Fase 3
+
+Porém, o ADR-001 NÃO definiu:
+
+  - Qual modelo de branching usar em cada repositório
+  - Como versionar semanticamente as releases
+  - Como organizar trabalho paralelo de múltiplas pessoas
+  - Quais ambientes existem (staging, produção) e como promover entre eles
+  - Como fazer rollback para uma versão anterior
+  - Como tratar hotfixes urgentes em produção
+  - Como garantir rastreabilidade completa (quem mudou o quê, quando)
+
+Essas lacunas precisam ser resolvidas ANTES da implementação, pois:
+
+  a) Múltiplas pessoas editam .beta.md simultaneamente.
+     → Sem modelo de branching, conflitos de merge são inevitáveis.
+     → Branches desorganizadas dificultam rastreabilidade.
+
+  b) A Base Vetorial precisa de versões controladas.
+     → Sem versionamento semântico, não há como saber o que mudou entre releases.
+     → Rollback depende de TAGs bem definidas (ADR-008 menciona rollback, mas
+       não define o mecanismo Git que o suporta).
+
+  c) Staging é obrigatório antes de produção.
+     → O ADR-006 define que o pipeline de ingestão deve ser idempotente e
+       testável. Sem ambiente de staging, testes acontecem em produção.
+     → O ADR-008 define golden set e testes de qualidade — eles precisam
+       rodar em algum lugar antes de produção.
+
+  d) Compliance regulatório exige auditabilidade.
+     → Cada mudança na base de conhecimento deve ser rastreável a uma pessoa,
+       uma data e um motivo. O Git provê isso nativamente, mas apenas se o
+       modelo de branching for disciplinado.
+
+--- 1.2. Requisitos do modelo de branching ---
+
+O modelo ideal para a base de conhecimento deve:
+
+  1. SIMPLICIDADE — Equipes de negócio (POs, analistas) participam do processo.
+     Modelos complexos como Git Flow tradicional (5+ tipos de branch) são
+     barreiras. Precisamos de algo que caiba em um diagrama de 1 página.
+
+  2. PARALELISMO — Múltiplas pessoas trabalham simultaneamente em documentos
+     diferentes (ou até no mesmo documento). Branches devem isolar trabalho
+     individual sem bloquear os demais.
+
+  3. RELEASES EXPLÍCITAS — Cada conjunto de mudanças promovido para a Base
+     Vetorial deve ter uma TAG com versão semântica. Não se aceita "deploy
+     contínuo" de documentos — cada release é um pacote auditável.
+
+  4. AMBIENTES — Staging obrigatório para testes antes de produção. Produção
+     com gate humano (aprovação manual do PO + Arquiteto).
+
+  5. ROLLBACK — Capacidade de reverter produção para uma TAG anterior de forma
+     rápida e segura, sem necessidade de "desfazer commits".
+
+  6. HOTFIX — Capacidade de corrigir problemas urgentes em produção sem
+     esperar a próxima release planejada.
+
+  7. RASTREABILIDADE — Cada commit, PR e TAG deve contar a história completa:
+     quem mudou, o que mudou, por que mudou, quando mudou, e qual release
+     carrega essa mudança.
+
+--- 1.3. Por que Git Flow tradicional não serve ---
+
+O Git Flow (Driessen, 2010) define 5 tipos de branch:
+
+    main → código em produção
+    develop → integração contínua
+    feature/* → funcionalidades
+    release/* → preparação de release
+    hotfix/* → correções urgentes
+
+Para código de aplicação, isso funciona bem. Para base de conhecimento, não:
+
+  - "develop" é conceito de integração contínua — não faz sentido para
+    documentos que são promovidos sob demanda.
+  - "main" como "o que está em produção" cria ambiguidade: o que está em
+    produção é a Base Vetorial, não um branch do Git.
+  - feature/* para cada documento é granulação excessiva.
+  - O fluxo develop → release → main é linear demais para o pipeline de
+    4 fases do ADR-001, que tem etapas paralelas (QA, promoção, staging).
+
+O modelo que adotamos — Release-Based Flow — é uma simplificação orientada
+a releases, onde a unidade de trabalho é a versão, não a feature.
+
+================================================================================
+✅ 2. DECISÃO
+================================================================================
+
++-----------------------------------------------------------------------------------+
+| ❗ IMPORTANTE — Decisão                                                           |
+|                                                                                   |
+| Adotar modelo de branching Release-Based Flow com:                                |
+|   - Branches organizadas por release (release/vX.Y.Z/*)                           |
+|   - Versionamento semântico (MAJOR.MINOR.PATCH)                                   |
+|   - 2 ambientes com Base Vetorial (staging + produção)                            |
+|   - Fluxo de promoção em 4 passos (consolidação → TAG → staging → produção)       |
+|   - Rollback por re-implantação de TAG anterior                                   |
+|   - Hotfix como release patch dedicada                                            |
++-----------------------------------------------------------------------------------+
+
+--- 2.1 — Modelo de Branching: Release-Based Flow ---
+
+Princípio central: TODA versão da base de conhecimento começa com uma branch
+de release. Não existe branch "develop" ou "main" no sentido tradicional.
+
+Estrutura de branches:
+
+    release/v{MAJOR}.{MINOR}.{PATCH}/main
+    └── Branch de consolidação da versão
+        Aqui se faz o merge de todas as branches de trabalho
+        É o ponto de partida para a TAG de release
+
+    release/v{MAJOR}.{MINOR}.{PATCH}/{username}/{task-name}
+    └── Branch de trabalho individual
+        Cada pessoa trabalha na sua branch
+        Merge para o /main da release via PR com review
+
+Regras:
+
+  1. O branch release/vX.Y.Z/main é CRIADO pelo Curador (papel definido
+     no ADR-008) quando decide iniciar uma nova versão.
+
+  2. O branch release/vX.Y.Z/main é criado a partir da TAG da versão
+     anterior (ex: release/v1.1.0/main é criado a partir de TAG v1.0.0).
+     Na primeira release, é criado a partir do commit inicial do repo.
+
+  3. Branches de trabalho são criadas a partir de release/vX.Y.Z/main.
+     Cada contribuidor cria sua branch com o padrão:
+       release/vX.Y.Z/{username}/{task-name}
+
+  4. Merges de branches de trabalho para release/vX.Y.Z/main são feitos
+     via Pull Request com review obrigatório (mínimo 1 aprovação).
+
+  5. Quando TODAS as branches de trabalho estão mergeadas e o QA está
+     aprovado, o Curador cria a TAG vX.Y.Z no branch release/vX.Y.Z/main.
+
+  6. Após a TAG ser criada e implantada em produção, o branch
+     release/vX.Y.Z/main pode ser arquivado (mas NUNCA deletado).
+
+  7. NÃO é permitido commit direto no release/vX.Y.Z/main. Todo commit
+     passa por branch de trabalho + PR.
+
+--- Exemplo completo de fluxo ---
+
+Cenário: A equipe precisa lançar a versão 1.0.0 da base de conhecimento
+com 3 tarefas: corrigir glossário, criar módulo de cobrança, atualizar ADR.
+
+    PASSO 1 — Curador cria a release:
+    $ git checkout -b release/v1.0.0/main     # a partir do commit inicial
+
+    PASSO 2 — Contribuidores criam branches de trabalho:
+    $ git checkout -b release/v1.0.0/fabio/corrigir-glossario   release/v1.0.0/main
+    $ git checkout -b release/v1.0.0/maria/novo-modulo-cobranca release/v1.0.0/main
+    $ git checkout -b release/v1.0.0/joao/atualizar-adr-003     release/v1.0.0/main
+
+    PASSO 3 — Trabalho paralelo:
+    Fabio edita glossário, faz commits, abre PR para release/v1.0.0/main.
+    Maria cria documentos de cobrança, faz commits, abre PR para release/v1.0.0/main.
+    João atualiza ADR-003, faz commits, abre PR para release/v1.0.0/main.
+
+    PASSO 4 — Merges (em qualquer ordem):
+    PR do Fabio  → review pelo João    → merge em release/v1.0.0/main ✓
+    PR da Maria  → review pelo Fabio   → merge em release/v1.0.0/main ✓
+    PR do João   → review pela Maria   → merge em release/v1.0.0/main ✓
+
+    PASSO 5 — QA review:
+    Curador verifica que todos os .beta.md têm QA score >= 90% (ADR-001).
+    Curador verifica front matter conforme ADR-005.
+    Curador verifica que não há conflitos pendentes (<!-- CONFLICT -->).
+
+    PASSO 6 — TAG release:
+    $ git tag -a v1.0.0 -m "Release v1.0.0 — Base de conhecimento inicial"
+    $ git push origin v1.0.0
+
+    PASSO 7 — Pipeline de promoção dispara automaticamente (Fase 3 → Fase 4).
+
+--- Diagrama visual do fluxo ---
+
+    TAG v0.9.0 (anterior)
+        │
+        ├─── release/v1.0.0/main ◄──────────────────────────────────────────┐
+        │       │                                                            │
+        │       ├── release/v1.0.0/fabio/corrigir-glossario ───── PR ──────►│
+        │       │                                                            │
+        │       ├── release/v1.0.0/maria/novo-modulo-cobranca ─── PR ──────►│
+        │       │                                                            │
+        │       └── release/v1.0.0/joao/atualizar-adr-003 ────── PR ──────►│
+        │                                                                    │
+        │                                                          TAG v1.0.0
+        │                                                              │
+        │                                                              ▼
+        │                                                     [Pipeline Promoção]
+        │                                                              │
+        │                                                              ▼
+        │                                                     [Staging → Prod]
+        │
+        └─── release/v1.1.0/main (próxima versão, criada a partir de TAG v1.0.0)
+
+--- 2.2 — Versionamento Semântico ---
+
+O versionamento segue o padrão Semantic Versioning (SemVer), adaptado para
+base de conhecimento:
+
+    v{MAJOR}.{MINOR}.{PATCH}[.{BUILD}]
+
+    Componente     Quando incrementar                               Exemplos
+    ----------     ------------------                               --------
+    MAJOR          Mudança estrutural na KB:                         v1.0.0 → v2.0.0
+                   - Novo domínio de negócio adicionado
+                   - Reestruturação de pastas/categorias
+                   - Mudança no modelo de dados (ex: novo label)
+                   - Migração de modelo de embedding (re-indexação)
+
+    MINOR          Novos documentos ou atualizações significativas:  v1.0.0 → v1.1.0
+                   - Novo documento adicionado à base
+                   - Atualização de conteúdo substancial (>30% do doc)
+                   - Novo módulo documentado
+                   - Novo ADR incorporado
+
+    PATCH          Correções pontuais:                               v1.1.0 → v1.1.1
+                   - Typos, erros de digitação
+                   - Ajustes de front matter (tags, owner, etc.)
+                   - Links quebrados corrigidos
+                   - Formatação e padronização
+
+    BUILD          Automático, incremental por CI (opcional):        v1.1.1.1561
+                   - Identificador único de build do pipeline
+                   - Útil para rastrear exatamente qual execução gerou o artefato
+                   - NÃO faz parte da TAG — é metadado do pipeline
+
+Regras de incremento:
+
+  - MAJOR reseta MINOR e PATCH para 0 (ex: v1.3.2 → v2.0.0)
+  - MINOR reseta PATCH para 0 (ex: v1.3.2 → v1.4.0)
+  - A primeira release é v1.0.0 (não v0.x — a base nasce com intenção de produção)
+  - Pre-releases NÃO são usadas (sem -alpha, -beta, -rc). O staging serve
+    como ambiente de validação pré-produção.
+
+Formato da TAG Git:
+
+    $ git tag -a v1.2.0 -m "Release v1.2.0 — {descrição breve da release}"
+
+    Exemplo:
+    $ git tag -a v1.2.0 -m "Release v1.2.0 — Documentação do módulo de cobrança e glossário financeiro"
+
+A mensagem da TAG deve ser descritiva o suficiente para que, ao listar TAGs,
+qualquer pessoa entenda o que cada release contém:
+
+    $ git tag -l -n1
+    v1.0.0    Release v1.0.0 — Base de conhecimento inicial (12 documentos)
+    v1.1.0    Release v1.1.0 — Módulo de conciliação e 3 ADRs
+    v1.1.1    Release v1.1.1 — Correção de links quebrados no glossário
+    v1.2.0    Release v1.2.0 — Documentação do módulo de cobrança e glossário financeiro
+
+--- 2.3 — Fluxo de Promoção (Staging → Produção) ---
+
+O fluxo de promoção tem 4 passos sequenciais. Cada passo tem pré-condições,
+ações e critérios de saída. O fluxo é idêntico nos 2 repositórios, com a
+diferença de que o rag-workspace gera .beta.md → .md e o rag-knowledge-base
+recebe os .md finais.
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  PASSO 1 — CONSOLIDAÇÃO                                                    ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                             ║
+║  Pré-condições:                                                             ║
+║    - Todas as branches de trabalho mergeadas em release/vX.Y.Z/main         ║
+║    - Nenhum PR aberto pendente para a release                               ║
+║    - Zero alertas <!-- CONFLICT --> não resolvidos nos .beta.md              ║
+║                                                                             ║
+║  Ações:                                                                     ║
+║    1. Curador revisa o estado consolidado de release/vX.Y.Z/main            ║
+║    2. QA automatizado roda sobre todos os .beta.md da release:              ║
+║       - Validação de front matter (schema conforme ADR-005)                 ║
+║       - QA score >= 90% para cada documento (ADR-001, Fase 3)              ║
+║       - Documentos com score 80-89%: qa_notes obrigatório no front matter  ║
+║       - Documentos com score < 80%: BLOQUEANTE — não promove               ║
+║    3. Curador gera relatório de release (changelog):                        ║
+║       - Documentos novos adicionados                                        ║
+║       - Documentos atualizados (com diff resumido)                          ║
+║       - Documentos removidos                                                ║
+║       - Dependências entre documentos afetadas                              ║
+║                                                                             ║
+║  Critérios de saída:                                                        ║
+║    - QA score >= 90% em TODOS os documentos (ou 80-89% com qa_notes)       ║
+║    - Relatório de release gerado e revisado                                 ║
+║    - Curador aprova formalmente a consolidação                              ║
+║                                                                             ║
+║  Quem: Curador (papel ADR-008)                                              ║
+║  Onde: rag-workspace, branch release/vX.Y.Z/main                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  PASSO 2 — TAG RELEASE                                                      ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                             ║
+║  Pré-condições:                                                             ║
+║    - Passo 1 (Consolidação) concluído e aprovado                            ║
+║    - Relatório de release disponível                                        ║
+║                                                                             ║
+║  Ações:                                                                     ║
+║    1. Curador cria TAG vX.Y.Z no branch release/vX.Y.Z/main                ║
+║       do rag-workspace:                                                     ║
+║         $ git tag -a vX.Y.Z -m "Release vX.Y.Z — {descrição}"             ║
+║         $ git push origin vX.Y.Z                                            ║
+║                                                                             ║
+║    2. TAG no workspace DISPARA AUTOMATICAMENTE o pipeline de promoção:      ║
+║       a) Pipeline lê todos os .beta.md do branch taggeado                   ║
+║       b) Para cada .beta.md aprovado:                                       ║
+║          - Remove marcadores <!-- LOCKED:START/END -->                       ║
+║          - Enriquece front matter com campos de governança                  ║
+║            (system, module, owner, team, QA score, release_version)         ║
+║          - Gera .md final com front matter rico (conforme ADR-005)          ║
+║       c) Pipeline cria PR automático no rag-knowledge-base contendo:        ║
+║          - Todos os .md finais gerados                                      ║
+║          - release-notes.md com changelog                                   ║
+║          - manifest.json com lista de documentos, hashes e metadados        ║
+║       d) PR automático requer aprovação de PO + Arquiteto (2 aprovações)   ║
+║                                                                             ║
+║    3. Após aprovação do PR no knowledge-base:                               ║
+║       a) Merge do PR no branch principal do knowledge-base                  ║
+║       b) TAG vX.Y.Z espelhada no knowledge-base:                           ║
+║          $ git tag -a vX.Y.Z -m "Release vX.Y.Z — espelho do workspace"   ║
+║          $ git push origin vX.Y.Z                                           ║
+║                                                                             ║
+║  Critérios de saída:                                                        ║
+║    - TAG vX.Y.Z criada no rag-workspace                                     ║
+║    - PR automático criado e aprovado no rag-knowledge-base                   ║
+║    - TAG vX.Y.Z espelhada no rag-knowledge-base                             ║
+║    - Todos os .md finais gerados sem erros                                  ║
+║                                                                             ║
+║  Quem: Curador (TAG), Pipeline (promoção), PO + Arquiteto (aprovação PR)   ║
+║  Onde: rag-workspace (TAG) → rag-knowledge-base (PR + TAG espelho)          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  PASSO 3 — STAGING                                                          ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                             ║
+║  Pré-condições:                                                             ║
+║    - TAG vX.Y.Z criada no rag-knowledge-base                                ║
+║    - Base Vetorial de staging disponível                                    ║
+║                                                                             ║
+║  Ações:                                                                     ║
+║    1. TAG no knowledge-base DISPARA AUTOMATICAMENTE o pipeline de           ║
+║       ingestão na Base Vetorial de STAGING (conforme ADR-006):             ║
+║       a) Descoberta — lista .md da TAG                                      ║
+║       b) Parse — extrai front matter, headings, links                       ║
+║       c) Chunking — quebra por headings (300-800 tokens)                    ║
+║       d) Embeddings — gera vetores (modelo conforme ADR-009)               ║
+║       e) Persistência — upsert de Document/Chunk, relações, limpeza        ║
+║       f) Indexação — vector index, índices auxiliares                       ║
+║       g) Observabilidade — métricas do pipeline                            ║
+║                                                                             ║
+║    2. Testes automatizados em staging:                                       ║
+║                                                                             ║
+║       a) Golden Set (conforme ADR-008):                                     ║
+║          - Conjunto de perguntas com respostas esperadas                     ║
+║          - Recall@10 >= threshold definido no ADR-008                       ║
+║          - Cada pergunta deve retornar os chunks esperados                  ║
+║          - Se Recall@10 cai >5% em relação à release anterior → ALERTA     ║
+║                                                                             ║
+║       b) Testes de Acesso por Confidencialidade:                            ║
+║          - Documentos "confidential" NÃO aparecem em busca sem filtro       ║
+║          - Documentos "restricted" respeitam filtro de business_unit        ║
+║          - Documentos "internal" aparecem para usuários autenticados        ║
+║          - Documentos "public" aparecem para todos                          ║
+║                                                                             ║
+║       c) Testes de Integridade:                                             ║
+║          - Todos os Document na Base Vetorial têm release_version = vX.Y.Z ║
+║          - Todos os Chunk estão vinculados a um Document (sem órfãos)       ║
+║          - Relações PART_OF, BELONGS_TO, OWNED_BY estão corretas           ║
+║          - Contagem de documentos na Base Vetorial = contagem no repo      ║
+║                                                                             ║
+║       d) Smoke Tests dos Agentes Especializados:                            ║
+║          - Cada agente MCP de staging executa 3-5 perguntas padrão          ║
+║          - Respostas devem citar fontes documentais (document_id)           ║
+║          - Tempo de resposta <= threshold (ex: 5s)                          ║
+║                                                                             ║
+║    3. Se QUALQUER teste falha:                                              ║
+║       - Pipeline marca a release como "staging-failed"                      ║
+║       - Curador investiga a causa                                           ║
+║       - Correção é feita no rag-workspace (nova branch de trabalho)         ║
+║       - Nova TAG patch: vX.Y.Z+1 (ex: v1.2.0 falhou → corrigir → v1.2.1) ║
+║       - Fluxo reinicia do Passo 1                                          ║
+║                                                                             ║
+║  Critérios de saída:                                                        ║
+║    - Base Vetorial de staging populada com dados da TAG vX.Y.Z             ║
+║    - Golden set com Recall@10 >= threshold                                  ║
+║    - Testes de acesso, integridade e smoke tests TODOS passando             ║
+║    - Relatório de staging gerado com métricas                               ║
+║                                                                             ║
+║  Quem: Pipeline (ingestão), QA automatizado (testes), Curador (análise)    ║
+║  Onde: Base Vetorial de STAGING                                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  PASSO 4 — PRODUÇÃO                                                         ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                             ║
+║  Pré-condições:                                                             ║
+║    - Passo 3 (Staging) concluído e TODOS os testes passando                 ║
+║    - Relatório de staging disponível                                        ║
+║                                                                             ║
+║  Ações:                                                                     ║
+║    1. Aprovação MANUAL obrigatória:                                         ║
+║       - PO (Product Owner) aprova o conteúdo da release                     ║
+║       - Arquiteto aprova a integridade técnica                              ║
+║       - Ambas as aprovações são registradas (quem, quando, observações)     ║
+║       - Aprovação pode ser via GitHub/GitLab approval ou formulário externo ║
+║                                                                             ║
+║    2. Implantação em PRODUÇÃO:                                              ║
+║       - Curador ou Ops executa o pipeline de ingestão MANUALMENTE           ║
+║       - ❗ A implantação em produção NUNCA é automática — gate humano       ║
+║         obrigatório para garantir controle total                            ║
+║       - O pipeline usa a MESMA TAG que passou em staging (vX.Y.Z)           ║
+║       - O pipeline é idempotente (ADR-006): se executado 2x com a mesma    ║
+║         TAG, o resultado é idêntico                                         ║
+║                                                                             ║
+║    3. Pós-implantação:                                                      ║
+║       - release_version registrada em cada Document na Base Vetorial       ║
+║       - Smoke test de produção (subset do golden set — 5-10 perguntas)     ║
+║       - Notificação para stakeholders: "Release vX.Y.Z em produção"        ║
+║       - Monitoramento intensivo nas primeiras 2 horas (métricas de         ║
+║         latência, erros, Recall)                                            ║
+║                                                                             ║
+║  Critérios de saída:                                                        ║
+║    - Base Vetorial de produção atualizada com TAG vX.Y.Z                   ║
+║    - release_version consistente em todos os Documents                      ║
+║    - Smoke test de produção passando                                        ║
+║    - Notificação enviada                                                    ║
+║                                                                             ║
+║  Quem: PO + Arquiteto (aprovação), Curador/Ops (implantação)               ║
+║  Onde: Base Vetorial de PRODUÇÃO                                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+--- Diagrama do fluxo de promoção completo ---
+
+    rag-workspace                          rag-knowledge-base
+    ─────────────                          ──────────────────
+
+    release/vX.Y.Z/main
+         │
+         │  [Passo 1: Consolidação]
+         │  QA score >= 90%
+         │  Relatório de release
+         │
+         ▼
+    TAG vX.Y.Z ─────────────────────► Pipeline de Promoção
+    (workspace)                         .beta.md → .md
+                                             │
+                                             ▼
+                                        PR automático
+                                        no knowledge-base
+                                             │
+                                        [PO + Arquiteto aprovam]
+                                             │
+                                             ▼
+                                        TAG vX.Y.Z ──────► Pipeline de
+                                        (knowledge-base)    Ingestão
+                                                               │
+                                                    ┌──────────┴──────────┐
+                                                    ▼                     ▼
+                                              [Passo 3]             [Passo 4]
+                                              STAGING               PRODUÇÃO
+                                              (automático)          (manual)
+                                                    │                     ▲
+                                                    │   Testes OK         │
+                                                    │   + Aprovação       │
+                                                    └─────────────────────┘
+
+--- 2.4 — Ambientes ---
+
+A base de conhecimento opera em 2 ambientes com Base Vetorial:
+
+    ┌──────────────────────────────────────────────────────────────────────────┐
+    │  Ambiente    │ Base Vetorial      │ Dados              │ Acesso         │
+    ├──────────────┼────────────────────┼────────────────────┼────────────────┤
+    │  Staging     │ Instância dedicada │ Dados reais        │ Time de QA,    │
+    │              │ (mesma tecnologia  │ (mesma TAG que     │ Curador,       │
+    │              │  de produção)      │  irá para prod)    │ Arquiteto      │
+    ├──────────────┼────────────────────┼────────────────────┼────────────────┤
+    │  Produção    │ Instância          │ Dados reais        │ Todos os       │
+    │              │ principal          │ (TAG aprovada)     │ consumidores   │
+    │              │                    │                    │ (via MCPs)     │
+    └──────────────┴────────────────────┴────────────────────┴────────────────┘
+
+    Trigger:
+    - Staging  → Automático por TAG no rag-knowledge-base
+    - Produção → Manual após aprovação de PO + Arquiteto
+
++-----------------------------------------------------------------------------------+
+| ❗ IMPORTANTE — NÃO há ambiente de "desenvolvimento" com Base Vetorial            |
+|                                                                                   |
+| Desenvolvimento acontece nos .beta.md via Obsidian (rag-workspace).               |
+| NÃO se gasta recursos com Base Vetorial de dev.                                  |
+|                                                                                   |
+| A PRIMEIRA vez que dados chegam em uma Base Vetorial é no STAGING.               |
+|                                                                                   |
+| Motivos:                                                                          |
+| - Base Vetorial de dev seria desperdício (edição é em Markdown)                  |
+| - Testes de retrieval só fazem sentido com dados consolidados (pós-QA)           |
+| - Custo de manter 3 instâncias de Base Vetorial não se justifica                 |
+| - O pipeline de ingestão é idempotente — staging é suficiente para validar       |
++-----------------------------------------------------------------------------------+
+
+Detalhamento das instâncias:
+
+  STAGING:
+    - Propósito: validar que a ingestão funciona corretamente, testar retrieval,
+      verificar qualidade dos embeddings, rodar golden set
+    - Dados: CÓPIA EXATA dos dados que irão para produção (mesma TAG)
+    - Ciclo de vida: rebuilda a cada nova TAG (não acumula dados entre releases)
+    - Acesso: restrito ao time técnico e QA
+    - Custo: pode ser instância menor que produção (testes não exigem performance
+      de prod, mas a configuração deve ser idêntica)
+    - Retenção: dados do staging são mantidos até a próxima release ser deployada
+      em staging (sobrescreve a anterior)
+
+  PRODUÇÃO:
+    - Propósito: servir dados para agentes MCP e consumidores reais
+    - Dados: TAG aprovada após staging bem-sucedido
+    - Ciclo de vida: atualiza apenas quando uma nova TAG é promovida
+    - Acesso: todos os consumidores autorizados (via MCPs, APIs)
+    - Custo: instância com recursos adequados para carga real
+    - Retenção: dados persistem até a próxima release em produção
+
+--- 2.5 — Rollback ---
+
+Rollback é a capacidade de reverter a Base Vetorial de produção para uma
+versão anterior. O mecanismo é simples por design:
+
+    Rollback = re-implantar uma TAG anterior em produção
+
+Exemplo concreto:
+
+    Situação: Produção está em v1.2.0. Um problema é detectado — documentos
+    com informação incorreta estão sendo servidos pelos agentes.
+
+    PASSO 1 — Decisão de rollback:
+      - Curador ou Arquiteto decide que o rollback é necessário
+      - Alternativa: se o problema é pontual, um hotfix (seção 2.6) pode
+        ser mais apropriado que um rollback completo
+
+    PASSO 2 — Identificar TAG alvo:
+      $ git tag -l -n1
+      v1.0.0    Release v1.0.0 — Base de conhecimento inicial
+      v1.1.0    Release v1.1.0 — Módulo de conciliação e 3 ADRs
+      v1.1.1    Release v1.1.1 — Correção de links quebrados no glossário
+      v1.2.0    Release v1.2.0 — Documentação do módulo de cobrança   ← PROBLEMA
+
+      Decisão: reverter para v1.1.1 (última versão estável)
+
+    PASSO 3 — Re-executar pipeline com TAG anterior:
+      - Pipeline de ingestão é executado com TAG v1.1.1
+      - O pipeline faz REBUILD COMPLETO da Base Vetorial de produção:
+        a) Limpa todos os dados existentes
+        b) Re-ingere todos os documentos da TAG v1.1.1
+        c) Re-gera todos os embeddings
+        d) Re-cria todas as relações
+      - Tempo estimado: depende do volume (ex: 500 docs ≈ 15-30 min)
+
+    PASSO 4 — Validação pós-rollback:
+      - Smoke test de produção (5-10 perguntas do golden set)
+      - Verificar que release_version em todos os Documents = v1.1.1
+      - Notificar stakeholders: "Produção revertida para v1.1.1"
+
++-----------------------------------------------------------------------------------+
+| 💡 DICA — Por que REBUILD e não rollback parcial?                                 |
+|                                                                                   |
+| O pipeline de ingestão é IDEMPOTENTE (ADR-006). Isso significa que               |
+| re-executar com a mesma TAG sempre produz o mesmo resultado.                      |
+|                                                                                   |
+| Rollback parcial (desfazer apenas o delta entre v1.2.0 e v1.1.1) é:             |
+| - Mais complexo de implementar                                                    |
+| - Propenso a erros (e se um chunk foi atualizado E um novo foi adicionado?)       |
+| - Difícil de validar (como garantir que voltou exatamente ao estado anterior?)   |
+|                                                                                   |
+| Rebuild completo é:                                                               |
+| - Simples: mesma lógica do pipeline normal                                        |
+| - Previsível: mesmo input = mesmo output (pilar H do ADR-001)                   |
+| - Validável: basta comparar com os dados do staging da TAG anterior              |
+|                                                                                   |
+| O custo é tempo de execução (minutos), mas a segurança compensa.                |
++-----------------------------------------------------------------------------------+
+
+Registro de rollback:
+
+  Todo rollback deve ser registrado com:
+    - Data e hora do rollback
+    - TAG de origem (a com problema) e TAG destino (a que será implantada)
+    - Motivo do rollback (o que deu errado)
+    - Quem autorizou (Curador/Arquiteto)
+    - Tempo de execução do rebuild
+    - Resultado do smoke test pós-rollback
+
+  Esse registro é armazenado em:
+    - Log do pipeline (para auditoria técnica)
+    - Arquivo releases/vX.Y.Z/rollback-log.json no rag-knowledge-base
+
+--- 2.6 — Hotfix ---
+
+Hotfix é uma correção urgente em produção que não pode esperar a próxima
+release planejada.
+
+Quando usar hotfix (em vez de rollback):
+
+    Cenário                                          Ação
+    -------                                          ----
+    Muitos documentos com erro                       Rollback para TAG anterior
+    1-3 documentos com erro pontual                  Hotfix
+    Informação sensível vazou (PII/LGPD)             Rollback IMEDIATO + hotfix
+    Erro de front matter causando filtro incorreto   Hotfix
+    Embedding model corrompeu vetores                Rollback + re-indexação
+
+Fluxo do hotfix:
+
+    PASSO 1 — Criar release de hotfix:
+      Produção está em v1.2.0. Hotfix = v1.2.1.
+
+      No rag-workspace:
+      $ git checkout v1.2.0                                    # partir da TAG em prod
+      $ git checkout -b release/v1.2.1/main                    # branch de consolidação
+      $ git checkout -b release/v1.2.1/fabio/fix-pii-documento # branch de trabalho
+
+    PASSO 2 — Aplicar correção:
+      - Editar os .beta.md necessários
+      - Commit com mensagem clara: "hotfix: remover PII do documento X"
+      - PR para release/v1.2.1/main
+
+    PASSO 3 — QA rápido (simplificado para hotfix):
+      - QA score apenas nos documentos alterados (não em todos)
+      - Front matter validado nos documentos alterados
+      - Revisão focada no problema específico
+
+    PASSO 4 — TAG e promoção:
+      - TAG v1.2.1 no workspace
+      - Pipeline de promoção gera .md finais
+      - PR no knowledge-base (aprovação pode ser fast-track: 1 aprovação
+        em vez de 2, mas NUNCA zero)
+
+    PASSO 5 — Staging:
+      - Pipeline de ingestão em staging
+      - Testes focados: golden set + verificação específica do fix
+      - Se o hotfix é por PII/LGPD: teste explícito de que a informação
+        sensível NÃO aparece nos resultados de busca
+
+    PASSO 6 — Produção:
+      - Aprovação manual (pode ser do Arquiteto apenas, sem PO, em caso
+        de urgência — mas isso deve ser a exceção)
+      - Implantação manual
+      - Smoke test + verificação específica do fix
+
+    Tempo total esperado para hotfix: 1-4 horas (depende da complexidade).
+
+--- Diagrama do fluxo de hotfix ---
+
+    TAG v1.2.0 (em produção, com problema)
+         │
+         └── release/v1.2.1/main
+                  │
+                  └── release/v1.2.1/fabio/fix-pii-documento
+                           │
+                           │ correção + commit + PR
+                           │
+                           ▼
+                  release/v1.2.1/main (merge)
+                           │
+                           │ QA rápido + TAG v1.2.1
+                           │
+                           ▼
+                  Pipeline de promoção → PR no knowledge-base
+                           │
+                           ▼
+                  TAG v1.2.1 (knowledge-base) → Staging → Prod
+
+--- 2.7 — Aplicação nos 2 Repositórios ---
+
+O Release-Based Flow é aplicado nos 2 repositórios, mas com papéis
+diferentes:
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  rag-workspace (editável)                                                   ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                             ║
+║  Conteúdo: .beta.md, fontes brutas, logs do processo                       ║
+║                                                                             ║
+║  Branches:                                                                  ║
+║    release/vX.Y.Z/main                   → consolidação da versão           ║
+║    release/vX.Y.Z/{user}/{task}          → trabalho individual              ║
+║                                                                             ║
+║  TAGs:                                                                      ║
+║    vX.Y.Z                                → dispara pipeline de promoção     ║
+║                                                                             ║
+║  Quem trabalha:                                                             ║
+║    - POs, analistas, especialistas (edição de .beta.md via Obsidian)        ║
+║    - IA (enriquecimento automático via pipeline)                            ║
+║    - Curador (gestão de releases, QA, TAGs)                                 ║
+║                                                                             ║
+║  Permissões:                                                                ║
+║    - Read-write para times de conhecimento                                  ║
+║    - Branches release/*/main protegidas (merge apenas via PR)               ║
+║    - TAGs criadas apenas pelo Curador                                       ║
+║                                                                             ║
+║  Fluxo:                                                                     ║
+║    1. Curador cria release/vX.Y.Z/main                                      ║
+║    2. Contribuidores criam branches de trabalho                             ║
+║    3. Edição de .beta.md (Obsidian + IA)                                    ║
+║    4. PRs para release/vX.Y.Z/main                                          ║
+║    5. QA + consolidação                                                     ║
+║    6. TAG vX.Y.Z → dispara promoção                                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  rag-knowledge-base (imutável)                                              ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                             ║
+║  Conteúdo: .md finais (fonte da verdade), release notes, manifests         ║
+║                                                                             ║
+║  Branches:                                                                  ║
+║    main                                  → branch principal (única)         ║
+║    NÃO há branches de release ou feature aqui                               ║
+║                                                                             ║
+║  TAGs:                                                                      ║
+║    vX.Y.Z                                → espelho da TAG do workspace      ║
+║                                          → dispara pipeline de ingestão     ║
+║                                                                             ║
+║  Quem trabalha:                                                             ║
+║    - NINGUÉM edita diretamente                                              ║
+║    - Pipeline (service account) é o único que faz commits                   ║
+║    - PO + Arquiteto aprovam PRs                                             ║
+║                                                                             ║
+║  Permissões:                                                                ║
+║    - Read-only para todos os times                                          ║
+║    - Write APENAS via service account do pipeline                           ║
+║    - Branch main protegida (merge apenas via PR aprovado)                   ║
+║    - TAGs criadas apenas pelo pipeline                                      ║
+║                                                                             ║
+║  Fluxo:                                                                     ║
+║    1. Pipeline de promoção cria PR com .md finais                           ║
+║    2. PO + Arquiteto revisam e aprovam PR                                   ║
+║    3. Merge no main                                                         ║
+║    4. Pipeline cria TAG vX.Y.Z                                              ║
+║    5. TAG dispara ingestão na Base Vetorial (staging automático)            ║
+║    6. Após testes + aprovação → implantação manual em produção              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+--- Sincronização de TAGs entre repositórios ---
+
+As TAGs DEVEM estar sincronizadas entre os 2 repositórios:
+
+    rag-workspace         rag-knowledge-base
+    TAG v1.0.0     ←→     TAG v1.0.0
+    TAG v1.1.0     ←→     TAG v1.1.0
+    TAG v1.1.1     ←→     TAG v1.1.1
+
+Se uma TAG existir no workspace mas não no knowledge-base, significa que
+a promoção falhou ou está em andamento. O pipeline deve alertar sobre
+TAGs dessincronizadas com mais de 24h de diferença.
+
+--- 2.8 — Convenções de Commit ---
+
+Para garantir rastreabilidade, todos os commits seguem o padrão:
+
+    {tipo}: {descrição breve}
+
+    Tipos permitidos:
+    - docs:     criação ou atualização de documento
+    - fix:      correção de erro em documento existente
+    - meta:     alteração apenas de front matter/metadados
+    - glossary: alteração no glossário
+    - adr:      criação ou atualização de ADR
+    - chore:    alteração de configuração, templates, schemas
+    - hotfix:   correção urgente (usado apenas em releases de patch)
+
+    Exemplos:
+    docs: criar documento do módulo de cobrança
+    fix: corrigir link quebrado no glossário financeiro
+    meta: atualizar owner do documento de conciliação
+    glossary: adicionar termos de liquidação e compensação
+    adr: criar ADR-010 sobre Git Flow
+    hotfix: remover PII do documento de RH
+
+Regras adicionais:
+  - Mensagem em português brasileiro (pt-BR)
+  - Primeira linha com no máximo 72 caracteres
+  - Corpo opcional com detalhes (separado por linha em branco)
+  - Referenciar task ID quando aplicável: "docs: criar módulo cobrança [CU-4567]"
+
+--- 2.9 — Política de Retenção de Branches ---
+
+Branches têm ciclo de vida definido para evitar acúmulo:
+
+    Tipo de branch                   Retenção
+    ----------------                 ---------
+    release/vX.Y.Z/main              PERMANENTE (nunca deletar)
+    release/vX.Y.Z/{user}/{task}     Deletar após merge + 30 dias
+
+Automação:
+  - GitHub Action / GitLab CI deleta branches de trabalho mergeadas há
+    mais de 30 dias
+  - Alerta para branches não-mergeadas há mais de 14 dias (possível
+    trabalho abandonado)
+  - Branches release/*/main NUNCA são deletadas (histórico de releases)
+
+--- 2.10 — Proteção de Branches ---
+
+Configuração obrigatória no repositório Git (GitHub/GitLab):
+
+  rag-workspace:
+    - release/*/main:
+      * Merge apenas via PR
+      * Mínimo 1 aprovação
+      * Status checks obrigatórios (QA automatizado)
+      * Não permitir push direto
+      * Não permitir force push
+      * Não permitir delete
+
+  rag-knowledge-base:
+    - main:
+      * Merge apenas via PR
+      * Mínimo 2 aprovações (PO + Arquiteto)
+      * Status checks obrigatórios
+      * Não permitir push direto
+      * Não permitir force push
+      * Write apenas via service account
+
+================================================================================
+❌ 3. ALTERNATIVAS CONSIDERADAS
+================================================================================
+
+--- 3.1 Git Flow Tradicional (Driessen) ---
+
+  Descrição:
+    Modelo com 5 tipos de branch: main, develop, feature/*, release/*,
+    hotfix/*. O develop é o branch de integração contínua. Features são
+    mergeadas no develop. Quando o develop está estável, cria-se uma
+    release/* que, após testes, é mergeada no main e taggeada.
+
+  Prós:
+    - Modelo maduro e amplamente documentado
+    - Separação clara entre desenvolvimento e produção
+    - Suporte nativo a hotfixes
+    - Ferramentas de suporte (git-flow CLI)
+
+  Contras:
+    - 5 tipos de branch é complexo para times não-técnicos (POs, analistas)
+    - Branch develop é conceito de integração contínua — base de conhecimento
+      não tem "build" nem "deploy contínuo"
+    - Merge develop → release → main é redundante para documentos
+    - O conceito de "feature" não se aplica bem a documentos (um documento
+      não é uma feature)
+    - Overhead de manutenção: manter develop e main sincronizados
+
+  Motivo da rejeição:
+    Over-engineering para base de conhecimento. O Release-Based Flow mantém
+    o conceito de release (que é útil) mas elimina develop e feature como
+    tipos de branch, simplificando significativamente o fluxo.
+
+--- 3.2 Trunk-Based Development ---
+
+  Descrição:
+    Todos trabalham no branch main (trunk). Commits são feitos diretamente
+    ou via branches de vida curta (< 1 dia). Deploy contínuo a cada commit
+    no main. Releases são TAGs no main.
+
+  Prós:
+    - Extremamente simples: 1 branch principal
+    - Sem overhead de merges complexos
+    - Feedback rápido: cada commit é "deployável"
+    - Ideal para equipes maduras com CI/CD robusto
+
+  Contras:
+    - Risco alto de conflitos: todos escrevem no mesmo branch
+    - Sem staging explícito: cada commit vai direto para "produção"
+    - Não suporta QA score de documentos antes da promoção (ADR-001)
+    - Rollback é reverter commits no main — perigoso e não-atômico
+    - POs e analistas não estão acostumados com merge contínuo
+    - Não funciona com o modelo de 2 repositórios do ADR-001 (o knowledge-base
+      NÃO aceita commits humanos)
+    - Sem release explícita: difícil rastrear "o que entrou na versão X"
+
+  Motivo da rejeição:
+    Incompatível com o pipeline de 4 fases do ADR-001. A ausência de
+    release explícita e staging inviabiliza a validação de qualidade
+    antes da ingestão na Base Vetorial.
+
+--- 3.3 GitHub Flow ---
+
+  Descrição:
+    Main é o branch de produção. Para cada mudança, cria-se uma branch
+    feature/* a partir de main. Ao finalizar, PR para main com review.
+    Após merge, deploy automático. Sem release explícita.
+
+  Prós:
+    - Simples: main + feature branches
+    - PR como gate de qualidade
+    - Funciona bem para projetos com deploy contínuo
+
+  Contras:
+    - Sem release explícita: não há versionamento semântico
+    - Sem staging: cada merge em main é "produção"
+    - Agrupamento de mudanças em releases requer disciplina manual
+    - Rollback é reverter merge em main — pode gerar conflitos
+    - Feature branches nomeadas por funcionalidade não fazem sentido para
+      documentos (seria feature/documento-cobranca? feature/glossario?)
+    - Não se integra naturalmente com o fluxo de TAG do ADR-001
+
+  Motivo da rejeição:
+    A ausência de releases explícitas é incompatível com o modelo de
+    promoção por TAG do ADR-001. O Release-Based Flow é essencialmente
+    um GitHub Flow agrupado por release, o que endereça essa lacuna.
+
+--- 3.4 GitLab Flow (Environment Branches) ---
+
+  Descrição:
+    Extensão do GitHub Flow com branches por ambiente: main → staging →
+    production. Cada ambiente tem seu branch. Promoção é merge entre
+    branches de ambiente.
+
+  Prós:
+    - Suporte nativo a staging e produção
+    - Branches por ambiente facilitam rastreabilidade
+    - Cherry-pick entre ambientes é possível
+
+  Contras:
+    - Branches de ambiente acumulam histórico divergente
+    - Merge staging → production pode conflitar com merges anteriores
+    - Cherry-pick entre ambientes é propenso a erros
+    - NÃO funciona bem com rebuild completo da Base Vetorial (nosso modelo
+      rebuilda a partir de TAG, não de branch)
+    - Complexidade de manter 3+ branches permanentes sincronizadas
+    - Para base de conhecimento, "staging" e "produção" são ambientes da
+      Base Vetorial, não branches Git
+
+  Motivo da rejeição:
+    O modelo de ambiente da Base Vetorial é por TAG (rebuild completo a
+    partir de uma versão específica), não por branch. Branches de ambiente
+    adicionam complexidade sem benefício real no nosso contexto.
+
+================================================================================
+⚖️ 4. CONSEQUÊNCIAS
+================================================================================
+
+--- 4.1 Positivas ---
+
++-----------------------------------------------------------------------------------+
+| 💡 DICA — Benefícios do Release-Based Flow                                       |
+|                                                                                   |
+| - Simplicidade: apenas 2 tipos de branch (release/*/main e release/*/user/task)   |
+| - Paralelismo: múltiplas pessoas trabalham em branches isoladas sem conflito      |
+| - Versionamento: cada release tem versão semântica rastreável                     |
+| - Auditabilidade: TAGs + PRs + commits convencionados = trilha completa          |
+| - Rollback simples: re-implantar TAG anterior (rebuild idempotente)               |
+| - Hotfix rápido: release patch dedicada com fluxo simplificado                    |
+| - Integração natural com ADR-001: TAGs triggeram pipeline de promoção             |
+| - Staging obrigatório: nenhum dado chega em produção sem passar por testes        |
+| - Gate humano em produção: implantação manual garante controle total              |
+| - Compatível com Obsidian: contribuidores editam .beta.md normalmente            |
++-----------------------------------------------------------------------------------+
+
+--- 4.2 Negativas / Trade-offs ---
+
+  a) Nomenclatura de branches é longa:
+     release/v1.2.0/fabio/corrigir-glossario é verboso comparado a
+     fix/glossario. Trade-off aceito: a nomenclatura carrega contexto
+     (versão + pessoa + tarefa) que facilita rastreabilidade.
+
+  b) Branches release/*/main acumulam ao longo do tempo:
+     Após 50 releases, haverá 50 branches release/*/main no repositório.
+     Mitigação: branches são apenas referências no Git (custo zero de
+     armazenamento) e podem ser "arquivadas" visualmente com prefixo
+     (ex: archive/release/v1.0.0/main).
+
+  c) Cada release exige uma nova árvore de branches:
+     Mais overhead operacional que trunk-based development.
+     Trade-off aceito: a clareza de "tudo que pertence à v1.2.0 está em
+     release/v1.2.0/*" compensa o overhead.
+
+  d) Staging rebuilda a Base Vetorial a cada TAG:
+     Custo computacional de re-ingestão completa a cada release.
+     Trade-off aceito: idempotência e previsibilidade compensam (ADR-006).
+
+  e) Não há ambiente de dev com Base Vetorial:
+     Desenvolvedores não podem testar retrieval durante desenvolvimento.
+     Mitigação: scripts locais de teste com subset de dados podem ser usados
+     para validações informais, mas não substituem staging.
+
+--- 4.3 Riscos ---
+
++-----------------------------------------------------------------------------------+
+| ⚠️ AVISO — Riscos identificados                                                   |
+|                                                                                   |
+| 1. TAG criada antes de todos os testes de consolidação passarem                    |
+|    Probabilidade: MÉDIA                                                            |
+|    Impacto: ALTO (staging falha, retrabalho)                                      |
+|    Mitigação: CI/CD bloqueia criação de TAG se QA score < 80% ou se houver        |
+|    PRs pendentes no release/*/main. TAG é criada apenas se todas as               |
+|    pre-conditions são satisfeitas.                                                |
+|                                                                                   |
+| 2. TAGs dessincronizadas entre workspace e knowledge-base                         |
+|    Probabilidade: BAIXA (pipeline é automático)                                   |
+|    Impacto: ALTO (confusão sobre qual versão está onde)                           |
+|    Mitigação: alerta automático para TAGs dessincronizadas há mais de 24h.       |
+|    Dashboard de status mostrando TAGs em cada repo + ambiente.                    |
+|                                                                                   |
+| 3. Hotfix bypassa QA completo                                                     |
+|    Probabilidade: MÉDIA (urgência incentiva atalhos)                              |
+|    Impacto: MÉDIO (documento com erro menor pode passar)                         |
+|    Mitigação: hotfix AINDA exige staging e smoke test. O QA é simplificado       |
+|    (apenas documentos alterados), mas NUNCA eliminado. Mínimo 1 aprovação        |
+|    obrigatória no PR.                                                             |
+|                                                                                   |
+| 4. Contribuidor cria branch fora do padrão de nomenclatura                       |
+|    Probabilidade: ALTA (erros humanos são inevitáveis)                            |
+|    Impacto: BAIXO (branch com nome errado não é mergeada)                        |
+|    Mitigação: CI/CD valida nome da branch no push. Templates de branch no        |
+|    GitHub/GitLab. Documentação clara com exemplos.                                |
+|                                                                                   |
+| 5. Rollback demora mais que o esperado (volume grande de documentos)              |
+|    Probabilidade: BAIXA (pipeline é otimizado)                                    |
+|    Impacto: MÉDIO (produção fica com dados incorretos durante o rebuild)         |
+|    Mitigação: medir tempo de rebuild em staging para cada release.               |
+|    Se rebuild > 1h, considerar estratégia de blue-green deployment               |
+|    (duas instâncias de Base Vetorial, swap atômico).                             |
+|                                                                                   |
+| 6. Release com muitas mudanças dificulta rollback parcial                         |
+|    Probabilidade: MÉDIA                                                            |
+|    Impacto: BAIXO (rollback é sempre completo — TAG anterior)                    |
+|    Mitigação: releases menores e mais frequentes. Releases grandes devem         |
+|    ser divididas em MINOR incrementais (v1.1.0, v1.2.0, v1.3.0) em vez          |
+|    de uma release MAJOR monolítica.                                               |
++-----------------------------------------------------------------------------------+
+
+================================================================================
+🚀 5. IMPLEMENTAÇÃO
+================================================================================
+
+--- 5.1 Faseamento ---
+
+    Fase    Entrega                                              Duração    Dependência
+    ----    -------                                              -------    -----------
+    1       Configuração dos repositórios:                       1 semana   Nenhuma
+            - Criar rag-workspace e rag-knowledge-base
+            - Configurar branch protection rules
+            - Configurar service account para pipeline
+            - Documentar convenções de commit e nomenclatura
+
+    2       Pipeline de TAG e promoção:                          2 semanas  Fase 1
+            - CI/CD para validação de branch names
+            - CI/CD para QA score automatizado
+            - Pipeline de promoção (.beta.md → .md)
+            - Criação automática de PR no knowledge-base
+            - Espelhamento automático de TAGs
+
+    3       Ambientes de Base Vetorial:                          2 semanas  Fase 2,
+            - Provisionar instância de staging                               ADR-006
+            - Configurar pipeline de ingestão por TAG
+            - Implementar golden set de testes
+            - Implementar testes de acesso
+            - Implementar smoke tests
+
+    4       Fluxo de produção:                                   1 semana   Fase 3
+            - Configurar fluxo de aprovação manual
+            - Pipeline de implantação em produção (manual trigger)
+            - Smoke test de produção
+            - Notificações para stakeholders
+            - Dashboard de status (TAGs, ambientes, releases)
+
+    5       Rollback e hotfix:                                   1 semana   Fase 4
+            - Script de rollback (re-implantação de TAG anterior)
+            - Procedimento de hotfix documentado
+            - Teste de rollback em staging
+            - Registro de rollback (rollback-log.json)
+
+    6       Automações e governança:                             1 semana   Fase 5
+            - Limpeza automática de branches mergeadas (30 dias)
+            - Alerta de branches não-mergeadas (14 dias)
+            - Alerta de TAGs dessincronizadas (24h)
+            - Métricas de lead time (tempo entre início da release
+              e implantação em produção)
+
+    TOTAL ESTIMADO: 8 semanas
+
+--- 5.2 Responsabilidades ---
+
+    Papel                  Responsabilidade no Git Flow
+    -----                  ----------------------------
+    Curador (ADR-008)      - Criar branches release/vX.Y.Z/main
+                           - Gerenciar QA e consolidação (Passo 1)
+                           - Criar TAGs de release (Passo 2)
+                           - Decidir sobre rollback ou hotfix
+                           - Monitorar métricas de release
+
+    Contribuidores         - Criar branches de trabalho
+    (POs, Analistas,       - Editar .beta.md via Obsidian
+    Especialistas)         - Fazer commits com convenção
+                           - Abrir PRs para release/vX.Y.Z/main
+
+    Arquiteto              - Aprovar PRs no knowledge-base (Passo 2)
+                           - Aprovar implantação em produção (Passo 4)
+                           - Revisar relatórios de staging (Passo 3)
+                           - Definir thresholds de golden set
+
+    PO (Product Owner)     - Aprovar PRs no knowledge-base (Passo 2)
+                           - Aprovar implantação em produção (Passo 4)
+                           - Validar conteúdo da release
+
+    Engenharia / Ops       - Implementar pipelines de CI/CD
+                           - Provisionar ambientes de Base Vetorial
+                           - Manter service account e permissões
+                           - Implementar automações de limpeza
+
+    Pipeline               - Executar promoção (.beta.md → .md)
+    (service account)      - Criar PRs no knowledge-base
+                           - Espelhar TAGs
+                           - Executar ingestão na Base Vetorial
+                           - Rodar testes automatizados
+
+--- 5.3 Checklist de Configuração Inicial ---
+
+  [ ] Criar repositório rag-workspace no GitHub/GitLab
+  [ ] Criar repositório rag-knowledge-base no GitHub/GitLab
+  [ ] Criar service account para pipeline
+  [ ] Configurar branch protection em rag-workspace:
+      [ ] release/*/main: merge via PR, 1 aprovação, status checks
+  [ ] Configurar branch protection em rag-knowledge-base:
+      [ ] main: merge via PR, 2 aprovações, status checks, write via SA
+  [ ] Configurar validação de branch naming (CI/CD)
+  [ ] Criar templates de PR:
+      [ ] PR de trabalho → release/*/main (workspace)
+      [ ] PR de promoção → main (knowledge-base)
+  [ ] Documentar convenções de commit (wiki/README)
+  [ ] Configurar alerta de branches não-mergeadas
+  [ ] Configurar limpeza automática de branches mergeadas
+  [ ] Criar pipeline de promoção (.beta.md → .md)
+  [ ] Criar pipeline de espelhamento de TAGs
+  [ ] Provisionar Base Vetorial de staging
+  [ ] Configurar pipeline de ingestão por TAG
+  [ ] Implementar golden set inicial (10-20 perguntas)
+  [ ] Configurar dashboard de status (TAGs, ambientes)
+
+--- 5.4 Métricas de Acompanhamento ---
+
+Para avaliar a eficácia do Git Flow, medir:
+
+    Métrica                          Descrição                                  Meta
+    -------                          ---------                                  ----
+    Lead time de release             Tempo entre criação do release/*/main       < 2 semanas
+                                     e implantação em produção
+    Cycle time de PR                 Tempo entre abertura e merge do PR          < 2 dias úteis
+    Taxa de sucesso em staging       % de TAGs que passam no staging na          > 80%
+                                     primeira tentativa
+    Tempo de rollback                Tempo entre decisão e conclusão do          < 1 hora
+                                     rollback
+    Frequência de hotfix             Número de hotfixes por mês                  < 2/mês
+    Branches abandonadas             Branches não-mergeadas há > 14 dias         0
+    TAGs dessincronizadas            TAGs com > 24h de diferença entre repos     0
+
+================================================================================
+📚 6. REFERÊNCIAS
+================================================================================
+
+--- ADRs relacionados ---
+
+  ADR-001 — Pipeline de Geração de Conhecimento em 4 Fases
+    Seções relevantes:
+    - 2.1: As 4 fases (TAG trigger ingestão, release no knowledge-base)
+    - 2.2: Dois repositórios (workspace editável, knowledge-base imutável)
+    - 2.3: Estrutura de pastas (releases/ no knowledge-base)
+    - Fase 3: Gate de qualidade (QA score >= 90%)
+    - 4.3: Riscos — dessincronia entre repos, cadência de promoção
+
+  ADR-006 — Pipeline de Ingestão: Da Fonte à Base Vetorial
+    Seções relevantes:
+    - 1: Contexto — idempotência, re-indexação, limpeza de órfãos
+    - Premissa 4: Trigger por release (TAG no knowledge-base)
+    - Pipeline de 7 etapas (Descoberta → Observabilidade)
+    - Re-execução segura (idempotência garante rebuild correto)
+
+  ADR-008 — Governança: Papéis, Ciclo de Vida e Rollback
+    Seções relevantes:
+    - Papel do Curador (gestão de releases, QA, promoção)
+    - Golden set (Recall@10 >= threshold)
+    - Procedimento de rollback (rebuild completo)
+    - Testes de qualidade pré-produção
+
+  ADR-005 — Front Matter: Contrato de Metadados
+    Relevância: validação de front matter no Passo 1 (Consolidação)
+
+  ADR-009 — Seleção de Modelos de Embedding
+    Relevância: MAJOR version quando modelo de embedding muda (re-indexação)
+
+--- Referências externas ---
+
+  - Semantic Versioning 2.0.0: https://semver.org/
+  - Git Flow (Driessen, 2010): https://nvie.com/posts/a-successful-git-branching-model/
+  - GitHub Flow: https://docs.github.com/en/get-started/using-github/github-flow
+  - GitLab Flow: https://about.gitlab.com/topics/version-control/what-is-gitlab-flow/
+  - Trunk-Based Development: https://trunkbaseddevelopment.com/
+
+================================================================================
+📎 Documentos Relacionados
+================================================================================
+
+Impacta diretamente:
+  - ADR-001 — Detalha o mecanismo de versionamento e TAGs mencionado na Fase 3
+  - ADR-006 — Define quando e como o pipeline de ingestão é disparado (por TAG)
+  - ADR-008 — Detalha o fluxo de rollback e hotfix mencionado na governança
+
+Relacionados:
+  - ADR-005 — Front matter validado no Passo 1 (Consolidação)
+  - ADR-009 — Mudança de modelo de embedding exige MAJOR version
+
+================================================================================
+⚠️ VIOLAÇÕES E INCONSISTÊNCIAS
+================================================================================
+
+Data da revisão: 22/03/2026
+Revisor: Claude (ADR Reviewer)
+ADR de referência: ADR-001 — Pipeline de Geração de Conhecimento em 4 Fases
+
+--- V1. Ausência de referência à ADR-011 (Segregação por Confidencialidade) ---
+
+  Severidade: MÉDIA
+  Descrição: O ADR-010 define testes de acesso por confidencialidade no Passo 3
+  de staging (seção 2.3, linhas 400-404), com regras para documentos
+  "confidential", "restricted", "internal" e "public". Porém, NÃO referencia
+  a ADR-011 (segregação por confidencialidade), que deveria ser a fonte
+  autoritativa dessas regras. O ADR-010 define regras de acesso sem apontar
+  para o ADR que as governa.
+  Princípio violado: Rastreabilidade de decisões entre ADRs.
+  Impacto: Se a ADR-011 alterar as regras de confidencialidade, o ADR-010
+  ficará desatualizado sem referência cruzada para detectar o impacto.
+
+--- V2. Wikilinks segregados não mencionados ---
+
+  Severidade: BAIXA
+  Descrição: O ADR-001 (seção 2.2) estabelece que "Wikilinks são segregados:
+  .beta.md só navega para .beta.md, .md só navega para .md." O ADR-010 não
+  menciona como o Git Flow interage com essa regra — especificamente, se o
+  pipeline de promoção (Passo 2) valida e converte wikilinks de .beta.md
+  para .md durante a geração dos .md finais.
+  Princípio violado: ADR-001, seção 2.2 — Wikilinks segregados.
+  Impacto: Sem validação explícita, wikilinks de .beta.md podem vazar para
+  os .md finais, quebrando a navegação no knowledge-base.
+
+--- V3. Front matter leve vs rico — validação parcial ---
+
+  Severidade: BAIXA
+  Descrição: O ADR-001 define front matter leve (seção 2.5) para .beta.md
+  e front matter rico para .md final (Fase 3). O ADR-010, no Passo 1
+  (Consolidação), valida front matter conforme ADR-005, mas não explicita
+  que neste ponto a validação é do front matter LEVE (pois ainda estamos
+  no workspace com .beta.md). A conversão para front matter rico acontece
+  no Passo 2 (pipeline de promoção). A distinção poderia ser mais clara
+  para evitar que QA aplique regras do front matter rico aos .beta.md.
+
+--- V4. Diagrama de promoção mostra staging e produção em paralelo ---
+
+  Severidade: BAIXA
+  Descrição: O diagrama visual do fluxo de promoção (seção 2.3, linhas
+  498-507) mostra Passo 3 (Staging) e Passo 4 (Produção) saindo em
+  paralelo do pipeline de ingestão, com uma seta lateral indicando
+  sequência. Porém, o texto é claro que são sequenciais (produção só
+  ocorre após staging aprovado). O diagrama pode gerar interpretação
+  equivocada de que ambos rodam simultaneamente.
+
+================================================================================
+🤖 INFERÊNCIAS PENDENTES
+================================================================================
+
+--- I1. Conflito de releases paralelas ---
+
+  Descrição: O ADR-010 não aborda explicitamente o cenário de releases
+  paralelas — por exemplo, release/v1.2.0 está em staging quando um hotfix
+  v1.1.1 precisa ser criado a partir da v1.1.0 (que está em produção). Após
+  o hotfix v1.1.1 ser implantado, a release v1.2.0 foi criada a partir da
+  TAG v1.1.0, não da v1.1.1. Isso significa que v1.2.0 NÃO contém o hotfix.
+  Inferência: presume-se que o Curador deve recriar a release v1.2.0 a
+  partir da TAG v1.1.1 (incorporando o hotfix), ou que o hotfix deve ser
+  cherry-picked para a branch release/v1.2.0/main. Porém, nenhuma dessas
+  estratégias é documentada.
+  Decisão necessária: SIM — definir procedimento para incorporar hotfixes
+  em releases em andamento.
+
+--- I2. Comportamento com .beta.md parcialmente aprovados ---
+
+  Descrição: O Passo 1 (Consolidação) exige QA score >= 90% em TODOS os
+  documentos. O ADR-010 não define o que acontece se 95% dos documentos
+  estão aprovados mas 5% não atingem o score mínimo. Inferência: toda a
+  release é bloqueada até que todos os documentos passem. Porém, não está
+  claro se é possível excluir documentos pendentes da release e promover
+  apenas os aprovados.
+  Decisão necessária: DESEJÁVEL — definir se releases parciais são
+  permitidas (excluindo documentos com score insuficiente).
+
+--- I3. Primeiro commit do knowledge-base ---
+
+  Descrição: O ADR-010 define que o rag-knowledge-base tem apenas o branch
+  "main" e que write é exclusivo via service account. Porém, não define o
+  estado inicial do repositório — quem cria o commit inicial, qual estrutura
+  de pastas é criada, e se o primeiro PR segue o mesmo fluxo dos demais.
+  Inferência: o commit inicial é feito pelo Ops/Engenharia com a estrutura
+  de pastas definida no ADR-001 (seção 2.3).
+
+--- I4. Re-ingestão e merge (ADR-001, seção 2.7) no contexto de releases ---
+
+  Descrição: O ADR-001 define fluxo de re-ingestão com merge quando fontes
+  são atualizadas. O ADR-010 não explicita em qual momento do Git Flow a
+  re-ingestão ocorre. Inferência: a re-ingestão acontece dentro de uma
+  branch de trabalho no workspace (release/vX.Y.Z/{user}/{task}), e os
+  alertas <!-- CONFLICT --> devem ser resolvidos antes do PR para
+  release/vX.Y.Z/main. Porém, isso não está documentado.
+
+================================================================================
+✅ AÇÕES PENDENTES
+================================================================================
+
+  [ ] Adicionar referência à ADR-011 na seção de testes de confidencialidade
+      Descrição: O Passo 3 (Staging) define testes de acesso por
+      confidencialidade mas não referencia a ADR-011. Adicionar referência
+      explícita para garantir rastreabilidade entre ADRs.
+      Seção afetada: 2.3 — Passo 3 (Staging), testes de acesso
+      Prioridade: ALTA
+
+  [ ] Documentar procedimento para incorporar hotfixes em releases em andamento
+      Descrição: Quando um hotfix vX.Y.Z+1 é implantado enquanto uma release
+      vX.Y+1.0 está em andamento, a release em andamento não contém o
+      hotfix. Definir se: (a) a release deve ser rebased na TAG do hotfix,
+      (b) o hotfix deve ser cherry-picked, ou (c) a release deve ser
+      recriada.
+      Seção afetada: 2.6 — Hotfix (nova subseção)
+      Prioridade: ALTA
+
+  [ ] Adicionar validação de wikilinks no pipeline de promoção
+      Descrição: O ADR-001 exige wikilinks segregados (.beta.md → .beta.md,
+      .md → .md). O pipeline de promoção (Passo 2) deve validar e converter
+      wikilinks durante a geração dos .md finais. Documentar essa regra
+      explicitamente.
+      Seção afetada: 2.3 — Passo 2 (TAG Release), ações do pipeline
+      Prioridade: MÉDIA
+
+  [ ] Esclarecer qual front matter é validado no Passo 1 (leve vs rico)
+      Descrição: O Passo 1 valida front matter conforme ADR-005, mas neste
+      ponto os arquivos são .beta.md com front matter LEVE. Explicitar que
+      a validação no Passo 1 é do front matter leve e que o enriquecimento
+      para front matter rico ocorre no Passo 2.
+      Seção afetada: 2.3 — Passo 1 (Consolidação), ações item 2
+      Prioridade: MÉDIA
+
+  [ ] Definir política de releases parciais
+      Descrição: Definir se é permitido excluir documentos com QA score
+      insuficiente de uma release e promover apenas os aprovados, ou se
+      toda a release é bloqueada.
+      Seção afetada: 2.3 — Passo 1 (Consolidação), critérios de saída
+      Prioridade: MÉDIA
+
+  [ ] Corrigir diagrama de promoção para evidenciar sequencialidade
+      Descrição: O diagrama na seção 2.3 mostra staging e produção como
+      ramificações paralelas. Ajustar para deixar clara a sequência:
+      staging → (testes OK + aprovação) → produção.
+      Seção afetada: 2.3 — Diagrama do fluxo de promoção completo
+      Prioridade: BAIXA
+
+  [ ] Documentar estado inicial do rag-knowledge-base
+      Descrição: Definir quem cria o commit inicial, qual estrutura de
+      pastas é provisionada, e se o primeiro PR segue o fluxo padrão.
+      Seção afetada: 2.7 — rag-knowledge-base (ou 5.3 — Checklist)
+      Prioridade: BAIXA
+
+  [ ] Explicitar quando a re-ingestão com merge (ADR-001 seção 2.7) ocorre no Git Flow
+      Descrição: Documentar que a re-ingestão acontece dentro de branches
+      de trabalho e que alertas <!-- CONFLICT --> devem ser resolvidos
+      antes do PR para release/vX.Y.Z/main.
+      Seção afetada: 2.1 — Modelo de Branching (nova nota ou regra)
+      Prioridade: BAIXA
+
+  [ ] Adicionar ADR-011 à seção 6 (Referências) e Documentos Relacionados
+      Descrição: ADR-011 (segregação por confidencialidade) é relevante
+      para os testes de acesso definidos no Passo 3. Incluir nas
+      referências.
+      Seção afetada: 6 — Referências / Documentos Relacionados
+      Prioridade: BAIXA
+
+================================================================================
+📊 QUALITY ASSURANCE — AVALIAÇÃO DO ADR
+================================================================================
+
+Data da avaliação: 22/03/2026
+ADR avaliado: ADR-010 — Git Flow da Base de Conhecimento
+ADR de referência: ADR-001 — Pipeline de Geração de Conhecimento em 4 Fases
+
+--- Critérios de Avaliação ---
+
+  +---------------------+-------+------------------------------------------------+
+  | Critério            | Nota  | Justificativa                                  |
+  +---------------------+-------+------------------------------------------------+
+  | Conformidade        | 9.0   | Estrutura completa de ADR com todas as seções  |
+  |                     |       | (Contexto, Decisão, Alternativas,              |
+  |                     |       | Consequências, Implementação, Referências).    |
+  |                     |       | Emojis corretos nos cabeçalhos de seção        |
+  |                     |       | (📋🧠✅❌⚖️🚀📚). Usa "Base Vetorial"          |
+  |                     |       | consistentemente (não "Neo4j"). Respeita       |
+  |                     |       | pipeline de 4 fases e 2 repositórios. Perde    |
+  |                     |       | pontos por: não referenciar ADR-011 nos        |
+  |                     |       | testes de confidencialidade; não abordar       |
+  |                     |       | wikilinks segregados; diagrama com ambiguidade |
+  |                     |       | visual (staging/produção em paralelo).         |
+  +---------------------+-------+------------------------------------------------+
+  | Completude          | 9.0   | Cobre branching, versionamento semântico,      |
+  |                     |       | promoção em 4 passos, staging, produção,       |
+  |                     |       | rollback, hotfix, convenções de commit,        |
+  |                     |       | retenção de branches, proteção, métricas,      |
+  |                     |       | checklist, responsabilidades. Falta: releases  |
+  |                     |       | parciais, hotfix em release em andamento,      |
+  |                     |       | estado inicial do knowledge-base, integração   |
+  |                     |       | com re-ingestão (ADR-001 seção 2.7), e         |
+  |                     |       | distinção explícita front matter leve vs rico   |
+  |                     |       | na validação do Passo 1.                       |
+  +---------------------+-------+------------------------------------------------+
+  | Decisão             | 9.5   | Decisão clara e bem fundamentada. 4            |
+  |                     |       | alternativas detalhadas (Git Flow, Trunk-Based,|
+  |                     |       | GitHub Flow, GitLab Flow) com prós, contras e  |
+  |                     |       | motivo de rejeição para cada uma. DOD por passo.|
+  |                     |       | 6 riscos com probabilidade, impacto e          |
+  |                     |       | mitigação. Trade-offs explicitamente aceitos.  |
+  |                     |       | Integração sólida com ADR-001, ADR-006 e       |
+  |                     |       | ADR-008. Cenário de hotfix vs rollback bem      |
+  |                     |       | tabelado.                                      |
+  +---------------------+-------+------------------------------------------------+
+  | Clareza             | 9.5   | Texto muito bem escrito, com diagramas ASCII   |
+  |                     |       | para fluxos principais, tabelas estruturadas,  |
+  |                     |       | exemplos concretos com comandos Git reais,     |
+  |                     |       | boxes de destaque (IMPORTANTE, DICA, AVISO).   |
+  |                     |       | Faseamento de implementação com durações e     |
+  |                     |       | dependências. Métricas com metas. Checklist    |
+  |                     |       | de configuração inicial. Linguagem acessível   |
+  |                     |       | para público misto (técnico e negócio).        |
+  |                     |       | Pequena ambiguidade no diagrama de promoção.   |
+  +---------------------+-------+------------------------------------------------+
+
+--- Verificação dos 12 Princípios do ADR-001 ---
+
+  +-----+----------------------------------------------+--------+----------------+
+  | #   | Princípio                                    | Status | Observação     |
+  +-----+----------------------------------------------+--------+----------------+
+  |  1  | Pipeline 4 fases (Sources→.beta.md→.md→BV)   | ✅     | Respeitado     |
+  |     |                                              |        | integralmente  |
+  +-----+----------------------------------------------+--------+----------------+
+  |  2  | Dois repositórios (workspace + knowledge-    | ✅     | Seção 2.7      |
+  |     | base)                                        |        | detalha ambos  |
+  +-----+----------------------------------------------+--------+----------------+
+  |  3  | .beta.md editável por humanos E IA           | ✅     | Branches de    |
+  |     |                                              |        | trabalho no    |
+  |     |                                              |        | workspace      |
+  +-----+----------------------------------------------+--------+----------------+
+  |  4  | .md final é IMUTÁVEL                         | ✅     | knowledge-base |
+  |     |                                              |        | write-only via |
+  |     |                                              |        | service account|
+  +-----+----------------------------------------------+--------+----------------+
+  |  5  | LOCKED blocks protegem edições humanas       | ✅     | Passo 2 remove |
+  |     |                                              |        | LOCKED na      |
+  |     |                                              |        | promoção       |
+  +-----+----------------------------------------------+--------+----------------+
+  |  6  | Temporalidade (valid_from/valid_until)        | ⚠️     | Não abordado   |
+  |     |                                              |        | diretamente —  |
+  |     |                                              |        | aceito pois é  |
+  |     |                                              |        | escopo do      |
+  |     |                                              |        | ADR-001/005    |
+  +-----+----------------------------------------------+--------+----------------+
+  |  7  | 8 pilares (A-H)                              | ✅     | Referencia     |
+  |     |                                              |        | pilar H        |
+  |     |                                              |        | (reprodutibili-|
+  |     |                                              |        | dade) no       |
+  |     |                                              |        | rollback       |
+  +-----+----------------------------------------------+--------+----------------+
+  |  8  | Usar "Base Vetorial" não "Neo4j"             | ✅     | Consistente em |
+  |     |                                              |        | todo o texto   |
+  +-----+----------------------------------------------+--------+----------------+
+  |  9  | Front matter leve vs rico                    | ⚠️     | Não distingue  |
+  |     |                                              |        | qual é validado|
+  |     |                                              |        | no Passo 1     |
+  +-----+----------------------------------------------+--------+----------------+
+  | 10  | Re-ingestão com merge                        | ⚠️     | Não explicita  |
+  |     |                                              |        | quando ocorre  |
+  |     |                                              |        | no Git Flow    |
+  +-----+----------------------------------------------+--------+----------------+
+  | 11  | Wikilinks segregados                         | ❌     | Não mencionado |
+  +-----+----------------------------------------------+--------+----------------+
+  | 12  | Release tags controlam ingestão              | ✅     | Central ao     |
+  |     |                                              |        | Release-Based  |
+  |     |                                              |        | Flow           |
+  +-----+----------------------------------------------+--------+----------------+
+
+--- Verificação de Emojis nos Cabeçalhos ---
+
+  📋 ADR-010 (título)                    ✅
+  🧠 1. CONTEXTO                         ✅
+  ✅ 2. DECISÃO                          ✅
+  ❌ 3. ALTERNATIVAS CONSIDERADAS        ✅
+  ⚖️ 4. CONSEQUÊNCIAS                    ✅
+  🚀 5. IMPLEMENTAÇÃO                    ✅
+  📚 6. REFERÊNCIAS                      ✅
+  📎 Documentos Relacionados             ✅
+
+--- Cálculo do Score Final ---
+
+  FÓRMULA: (Conformidade x 0.30) + (Completude x 0.30) + (Decisão x 0.25) +
+           (Clareza x 0.15)
+
+  SCORE FINAL: (9.0 x 0.30) + (9.0 x 0.30) + (9.5 x 0.25) + (9.5 x 0.15)
+             = 2.70 + 2.70 + 2.375 + 1.425
+             = 9.20 / 10.0
+
+  CLASSIFICAÇÃO: EXCELENTE
+
+  Resumo: ADR-010 é um documento de alta qualidade que detalha com rigor o
+  modelo de branching, versionamento, ambientes e promoção de releases para
+  a base de conhecimento. Integra-se solidamente com ADR-001, ADR-006 e
+  ADR-008. As violações identificadas são de severidade baixa a média e
+  referem-se principalmente a lacunas de referência cruzada (ADR-011) e
+  cenários de borda não cobertos (hotfix em release em andamento, releases
+  parciais). O score 9.20 reflete um ADR maduro, com espaço para
+  refinamentos pontuais.
+
+================================================================================

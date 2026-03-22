@@ -1,0 +1,191 @@
+
+================================================================================
+🧠 GRAPHRAG CORPORATIVO — Maturidade Completa
+================================================================================
+    📂 Série: RAG Blueprint Series
+    📌 Documento: B6 — GraphRAG
+    📅 Data: 17/03/2026
+    📋 Versão: 1.1
+
+
+================================================================================
+🎯 OBJETIVO DA FASE 4
+================================================================================
+
+Atingir maturidade plena do RAG corporativo: retrieval híbrido completo,
+agentes especializados, retroalimentação contínua e curadoria ativa.
+
+  ✅ Hybrid search (vector + keyword + graph)
+  ✅ Reranking inteligente
+  ✅ Segurança por escopo (multi-tenant quando necessário)
+  ✅ Agentes especializados por domínio
+  ✅ Retroalimentação e curadoria contínua
+  ✅ Métricas de saúde da base
+  ✅ Todas as fontes prioritárias integradas
+
+
+================================================================================
+📌 4.1 — HYBRID SEARCH
+================================================================================
+
+  Três tipos de busca executados em paralelo:
+
+  Pergunta do usuário
+        ↓
+  Pré-processamento da query:
+     🔸 Reformulação (query rewriting)
+     🔸 Expansão (query expansion — variações da pergunta)
+     🔸 Decomposição (query decomposition — subperguntas)
+        ↓
+  Execução paralela:
+     ┌─────────────────────────────────────────────┐
+     │  🔸 7.1 Vector Search                       │
+     │     Embedding da pergunta vs chunks          │
+     │     → resultados semânticos                  │
+     ├─────────────────────────────────────────────┤
+     │  🔸 7.2 Keyword Search                      │
+     │     Full-text search por termos exatos       │
+     │     → nomes, códigos, siglas, SKUs           │
+     ├─────────────────────────────────────────────┤
+     │  🔸 7.3 Graph Search                        │
+     │     Navegação por relações no grafo          │
+     │     → contexto relacional expandido          │
+     └─────────────────────────────────────────────┘
+        ↓
+  Fusão de resultados
+        ↓
+  Reranking (modelo cross-encoder ou scoring customizado)
+        ↓
+  Top-K chunks mais relevantes
+        ↓
+  Filtragem por permissões (RBAC + ABAC)
+        ↓
+  Construção do prompt:
+     system prompt + chunks rankeados + metadados + pergunta
+        ↓
+  Envio para LLM
+        ↓
+  Resposta com citação de fontes (document_id, title, path)
+        ↓
+  Registro de auditoria + captura de feedback
+
+
+================================================================================
+📌 4.2 — AGENTES ESPECIALIZADOS POR DOMÍNIO
+================================================================================
+
+  Cada agente opera sobre um subconjunto do conhecimento:
+
+  🤖 Agente de Arquitetura
+     → Filtro: doc_type IN [architecture-doc, adr, system-doc]
+     → Expande via: System, Module, DEPENDS_ON
+     → Público: desenvolvedores, tech leads
+
+  🤖 Agente Operacional
+     → Filtro: doc_type IN [runbook, glossary]
+     → Expande via: Module, Task
+     → Público: operação, SRE, suporte
+
+  🤖 Agente de Negócio
+     → Filtro: domain = 'Financeiro' (ou outro domínio)
+     → Expande via: Owner, Team, GlossaryTerm
+     → Público: gestores, analistas
+
+  Cada agente possui:
+     🔸 System prompt especializado
+     🔸 Filtros pré-configurados
+     🔸 Nível de confidencialidade máximo configurável
+     🔸 Métricas de uso individuais
+
+
+================================================================================
+📌 4.3 — RETROALIMENTAÇÃO E CURADORIA CONTÍNUA
+================================================================================
+
+  🔹 Ingestão contínua
+     🔸 Triggers automáticos: novo commit, novo documento, ticket resolvido
+     🔸 Frequência por tipo:
+        → Real-time: commits no Git (webhook)
+        → Diário: tickets resolvidos, e-mails
+        → Semanal: PDFs e documentos não-versionados
+        → Sob demanda: manuais, políticas
+     🔸 Detecção de mudanças por checksum/hash (P.7)
+
+  🔹 Feedback loop
+     🔸 Respostas sem resultado → sinalizar lacuna na base
+     🔸 Respostas avaliadas negativamente → revisar parsing/chunking
+     🔸 Perguntas frequentes → priorizar curadoria dessas áreas
+     🔸 Detecção de alucinações → expandir conhecimento
+
+  🔹 Ciclo de vida do conhecimento
+     🔸 Criação → Vigência → Revisão → Obsolescência → Descarte
+     🔸 Documentos deprecated removidos do índice ativo
+     🔸 Preservados no bronze para auditoria
+
+  🔹 Curadoria
+     🔸 Automática: duplicatas, expirados, re-embedding, reclassificação
+     🔸 Humana: docs sensíveis, conflitos entre documentos, remoções
+     🔸 Assistida por IA: LLM sugere ações, humano aprova
+
+  🔹 Métricas de saúde da base
+     🔸 Idade média dos documentos indexados
+     🔸 Miss rate (% de perguntas sem chunks relevantes)
+     🔸 Taxa de feedback negativo
+     🔸 Cobertura por área/departamento/sistema
+     🔸 Volume de documentos obsoletos no índice
+     🔸 Frequência de ingestão efetiva
+     🔸 Divergência entre fontes e Neo4j
+
+
+================================================================================
+📌 4.4 — SEGURANÇA MULTI-TENANT (SE NECESSÁRIO)
+================================================================================
+
+  Se o RAG atender múltiplas unidades de negócio ou contextos:
+
+  🔸 tenant_id — identificador do tenant
+  🔸 business_unit — unidade de negócio
+  🔸 data_scope — escopo de dados visível
+
+  Filtro obrigatório em toda busca:
+    WHERE doc.tenant_id = $currentTenant
+      AND doc.confidentiality IN $allowedLevels
+
+
+================================================================================
+📌 4.5 — CRITÉRIOS DE CONCLUSÃO DA FASE 4
+================================================================================
+
+  ✅ Hybrid search (vector + keyword + graph) funcional
+  ✅ Reranking implementado e melhorando precisão
+  ✅ Pelo menos 2 agentes especializados operando
+  ✅ Feedback loop capturando avaliações de usuários
+  ✅ Curadoria contínua operando (automática + humana)
+  ✅ Dashboard de métricas de saúde da base
+  ✅ Todas as fontes prioritárias integradas
+  ✅ Auditoria completa de acessos e respostas
+
+================================================================================
+
+
+================================================================================
+📎 DOCUMENTOS RELACIONADOS
+================================================================================
+
+  Depende de:
+    → B05 — Knowledge Graph (grafo completo é pré-requisito)
+
+  Evolui:
+    → B05 — Knowledge Graph (adiciona hybrid search e agentes)
+
+  Habilita:
+    → B10 — API e Interface (agentes consomem a API)
+
+  Relacionados:
+    → B03 — Camada Ouro (busca vetorial base)
+    → B07 — Visão Consolidada (tabela mestre de evolução)
+    → B08 — Pendências (P6: LLM, P8: reranking)
+    → B12 — Testes (golden set para validar hybrid search)
+    → B13 — Operações (retroalimentação e curadoria)
+    → B14 — Segurança (RBAC + ABAC + multi-tenant)
+    → B15 — Governança (rollback e capacidade)

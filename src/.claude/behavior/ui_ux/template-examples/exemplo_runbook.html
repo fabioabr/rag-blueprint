@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RNB-001 — Re-indexação de Embeddings no Neo4j — Runbook Operacional</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        /* ====== DESIGN TOKENS — DARK THEME (default) ====== */
+        :root {
+            --primary: #5BA4D9;
+            --primary-dark: #3182B1;
+            --primary-light: rgba(91, 164, 217, 0.12);
+            --secondary: #5BB8C4;
+            --success: #6ABF3B;
+            --success-light: rgba(106, 191, 59, 0.12);
+            --success-border: rgba(106, 191, 59, 0.3);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.12);
+            --warning-border: rgba(244, 172, 0, 0.3);
+            --danger: #E85D54;
+            --danger-light: rgba(232, 93, 84, 0.12);
+            --danger-border: rgba(232, 93, 84, 0.3);
+            --info: #38BDF8;
+            --info-light: rgba(56, 189, 248, 0.12);
+            --info-border: rgba(56, 189, 248, 0.3);
+            --bg: #0f1319;
+            --card-bg: #1a1f2e;
+            --text: #e2e8f0;
+            --text-muted: #8b9ab5;
+            --border: #2a3244;
+            --purple: #9B96FF;
+            --purple-light: rgba(155, 150, 255, 0.12);
+            --orange: #FF9473;
+            --teal: #2DD4BF;
+            --header-bg: linear-gradient(135deg, #1a2332 0%, #15202e 50%, #1a2838 100%);
+            --progress-track: #2a3244;
+            --milestone-future: #4a5568;
+            --alert-warning-text: #f0c040;
+            --alert-danger-text: #f08a84;
+            --alert-info-text: #6ecbf5;
+            --alert-success-text: #8ad45a;
+            --pill-success-text: #8ad45a;
+            --pill-info-text: #6ecbf5;
+            --pill-warning-text: #f0c040;
+            --area-warning-text: #f0c040;
+        }
+
+        /* ====== LIGHT THEME ====== */
+        [data-theme="light"] {
+            --primary: #3182B1;
+            --primary-dark: #256a94;
+            --primary-light: rgba(49, 130, 177, 0.1);
+            --secondary: #418F9D;
+            --success: #4C7E1B;
+            --success-light: rgba(76, 126, 27, 0.08);
+            --success-border: rgba(76, 126, 27, 0.25);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.08);
+            --warning-border: rgba(244, 172, 0, 0.25);
+            --danger: #C72F25;
+            --danger-light: rgba(199, 47, 37, 0.08);
+            --danger-border: rgba(199, 47, 37, 0.25);
+            --info: #0EA5E8;
+            --info-light: rgba(14, 165, 232, 0.08);
+            --info-border: rgba(14, 165, 232, 0.25);
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text: #212B37;
+            --text-muted: #6E829F;
+            --border: #e2e8f0;
+            --purple: #7B76FE;
+            --purple-light: rgba(123, 118, 254, 0.08);
+            --orange: #FE7C58;
+            --teal: #00D8D8;
+            --header-bg: linear-gradient(135deg, #3182B1 0%, #256a94 50%, #418F9D 100%);
+            --progress-track: #e9ecef;
+            --milestone-future: #adb5bd;
+            --alert-warning-text: #8a6600;
+            --alert-danger-text: #a52820;
+            --alert-info-text: #0878a8;
+            --alert-success-text: #3a6112;
+            --pill-success-text: #3a6112;
+            --pill-info-text: #0878a8;
+            --pill-warning-text: #9a6d00;
+            --area-warning-text: #8a6600;
+        }
+
+        /* ====== RESET ====== */
+        html, body, div, span, h1, h2, h3, h4, h5, h6, p, a, img, ul, ol, li,
+        header, footer, nav, section, article, aside, button, input, select, textarea,
+        table, tr, td, th, form, label, fieldset, legend { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+        /* ====== HEADER ====== */
+        .header {
+            background: var(--header-bg);
+            color: white;
+            padding: 36px 0 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 50%;
+            z-index: 0;
+        }
+        .header-content { position: relative; z-index: 1; }
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-icon {
+            width: 52px;
+            height: 52px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            backdrop-filter: blur(10px);
+        }
+        .header-logo {
+            height: 36px;
+            width: auto;
+            opacity: 0.95;
+            flex-shrink: 0;
+            filter: brightness(0) invert(1);
+        }
+        [data-theme="light"] .header-logo {
+            filter: brightness(0) invert(1);
+        }
+        .header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+        .header .subtitle { font-size: 0.95rem; opacity: 0.85; font-weight: 300; margin-top: 2px; }
+        .header-right { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .header-badge {
+            background: rgba(255,255,255,0.15);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(10px);
+            color: white;
+        }
+
+        /* ====== TABS ====== */
+        .tabs-nav {
+            display: flex;
+            gap: 4px;
+            margin-top: 20px;
+            padding: 0 24px;
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .tab-btn {
+            padding: 10px 24px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 10px 10px 0 0;
+            color: rgba(255,255,255,0.7);
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.18); color: white; }
+        .tab-btn.active { background: var(--bg); color: var(--primary); font-weight: 600; }
+        .tab-btn i { font-size: 1.1rem; }
+        .tab-content { display: none; padding-top: 24px; padding-bottom: 32px; }
+        .tab-content.active { display: block; }
+
+        /* ====== STAT CARDS ====== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .stat-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .stat-card-info { flex: 1; }
+        .stat-card-number { font-size: 1.12rem; font-weight: 700; line-height: 1.1; }
+        .stat-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+
+        /* ====== CARDS ====== */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+        .card-header-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .card-badge {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .card-body { padding: 18px; }
+
+        /* ====== ALERTS ====== */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            border: 1px solid;
+        }
+        .alert i { font-size: 1.1rem; flex-shrink: 0; }
+        .alert-warning { background: var(--warning-light); border-color: var(--warning-border); color: var(--alert-warning-text); }
+        .alert-danger { background: var(--danger-light); border-color: var(--danger-border); color: var(--alert-danger-text); }
+        .alert-info { background: var(--info-light); border-color: var(--info-border); color: var(--alert-info-text); }
+        .alert-success { background: var(--success-light); border-color: var(--success-border); color: var(--alert-success-text); }
+
+        /* ====== DELIVERY ITEMS ====== */
+        .delivery-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+        }
+        .delivery-item:last-child { border-bottom: none; }
+        .delivery-status {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: white;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .delivery-item-text { flex: 1; }
+        .delivery-item-detail { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+        .status-done { background: var(--success); }
+        .status-progress { background: var(--primary); }
+        .status-partial { background: var(--warning); }
+        .status-blocked { background: var(--danger); }
+        .status-pending { background: var(--milestone-future); }
+
+        /* ====== SECTION HEADERS ====== */
+        .section { margin-top: 32px; }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .section-title { font-size: 1.15rem; font-weight: 600; }
+        .section-count {
+            background: var(--bg);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        /* ====== FOOTER (badge-footer) ====== */
+        .badge {
+            display: inline-flex;
+            align-items: stretch;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.30);
+            font-family: 'Poppins', sans-serif;
+            margin-bottom: 10px;
+        }
+        .badge-bar { width: 5px; flex-shrink: 0; }
+        .badge-body {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 14px 7px 10px;
+            background: var(--card-bg);
+        }
+        .badge-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--bg);
+            flex-shrink: 0;
+        }
+        .badge-text { display: flex; flex-direction: column; gap: 1px; }
+        .badge-name { font-weight: 700; font-size: 13px; color: var(--text); }
+        .badge-role { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+        .badge-date { font-size: 10.5px; color: var(--text-muted); }
+        .badge-seal {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 7px 10px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            color: var(--bg);
+        }
+        .badge-footer {
+            margin-top: 40px;
+            margin-bottom: 32px;
+            display: flex;
+            width: 100%;
+        }
+        .badge-footer .badge-bar,
+        .badge-footer .badge-icon,
+        .badge-footer .badge-seal { background: var(--primary); }
+        .badge-footer .badge { display: flex; width: 100%; }
+        .badge-footer .badge-body { flex: 1; justify-content: space-between; }
+
+        /* ====== HELPERS ====== */
+        .bg-primary { background: var(--primary); }
+        .bg-success { background: var(--success); }
+        .bg-info { background: var(--info); }
+        .bg-warning { background: var(--warning); }
+        .bg-danger { background: var(--danger); }
+        .bg-secondary { background: var(--secondary); }
+        .bg-purple { background: var(--purple); }
+        .bg-orange { background: var(--orange); }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .text-success { color: var(--success); }
+        .text-warning { color: var(--warning); }
+        .text-danger { color: var(--danger); }
+        .text-info { color: var(--info); }
+        .text-muted { color: var(--text-muted); }
+        .fw-600 { font-weight: 600; }
+        .fs-12 { font-size: 0.75rem; }
+        .mt-16 { margin-top: 16px; }
+        .mb-8 { margin-bottom: 8px; }
+
+        /* ====== RUNBOOK-SPECIFIC: CODE BLOCK ====== */
+        .code-block {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            color: #c9d1d9;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin: 8px 0;
+            position: relative;
+            user-select: all;
+        }
+        [data-theme="light"] .code-block {
+            background: #f6f8fa;
+            border-color: #d0d7de;
+            color: #24292f;
+        }
+        .code-block .code-comment {
+            color: #8b949e;
+            font-style: italic;
+        }
+        [data-theme="light"] .code-block .code-comment {
+            color: #6e7781;
+        }
+        .code-block .code-prompt {
+            color: var(--success);
+            user-select: none;
+        }
+
+        /* ====== RUNBOOK-SPECIFIC: STEP CARDS ====== */
+        .steps-container {
+            position: relative;
+            padding-left: 28px;
+        }
+        .steps-container::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 24px;
+            bottom: 24px;
+            width: 2px;
+            background: var(--border);
+            z-index: 0;
+        }
+        .step-card {
+            position: relative;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 16px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        }
+        .step-card:last-child {
+            margin-bottom: 0;
+        }
+        .step-number {
+            position: absolute;
+            left: -28px;
+            top: 14px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            z-index: 1;
+            border: 3px solid var(--bg);
+        }
+        .step-card.step-done .step-number { background: var(--success); }
+        .step-card.step-progress .step-number { background: var(--primary); animation: pulse 2s infinite; }
+        .step-card.step-pending .step-number { background: var(--milestone-future); }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(49,130,177,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(49,130,177,0); }
+        }
+        .step-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+        .step-title { font-weight: 600; font-size: 0.9rem; flex: 1; }
+        .step-badge {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .step-body { padding: 16px 18px; }
+        .step-description {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            line-height: 1.6;
+        }
+        .step-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            margin-top: 12px;
+        }
+
+        /* ====== RUNBOOK-SPECIFIC: TROUBLESHOOTING ====== */
+        .trouble-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .trouble-card:last-child { margin-bottom: 0; }
+        .trouble-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .trouble-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            color: white;
+        }
+        .trouble-title { font-weight: 600; font-size: 0.85rem; }
+        .trouble-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .trouble-text {
+            font-size: 0.82rem;
+            margin-bottom: 8px;
+        }
+
+        /* ====== RESPONSIVE ====== */
+        @media (max-width: 1024px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .grid-3 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .tabs-nav { flex-wrap: wrap; }
+            .tab-btn { font-size: 0.78rem; padding: 8px 16px; }
+        }
+
+        /* ====== PRINT ====== */
+        @media print {
+            body { background: #1a1f2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .header { padding: 16px 0 0; }
+            .card, .stat-card, .step-card, .trouble-card { box-shadow: none; break-inside: avoid; }
+            .tab-content { display: block !important; page-break-before: always; }
+            .tabs-nav { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+    <div class="container">
+        <div class="header-content">
+            <div class="header-top">
+                <div class="header-left">
+                    <img class="header-logo" src="data:image/png;base64,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" alt="Empresa XPTO">
+                    <div>
+                        <h1>RNB-001 — Re-indexação de Embeddings no Neo4j</h1>
+                        <div class="subtitle">Runbook Operacional — Empresa XPTO</div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="header-badge" style="background: var(--danger);">
+                        <i class="ri-alert-line"></i> High
+                    </div>
+                    <div class="header-badge">
+                        <i class="ri-time-line"></i> 45 min
+                    </div>
+                    <div class="header-badge">
+                        <i class="ri-robot-line"></i> Manual
+                    </div>
+                    <div class="header-badge">
+                        <i class="ri-calendar-check-line"></i> 20/03/2026
+                    </div>
+                    <button onclick="toggleTheme()" class="header-badge" style="border:none;cursor:pointer;" title="Alternar tema claro/escuro">
+                        <i id="theme-icon" class="ri-sun-line"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- TABS -->
+    <div class="tabs-nav container" style="padding-bottom: 0;">
+        <button class="tab-btn active" onclick="switchTab('visao-macro')">
+            <i class="ri-eye-line"></i> Visao Macro
+        </button>
+        <button class="tab-btn" onclick="switchTab('visao-tecnica')">
+            <i class="ri-terminal-box-line"></i> Visao Tecnica
+        </button>
+        <button class="tab-btn" onclick="switchTab('rollback')">
+            <i class="ri-arrow-go-back-line"></i> Rollback e Troubleshooting
+        </button>
+    </div>
+</header>
+
+<!-- ============================= -->
+<!-- TAB 1 — VISAO MACRO           -->
+<!-- ============================= -->
+<div class="container">
+    <div id="tab-visao-macro" class="tab-content active">
+
+        <!-- KPIs -->
+        <div class="stats-grid">
+
+            <!-- SEVERIDADE -->
+            <div class="stat-card">
+                <div class="stat-card-icon bg-danger"><i class="ri-alert-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number text-danger">High</div>
+                    <div class="stat-card-label">Severidade</div>
+                </div>
+            </div>
+
+            <!-- TEMPO ESTIMADO -->
+            <div class="stat-card">
+                <div class="stat-card-icon bg-info"><i class="ri-time-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number">45 min</div>
+                    <div class="stat-card-label">Tempo Estimado</div>
+                </div>
+            </div>
+
+            <!-- REQUER DOWNTIME -->
+            <div class="stat-card">
+                <div class="stat-card-icon bg-danger"><i class="ri-shut-down-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number text-danger">Sim</div>
+                    <div class="stat-card-label">Requer Downtime</div>
+                </div>
+            </div>
+
+            <!-- NIVEL DE AUTOMACAO -->
+            <div class="stat-card">
+                <div class="stat-card-icon bg-purple"><i class="ri-robot-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number">Manual</div>
+                    <div class="stat-card-label">Automacao</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ALERTA DE DOWNTIME -->
+        <div class="alert alert-danger">
+            <i class="ri-error-warning-line"></i>
+            <div><strong>Atencao:</strong> Este procedimento requer janela de manutencao. Busca vetorial ficara indisponivel durante a re-indexacao.</div>
+        </div>
+
+        <!-- CARD: OBJETIVO -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-primary"><i class="ri-crosshair-2-line"></i></div>
+                <div class="card-title">Objetivo</div>
+                <div class="card-badge" style="background: var(--info-light); color: var(--info);">Neo4j</div>
+            </div>
+            <div class="card-body">
+                <p style="font-size: 0.85rem; line-height: 1.7;">
+                    Re-criar o indice vetorial dos embeddings armazenados no Neo4j quando houver mudanca de modelo de embedding, corrupcao do indice existente ou degradacao significativa de performance nas buscas semanticas. Este runbook cobre o fluxo completo: verificacao do estado atual, remocao do indice antigo, re-geracao dos vetores e criacao de um novo indice otimizado.
+                </p>
+                <div style="margin-top: 16px; display: flex; gap: 16px; flex-wrap: wrap;">
+                    <span class="text-muted fs-12"><i class="ri-user-line"></i> Responsavel: <strong class="fw-600" style="color: var(--text);">Fabio A. B. Rodrigues</strong></span>
+                    <span class="text-muted fs-12"><i class="ri-team-line"></i> Time: <strong class="fw-600" style="color: var(--text);">Arquitetura e Produtividade Corporativa</strong></span>
+                    <span class="text-muted fs-12"><i class="ri-git-repository-line"></i> Modulo: <strong class="fw-600" style="color: var(--text);">Embeddings / Vector Index</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD: PRE-REQUISITOS -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-warning"><i class="ri-checkbox-circle-line"></i></div>
+                <div class="card-title">Pre-requisitos</div>
+                <div class="card-badge" style="background: var(--warning-light); color: var(--warning);">4 itens</div>
+            </div>
+            <div class="card-body">
+                <div class="delivery-item">
+                    <div class="delivery-status status-pending"><i class="ri-checkbox-blank-line"></i></div>
+                    <div class="delivery-item-text">
+                        <div>Acesso SSH ao servidor Neo4j</div>
+                        <div class="delivery-item-detail">Credenciais de acesso remoto ao servidor de producao onde o Neo4j esta hospedado. Confirmar com o time de infra.</div>
+                    </div>
+                </div>
+                <div class="delivery-item">
+                    <div class="delivery-status status-pending"><i class="ri-checkbox-blank-line"></i></div>
+                    <div class="delivery-item-text">
+                        <div>Backup recente confirmado</div>
+                        <div class="delivery-item-detail">Garantir que existe um backup completo do banco Neo4j (neo4j-admin dump) realizado nas ultimas 24 horas.</div>
+                    </div>
+                </div>
+                <div class="delivery-item">
+                    <div class="delivery-status status-pending"><i class="ri-checkbox-blank-line"></i></div>
+                    <div class="delivery-item-text">
+                        <div>Janela de manutencao aprovada</div>
+                        <div class="delivery-item-detail">Aprovacao formal do Change Advisory Board (CAB) para a janela de manutencao. Notificar usuarios afetados com antecedencia minima de 2 horas.</div>
+                    </div>
+                </div>
+                <div class="delivery-item">
+                    <div class="delivery-status status-pending"><i class="ri-checkbox-blank-line"></i></div>
+                    <div class="delivery-item-text">
+                        <div>Neo4j 5.x+ instalado</div>
+                        <div class="delivery-item-detail">Verificar a versao do Neo4j instalada. Vector indexes requerem Neo4j 5.11 ou superior.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ============================= -->
+    <!-- TAB 2 — VISAO TECNICA         -->
+    <!-- ============================= -->
+    <div id="tab-visao-tecnica" class="tab-content">
+
+        <!-- SECTION: PROCEDIMENTO -->
+        <div class="section" style="margin-top: 0;">
+            <div class="section-header">
+                <div class="section-icon bg-primary"><i class="ri-list-ordered"></i></div>
+                <div class="section-title">Procedimento</div>
+                <div class="section-count">5 etapas</div>
+            </div>
+        </div>
+
+        <!-- CARD: PROCEDIMENTO -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-info"><i class="ri-terminal-box-line"></i></div>
+                <div class="card-title">Etapas de Execucao</div>
+                <div class="card-badge" style="background: var(--primary-light); color: var(--primary);">Sequencial</div>
+            </div>
+            <div class="card-body">
+                <div class="steps-container">
+
+                    <!-- STEP 1 -->
+                    <div class="step-card step-pending">
+                        <div class="step-number">1</div>
+                        <div class="step-header">
+                            <div class="step-title">Verificar status atual do indice</div>
+                            <div class="step-badge" style="background: var(--milestone-future); color: white;">Pendente</div>
+                        </div>
+                        <div class="step-body">
+                            <div class="step-description">Antes de qualquer alteracao, verificar o estado atual dos indices vetoriais no Neo4j. Registrar o nome, tipo, dimensao e quantidade de entradas populadas para referencia de rollback.</div>
+
+                            <div class="step-label">Comando</div>
+                            <div class="code-block"><span class="code-prompt">cypher&gt; </span>SHOW INDEXES
+YIELD name, type, state, populationPercent, entityType
+WHERE type = 'VECTOR'
+RETURN name, state, populationPercent, entityType;</div>
+
+                            <div class="step-label">Verificacao</div>
+                            <div class="alert alert-success" style="margin-top: 4px;">
+                                <i class="ri-checkbox-circle-line"></i>
+                                <div>O indice vetorial <code>chunk_embedding_index</code> deve aparecer com <code>state: ONLINE</code> e <code>populationPercent: 100.0</code>. Registrar o nome exato do indice.</div>
+                            </div>
+
+                            <div class="step-label">Saida Esperada</div>
+                            <div class="code-block"><span class="code-comment">// Exemplo de saida esperada:</span>
++---------------------------------------------------------------+
+| name                    | state  | populationPercent | entityType |
++---------------------------------------------------------------+
+| chunk_embedding_index   | ONLINE | 100.0             | NODE       |
++---------------------------------------------------------------+</div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 2 -->
+                    <div class="step-card step-pending">
+                        <div class="step-number">2</div>
+                        <div class="step-header">
+                            <div class="step-title">Dropar o indice vetorial existente</div>
+                            <div class="step-badge" style="background: var(--milestone-future); color: white;">Pendente</div>
+                        </div>
+                        <div class="step-body">
+                            <div class="step-description">Remover o indice vetorial existente. A partir deste ponto, a busca semantica ficara indisponivel ate a conclusao do procedimento. Certifique-se de que a janela de manutencao esta ativa.</div>
+
+                            <div class="step-label">Comando</div>
+                            <div class="code-block"><span class="code-prompt">cypher&gt; </span>DROP INDEX chunk_embedding_index IF EXISTS;</div>
+
+                            <div class="step-label">Verificacao</div>
+                            <div class="alert alert-success" style="margin-top: 4px;">
+                                <i class="ri-checkbox-circle-line"></i>
+                                <div>Executar <code>SHOW INDEXES WHERE type = 'VECTOR'</code> novamente. Nenhum indice vetorial deve ser retornado.</div>
+                            </div>
+
+                            <div class="step-label">Observacao</div>
+                            <div class="alert alert-info" style="margin-top: 4px;">
+                                <i class="ri-information-line"></i>
+                                <div>O comando <code>IF EXISTS</code> evita erro caso o indice ja tenha sido removido. A remocao do indice nao apaga os dados de embedding nos nos — apenas a estrutura de indexacao.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 3 -->
+                    <div class="step-card step-pending">
+                        <div class="step-number">3</div>
+                        <div class="step-header">
+                            <div class="step-title">Executar re-geracao de embeddings</div>
+                            <div class="step-badge" style="background: var(--milestone-future); color: white;">Pendente</div>
+                        </div>
+                        <div class="step-body">
+                            <div class="step-description">Executar o script Python de re-geracao de embeddings. Este script ira iterar por todos os chunks no Neo4j, gerar novos vetores usando o modelo configurado e atualizar a propriedade <code>embedding</code> de cada no Chunk.</div>
+
+                            <div class="step-label">Comando</div>
+                            <div class="code-block"><span class="code-prompt">$ </span>cd /opt/rag-pipeline
+<span class="code-prompt">$ </span>source .venv/bin/activate
+<span class="code-prompt">$ </span>python scripts/regenerate_embeddings.py \
+    --neo4j-uri bolt://localhost:7687 \
+    --neo4j-user neo4j \
+    --neo4j-password "${NEO4J_PASSWORD}" \
+    --model text-embedding-3-small \
+    --batch-size 100 \
+    --dimension 1536 \
+    --verbose</div>
+
+                            <div class="step-label">Verificacao</div>
+                            <div class="alert alert-success" style="margin-top: 4px;">
+                                <i class="ri-checkbox-circle-line"></i>
+                                <div>O script deve finalizar com a mensagem <code>Embeddings regenerados com sucesso. Total: XXXX chunks processados. Erros: 0</code>. Verificar que o total corresponde ao numero esperado de chunks.</div>
+                            </div>
+
+                            <div class="step-label">Observacao</div>
+                            <div class="alert alert-info" style="margin-top: 4px;">
+                                <i class="ri-information-line"></i>
+                                <div>O tempo de execucao depende da quantidade de chunks. Para ~10.000 chunks, esperar aproximadamente 15-20 minutos. Monitorar o uso de memoria do processo e da API de embeddings.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 4 -->
+                    <div class="step-card step-pending">
+                        <div class="step-number">4</div>
+                        <div class="step-header">
+                            <div class="step-title">Criar novo indice vetorial</div>
+                            <div class="step-badge" style="background: var(--milestone-future); color: white;">Pendente</div>
+                        </div>
+                        <div class="step-body">
+                            <div class="step-description">Criar o novo indice vetorial com as configuracoes adequadas ao modelo de embedding utilizado. A dimensao deve corresponder exatamente ao modelo (ex: 1536 para text-embedding-3-small).</div>
+
+                            <div class="step-label">Comando</div>
+                            <div class="code-block"><span class="code-prompt">cypher&gt; </span>CREATE VECTOR INDEX chunk_embedding_index IF NOT EXISTS
+FOR (c:Chunk) ON (c.embedding)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 1536,
+    `vector.similarity_function`: 'cosine'
+  }
+};</div>
+
+                            <div class="step-label">Verificacao</div>
+                            <div class="alert alert-success" style="margin-top: 4px;">
+                                <i class="ri-checkbox-circle-line"></i>
+                                <div>Executar <code>SHOW INDEXES WHERE type = 'VECTOR'</code>. O indice deve aparecer com <code>state: ONLINE</code> e <code>populationPercent: 100.0</code>. Aguardar ate 5 minutos para populacao completa em bases grandes.</div>
+                            </div>
+
+                            <div class="step-label">Saida Esperada</div>
+                            <div class="code-block"><span class="code-comment">// Apos populacao completa:</span>
++---------------------------------------------------------------+
+| name                    | state  | populationPercent | entityType |
++---------------------------------------------------------------+
+| chunk_embedding_index   | ONLINE | 100.0             | NODE       |
++---------------------------------------------------------------+</div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 5 -->
+                    <div class="step-card step-pending">
+                        <div class="step-number">5</div>
+                        <div class="step-header">
+                            <div class="step-title">Validar integridade — query de teste</div>
+                            <div class="step-badge" style="background: var(--milestone-future); color: white;">Pendente</div>
+                        </div>
+                        <div class="step-body">
+                            <div class="step-description">Executar uma busca vetorial de teste para confirmar que o indice esta funcional e retornando resultados relevantes. Usar uma query conhecida cujo resultado esperado seja previsivel.</div>
+
+                            <div class="step-label">Comando</div>
+                            <div class="code-block"><span class="code-prompt">cypher&gt; </span><span class="code-comment">// Gerar embedding de teste e executar busca</span>
+CALL db.index.vector.queryNodes(
+  'chunk_embedding_index',
+  5,
+  $test_embedding
+)
+YIELD node, score
+RETURN node.chunk_id AS chunk_id,
+       node.text AS text_preview,
+       score
+ORDER BY score DESC;</div>
+
+                            <div class="step-label">Verificacao</div>
+                            <div class="alert alert-success" style="margin-top: 4px;">
+                                <i class="ri-checkbox-circle-line"></i>
+                                <div>A query deve retornar 5 resultados com scores entre 0.0 e 1.0 (similaridade cosseno). Os resultados devem ser semanticamente relevantes para a query de teste. Score do top-1 acima de 0.80 indica boa qualidade.</div>
+                            </div>
+
+                            <div class="step-label">Observacao</div>
+                            <div class="alert alert-info" style="margin-top: 4px;">
+                                <i class="ri-information-line"></i>
+                                <div>Apos validacao bem-sucedida, comunicar o time que a busca vetorial esta restaurada e encerrar a janela de manutencao formalmente.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ============================================= -->
+    <!-- TAB 3 — ROLLBACK E TROUBLESHOOTING            -->
+    <!-- ============================================= -->
+    <div id="tab-rollback" class="tab-content">
+
+        <!-- SECTION: ROLLBACK -->
+        <div class="section" style="margin-top: 0;">
+            <div class="section-header">
+                <div class="section-icon bg-danger"><i class="ri-arrow-go-back-line"></i></div>
+                <div class="section-title">Procedimento de Reversao</div>
+            </div>
+        </div>
+
+        <!-- ALERTA DE REVERSAO -->
+        <div class="alert alert-danger" style="margin-bottom: 20px;">
+            <i class="ri-error-warning-line"></i>
+            <div><strong>Procedimento de Reversao:</strong> Em caso de falha em qualquer etapa, restaurar o backup do banco Neo4j e recriar o indice com as configuracoes anteriores. Tempo estimado de rollback: 20 minutos.</div>
+        </div>
+
+        <!-- CARD: ROLLBACK STEPS -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-danger"><i class="ri-arrow-go-back-line"></i></div>
+                <div class="card-title">Etapas de Rollback</div>
+                <div class="card-badge" style="background: var(--danger-light); color: var(--danger);">Reversao</div>
+            </div>
+            <div class="card-body">
+                <div class="delivery-item">
+                    <div class="delivery-status status-blocked"><i class="ri-arrow-go-back-line"></i></div>
+                    <div class="delivery-item-text">
+                        <div class="fw-600">Parar o Neo4j e restaurar backup</div>
+                        <div class="delivery-item-detail">Interromper o servico Neo4j, restaurar o dump mais recente e reiniciar o servico.</div>
+                        <div class="code-block" style="margin-top: 8px;"><span class="code-prompt">$ </span>sudo systemctl stop neo4j
+<span class="code-prompt">$ </span>neo4j-admin database load --from-path=/backups/neo4j-latest.dump neo4j --overwrite-destination
+<span class="code-prompt">$ </span>sudo systemctl start neo4j</div>
+                    </div>
+                </div>
+                <div class="delivery-item">
+                    <div class="delivery-status status-blocked"><i class="ri-arrow-go-back-line"></i></div>
+                    <div class="delivery-item-text">
+                        <div class="fw-600">Recriar indice anterior</div>
+                        <div class="delivery-item-detail">Caso o backup ja contenha o indice, este passo nao e necessario. Caso contrario, recriar o indice com as configuracoes anteriores.</div>
+                        <div class="code-block" style="margin-top: 8px;"><span class="code-prompt">cypher&gt; </span>CREATE VECTOR INDEX chunk_embedding_index IF NOT EXISTS
+FOR (c:Chunk) ON (c.embedding)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 1536,
+    `vector.similarity_function`: 'cosine'
+  }
+};</div>
+                    </div>
+                </div>
+                <div class="delivery-item">
+                    <div class="delivery-status status-blocked"><i class="ri-arrow-go-back-line"></i></div>
+                    <div class="delivery-item-text">
+                        <div class="fw-600">Validar restauracao</div>
+                        <div class="delivery-item-detail">Executar a mesma query de teste da Etapa 5 para confirmar que o rollback foi bem-sucedido e a busca vetorial esta funcional.</div>
+                        <div class="code-block" style="margin-top: 8px;"><span class="code-prompt">cypher&gt; </span>SHOW INDEXES WHERE type = 'VECTOR';</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION: TROUBLESHOOTING -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-icon bg-warning"><i class="ri-bug-line"></i></div>
+                <div class="section-title">Troubleshooting</div>
+                <div class="section-count">3 problemas conhecidos</div>
+            </div>
+        </div>
+
+        <!-- CARD: TROUBLESHOOTING -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-warning"><i class="ri-search-eye-line"></i></div>
+                <div class="card-title">Problemas Conhecidos e Solucoes</div>
+            </div>
+            <div class="card-body">
+
+                <!-- Problema 1 -->
+                <div class="trouble-card">
+                    <div class="trouble-header">
+                        <div class="trouble-icon bg-warning"><i class="ri-error-warning-line"></i></div>
+                        <div class="trouble-title">Indice nao aparece apos criacao</div>
+                    </div>
+
+                    <div class="trouble-label">Sintoma</div>
+                    <div class="trouble-text">Apos executar o comando <code>CREATE VECTOR INDEX</code>, o indice nao aparece na listagem de <code>SHOW INDEXES</code> ou aparece com <code>state: POPULATING</code> indefinidamente.</div>
+
+                    <div class="trouble-label">Causa Provavel</div>
+                    <div class="trouble-text text-muted">Transacao nao comitada. Se o comando foi executado dentro de uma transacao explicita (ex: <code>:BEGIN</code> no Neo4j Browser), o indice so sera visivel apos o <code>:COMMIT</code>.</div>
+
+                    <div class="trouble-label">Solucao</div>
+                    <div class="alert alert-info" style="margin-bottom: 0;">
+                        <i class="ri-lightbulb-line"></i>
+                        <div>Verificar se ha transacoes pendentes com <code>SHOW TRANSACTIONS</code>. Executar <code>:COMMIT</code> ou finalizar a sessao e abrir uma nova. Se o indice permanecer em POPULATING, verificar os logs do Neo4j em <code>/var/log/neo4j/neo4j.log</code>.</div>
+                    </div>
+
+                    <div class="step-label">Comando de Diagnostico</div>
+                    <div class="code-block"><span class="code-prompt">cypher&gt; </span>SHOW TRANSACTIONS YIELD transactionId, status, currentQuery
+RETURN transactionId, status, currentQuery;</div>
+                </div>
+
+                <!-- Problema 2 -->
+                <div class="trouble-card">
+                    <div class="trouble-header">
+                        <div class="trouble-icon bg-warning"><i class="ri-error-warning-line"></i></div>
+                        <div class="trouble-title">Query vetorial retorna 0 resultados</div>
+                    </div>
+
+                    <div class="trouble-label">Sintoma</div>
+                    <div class="trouble-text">A busca vetorial (<code>db.index.vector.queryNodes</code>) retorna um resultado vazio, mesmo com embeddings populados e indice no estado ONLINE.</div>
+
+                    <div class="trouble-label">Causa Provavel</div>
+                    <div class="trouble-text text-muted">Embeddings com dimensao incorreta. Se o modelo foi trocado (ex: de 1536 para 3072 dimensoes), mas o indice foi criado com a dimensao anterior, os vetores nao serao indexados.</div>
+
+                    <div class="trouble-label">Solucao</div>
+                    <div class="alert alert-info" style="margin-bottom: 0;">
+                        <i class="ri-lightbulb-line"></i>
+                        <div>Verificar a dimensao dos embeddings armazenados vs. a dimensao configurada no indice. Dropar e recriar o indice com a dimensao correta. Confirmar com: <code>MATCH (c:Chunk) RETURN size(c.embedding) LIMIT 1</code>.</div>
+                    </div>
+
+                    <div class="step-label">Comando de Diagnostico</div>
+                    <div class="code-block"><span class="code-prompt">cypher&gt; </span>MATCH (c:Chunk) WHERE c.embedding IS NOT NULL
+RETURN size(c.embedding) AS dimensao, count(*) AS total
+ORDER BY total DESC LIMIT 5;</div>
+                </div>
+
+                <!-- Problema 3 -->
+                <div class="trouble-card">
+                    <div class="trouble-header">
+                        <div class="trouble-icon bg-warning"><i class="ri-error-warning-line"></i></div>
+                        <div class="trouble-title">Timeout na re-indexacao</div>
+                    </div>
+
+                    <div class="trouble-label">Sintoma</div>
+                    <div class="trouble-text">O processo de criacao do indice vetorial trava ou o Neo4j fica irresponsivo durante a populacao do indice em bases com grande volume de chunks (>50.000).</div>
+
+                    <div class="trouble-label">Causa Provavel</div>
+                    <div class="trouble-text text-muted">Heap insuficiente. A construcao do indice HNSW em memoria requer heap proporcional ao numero de vetores e suas dimensoes. Para 50K vetores de 1536 dimensoes, recomenda-se no minimo 4GB de heap.</div>
+
+                    <div class="trouble-label">Solucao</div>
+                    <div class="alert alert-info" style="margin-bottom: 0;">
+                        <i class="ri-lightbulb-line"></i>
+                        <div>Aumentar o heap maximo do Neo4j em <code>neo4j.conf</code>: configurar <code>server.memory.heap.max_size=8g</code>. Reiniciar o Neo4j e tentar novamente a criacao do indice. Monitorar o consumo de memoria com <code>htop</code> durante o processo.</div>
+                    </div>
+
+                    <div class="step-label">Comando de Diagnostico</div>
+                    <div class="code-block"><span class="code-prompt">$ </span>grep "heap" /etc/neo4j/neo4j.conf
+<span class="code-prompt">$ </span>curl -u neo4j:${NEO4J_PASSWORD} http://localhost:7474/db/manage/server/jmx/domain/java.lang/name=Heap%20memory%20usage</div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ===== FOOTER (badge-footer) ===== -->
+<div class="container">
+<div class="badge-footer">
+    <div class="badge">
+        <div class="badge-bar"></div>
+        <div class="badge-body" style="flex:1; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="badge-icon">FR</div>
+                <div class="badge-text">
+                    <span class="badge-name">Fabio A. B. Rodrigues</span>
+                    <span class="badge-role">Arquitetura e Produtividade Corporativa</span>
+                    <span class="badge-date">Criado em: 20/03/2026</span>
+                </div>
+            </div>
+            <div style="text-align:right; font-size:11px; color:var(--text-muted);">
+                Empresa XPTO &middot; RNB-001 — Re-indexação de Embeddings no Neo4j<br>
+                Runbook operacional &middot; Severidade: Alta &middot; 20/Mar/2026
+            </div>
+        </div>
+        <div class="badge-seal">Criado por</div>
+    </div>
+</div>
+</div>
+
+<!-- ===== SCRIPTS ===== -->
+<script>
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+}
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const icon = document.getElementById('theme-icon');
+    if (html.getAttribute('data-theme') === 'light') {
+        html.removeAttribute('data-theme');
+        icon.className = 'ri-sun-line';
+        localStorage.setItem('caefe-theme', 'dark');
+    } else {
+        html.setAttribute('data-theme', 'light');
+        icon.className = 'ri-moon-line';
+        localStorage.setItem('caefe-theme', 'light');
+    }
+}
+
+// Restore saved theme
+(function() {
+    const saved = localStorage.getItem('caefe-theme');
+    if (saved === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('theme-icon').className = 'ri-moon-line';
+        });
+    }
+})();
+</script>
+
+</body>
+</html>

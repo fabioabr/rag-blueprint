@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{TITULO}} — ADR</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        /* ====== DESIGN TOKENS (DARK THEME — DEFAULT) ====== */
+        :root {
+            --primary: #5BA4D9;
+            --primary-dark: #3182B1;
+            --primary-light: rgba(91, 164, 217, 0.12);
+            --secondary: #5BB8C4;
+            --success: #6ABF3B;
+            --success-light: rgba(106, 191, 59, 0.12);
+            --success-border: rgba(106, 191, 59, 0.3);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.12);
+            --warning-border: rgba(244, 172, 0, 0.3);
+            --danger: #E85D54;
+            --danger-light: rgba(232, 93, 84, 0.12);
+            --danger-border: rgba(232, 93, 84, 0.3);
+            --info: #38BDF8;
+            --info-light: rgba(56, 189, 248, 0.12);
+            --info-border: rgba(56, 189, 248, 0.3);
+            --bg: #0f1319;
+            --card-bg: #1a1f2e;
+            --text: #e2e8f0;
+            --text-muted: #8b9ab5;
+            --border: #2a3244;
+            --purple: #9B96FF;
+            --purple-light: rgba(155, 150, 255, 0.12);
+            --orange: #FF9473;
+            --teal: #2DD4BF;
+            --header-bg: linear-gradient(135deg, #1a2332 0%, #15202e 50%, #1a2838 100%);
+            --progress-track: #2a3244;
+            --milestone-future: #4a5568;
+            --alert-warning-text: #f0c040;
+            --alert-danger-text: #f08a84;
+            --alert-info-text: #6ecbf5;
+            --alert-success-text: #8ad45a;
+            --pill-success-text: #8ad45a;
+            --pill-info-text: #6ecbf5;
+            --pill-warning-text: #f0c040;
+            --area-warning-text: #f0c040;
+        }
+
+        /* ====== LIGHT THEME ====== */
+        [data-theme="light"] {
+            --primary: #3182B1;
+            --primary-dark: #256a94;
+            --primary-light: rgba(49, 130, 177, 0.1);
+            --secondary: #418F9D;
+            --success: #4C7E1B;
+            --success-light: rgba(76, 126, 27, 0.08);
+            --success-border: rgba(76, 126, 27, 0.25);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.08);
+            --warning-border: rgba(244, 172, 0, 0.25);
+            --danger: #C72F25;
+            --danger-light: rgba(199, 47, 37, 0.08);
+            --danger-border: rgba(199, 47, 37, 0.25);
+            --info: #0EA5E8;
+            --info-light: rgba(14, 165, 232, 0.08);
+            --info-border: rgba(14, 165, 232, 0.25);
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text: #212B37;
+            --text-muted: #6E829F;
+            --border: #e2e8f0;
+            --purple: #7B76FE;
+            --purple-light: rgba(123, 118, 254, 0.08);
+            --orange: #FE7C58;
+            --teal: #00D8D8;
+            --header-bg: linear-gradient(135deg, #3182B1 0%, #256a94 50%, #418F9D 100%);
+            --progress-track: #e9ecef;
+            --milestone-future: #adb5bd;
+            --alert-warning-text: #8a6600;
+            --alert-danger-text: #a52820;
+            --alert-info-text: #0878a8;
+            --alert-success-text: #3a6112;
+            --pill-success-text: #3a6112;
+            --pill-info-text: #0878a8;
+            --pill-warning-text: #9a6d00;
+            --area-warning-text: #8a6600;
+        }
+
+        /* ====== RESET ====== */
+        html, body, div, span, h1, h2, h3, h4, h5, h6, p, a, img, ul, ol, li,
+        header, footer, nav, section, article, aside, button, input, select, textarea,
+        table, tr, td, th, form, label, fieldset, legend { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+        /* ====== HEADER ====== */
+        .header {
+            background: var(--header-bg);
+            color: white;
+            padding: 36px 0 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 50%;
+            z-index: 0;
+        }
+        .header-content { position: relative; z-index: 1; }
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-icon {
+            width: 52px;
+            height: 52px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            backdrop-filter: blur(10px);
+        }
+        .header-logo {
+            height: 36px;
+            width: auto;
+            opacity: 0.95;
+            flex-shrink: 0;
+            filter: brightness(0) invert(1);
+        }
+        [data-theme="light"] .header-logo {
+            filter: brightness(0) invert(1);
+        }
+        .header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+        .header .subtitle { font-size: 0.95rem; opacity: 0.85; font-weight: 300; margin-top: 2px; }
+        .header-right { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .header-badge {
+            background: rgba(255,255,255,0.15);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(10px);
+            color: white;
+        }
+
+        /* ====== TABS ====== */
+        .tabs-nav {
+            display: flex;
+            gap: 4px;
+            margin-top: 20px;
+            padding: 0 24px;
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .tab-btn {
+            padding: 10px 24px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 10px 10px 0 0;
+            color: rgba(255,255,255,0.7);
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.18); color: white; }
+        .tab-btn.active { background: var(--bg); color: var(--primary); font-weight: 600; }
+        .tab-btn i { font-size: 1.1rem; }
+        .tab-content { display: none; padding-top: 24px; padding-bottom: 32px; }
+        .tab-content.active { display: block; }
+
+        /* ====== STAT CARDS ====== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .stat-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .stat-card-info { flex: 1; }
+        .stat-card-number { font-size: 1.12rem; font-weight: 700; line-height: 1.1; }
+        .stat-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+
+        /* ====== CARDS ====== */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+        .card-header-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .card-badge {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .card-body { padding: 18px; }
+
+        /* ====== PROGRESS BAR ====== */
+        .progress-container { margin-bottom: 16px; }
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .progress-label { font-size: 0.82rem; font-weight: 500; }
+        .progress-value { font-size: 0.82rem; font-weight: 600; }
+        .progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: var(--progress-track);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s;
+        }
+
+        /* ====== ALERTS ====== */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            border: 1px solid;
+        }
+        .alert i { font-size: 1.1rem; flex-shrink: 0; }
+        .alert-warning { background: var(--warning-light); border-color: var(--warning-border); color: var(--alert-warning-text); }
+        .alert-danger { background: var(--danger-light); border-color: var(--danger-border); color: var(--alert-danger-text); }
+        .alert-info { background: var(--info-light); border-color: var(--info-border); color: var(--alert-info-text); }
+        .alert-success { background: var(--success-light); border-color: var(--success-border); color: var(--alert-success-text); }
+
+        /* ====== TIMELINE / ROADMAP ====== */
+        .roadmap { display: flex; gap: 0; margin: 24px 0; position: relative; }
+        .roadmap::before {
+            content: '';
+            position: absolute;
+            top: 24px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--border);
+            z-index: 0;
+        }
+        .milestone { flex: 1; position: relative; z-index: 1; text-align: center; padding: 0 8px; }
+        .milestone-dot {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            margin: 0 auto 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: white;
+            border: 4px solid var(--bg);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .milestone-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted); }
+        .milestone-date { font-size: 0.82rem; font-weight: 600; color: var(--text); margin-top: 2px; }
+        .milestone-name { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+        .milestone.completed .milestone-dot { background: var(--success); }
+        .milestone.current .milestone-dot { background: var(--primary); animation: pulse 2s infinite; }
+        .milestone.future .milestone-dot { background: var(--milestone-future); }
+        .milestone.golive .milestone-dot { background: var(--orange); }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(49,130,177,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(49,130,177,0); }
+        }
+
+        /* ====== DELIVERY CARDS ====== */
+        .delivery-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .delivery-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        }
+        .delivery-card.full-width { grid-column: 1 / -1; }
+        .delivery-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        .delivery-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .delivery-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .delivery-marco {
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .delivery-body { padding: 16px 18px; }
+        .delivery-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+        }
+        .delivery-item:last-child { border-bottom: none; }
+        .delivery-status {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: white;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .delivery-item-text { flex: 1; }
+        .delivery-item-detail { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+        .status-done { background: var(--success); }
+        .status-progress { background: var(--primary); }
+        .status-partial { background: var(--warning); }
+        .status-blocked { background: var(--danger); }
+        .status-pending { background: var(--milestone-future); }
+
+        /* ====== SECTION HEADERS ====== */
+        .section { margin-top: 32px; }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .section-title { font-size: 1.15rem; font-weight: 600; }
+        .section-count {
+            background: var(--bg);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        /* ====== CALLOUT (DECISAO DESTAQUE) ====== */
+        .callout {
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            border: 2px solid;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+        .callout-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .callout-content { flex: 1; }
+        .callout-title { font-weight: 700; font-size: 1rem; margin-bottom: 6px; }
+        .callout-text { font-size: 0.88rem; line-height: 1.6; }
+        .callout-primary {
+            background: var(--primary-light);
+            border-color: var(--primary);
+        }
+        .callout-primary .callout-icon { background: var(--primary); }
+        .callout-primary .callout-title { color: var(--primary); }
+
+        /* ====== FOOTER (badge-footer) ====== */
+        .badge {
+            display: inline-flex;
+            align-items: stretch;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.30);
+            font-family: 'Poppins', sans-serif;
+            margin-bottom: 10px;
+        }
+        .badge-bar { width: 5px; flex-shrink: 0; }
+        .badge-body {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 14px 7px 10px;
+            background: var(--card-bg);
+        }
+        .badge-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--bg);
+            flex-shrink: 0;
+        }
+        .badge-text { display: flex; flex-direction: column; gap: 1px; }
+        .badge-name { font-weight: 700; font-size: 13px; color: var(--text); }
+        .badge-role { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+        .badge-date { font-size: 10.5px; color: var(--text-muted); }
+        .badge-seal {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 7px 10px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            color: var(--bg);
+        }
+        .badge-footer {
+            margin-top: 40px;
+            margin-bottom: 32px;
+            display: flex;
+            width: 100%;
+        }
+        .badge-footer .badge-bar,
+        .badge-footer .badge-icon,
+        .badge-footer .badge-seal { background: var(--primary); }
+        .badge-footer .badge { display: flex; width: 100%; }
+        .badge-footer .badge-body { flex: 1; justify-content: space-between; }
+
+        /* ====== HELPERS ====== */
+        .bg-primary { background: var(--primary); }
+        .bg-success { background: var(--success); }
+        .bg-info { background: var(--info); }
+        .bg-warning { background: var(--warning); }
+        .bg-danger { background: var(--danger); }
+        .bg-secondary { background: var(--secondary); }
+        .bg-purple { background: var(--purple); }
+        .bg-orange { background: var(--orange); }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .text-success { color: var(--success); }
+        .text-warning { color: var(--warning); }
+        .text-danger { color: var(--danger); }
+        .text-info { color: var(--info); }
+        .text-muted { color: var(--text-muted); }
+        .fw-600 { font-weight: 600; }
+        .fs-12 { font-size: 0.75rem; }
+        .mt-16 { margin-top: 16px; }
+        .mb-8 { margin-bottom: 8px; }
+
+        /* ====== RESPONSIVE ====== */
+        @media (max-width: 1024px) {
+            .delivery-grid, .grid-2 { grid-template-columns: 1fr; }
+            .delivery-card.full-width { grid-column: auto; }
+            .grid-3 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .roadmap { flex-direction: column; gap: 16px; }
+            .roadmap::before { display: none; }
+            .tabs-nav { flex-wrap: wrap; }
+            .tab-btn { font-size: 0.78rem; padding: 8px 16px; }
+        }
+
+        /* ====== PRINT ====== */
+        @media print {
+            body { background: #1a1f2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .header { padding: 16px 0 0; }
+            .card, .stat-card, .delivery-card { box-shadow: none; break-inside: avoid; }
+            .tab-content { display: block !important; page-break-before: always; }
+            .tabs-nav { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<!-- Espera: titulo da ADR, subtitulo com ID, badges de status/data/escopo -->
+<!-- {{STATUS}}: proposed | accepted | deprecated | superseded -->
+<!-- {{LOGO_BASE64}}: base64 da logo ou remover img se nao houver -->
+<header class="header">
+    <div class="container">
+        <div class="header-content">
+            <div class="header-top">
+                <div class="header-left">
+                    <!-- Logo: substituir src pelo base64 da logo ou remover este elemento -->
+                    <!-- <img class="header-logo" src="{{LOGO_BASE64}}" alt="{{ORGANIZACAO}}"> -->
+                    <div class="header-icon"><i class="ri-lightbulb-flash-line"></i></div>
+                    <div>
+                        <h1>{{TITULO}}</h1>
+                        <div class="subtitle">{{ID}} — Architecture Decision Record</div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <!-- {{STATUS_COR}}: bg-success (accepted), bg-warning (proposed), bg-danger (deprecated), bg-purple (superseded) -->
+                    <div class="header-badge" style="background: {{STATUS_COR_RGBA}};">
+                        <i class="ri-checkbox-circle-line"></i> {{STATUS}}
+                    </div>
+                    <div class="header-badge"><i class="ri-calendar-check-line"></i> {{DATA}}</div>
+                    <div class="header-badge"><i class="ri-focus-3-line"></i> {{ESCOPO}}</div>
+                    <button onclick="toggleTheme()" class="header-badge" style="border:none;cursor:pointer;" title="Alternar tema claro/escuro">
+                        <i id="theme-icon" class="ri-sun-line"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- TABS -->
+    <div class="tabs-nav container" style="padding-bottom: 0;">
+        <button class="tab-btn active" onclick="switchTab('visao-macro')">
+            <i class="ri-eye-line"></i> Visao Macro
+        </button>
+        <button class="tab-btn" onclick="switchTab('visao-tecnica')">
+            <i class="ri-code-s-slash-line"></i> Visao Tecnica
+        </button>
+        <button class="tab-btn" onclick="switchTab('referencias')">
+            <i class="ri-links-line"></i> Referencias
+        </button>
+    </div>
+</header>
+
+<div class="container">
+
+<!-- ================================================================== -->
+<!-- ABA 1: VISAO MACRO                                                 -->
+<!-- Visao executiva/estrategica: KPIs, decisao em destaque, escopo,    -->
+<!-- impacto e timeline de implementacao                                -->
+<!-- ================================================================== -->
+<div id="tab-visao-macro" class="tab-content active">
+
+    <!-- ====== STATS GRID: KPIs da ADR ====== -->
+    <!-- Espera: numeros de alternativas avaliadas, riscos, status, etc. -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-card-icon bg-primary"><i class="ri-route-line"></i></div>
+            <div class="stat-card-info">
+                <div class="stat-card-number">{{QTD_ALTERNATIVAS}}</div>
+                <div class="stat-card-label">Alternativas Avaliadas</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+            <div class="stat-card-info">
+                <div class="stat-card-number">{{QTD_RISCOS}}</div>
+                <div class="stat-card-label">Riscos Identificados</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-icon bg-success"><i class="ri-checkbox-circle-line"></i></div>
+            <div class="stat-card-info">
+                <div class="stat-card-number">{{STATUS_DECISAO}}</div>
+                <div class="stat-card-label">Status da Decisao</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-icon bg-warning"><i class="ri-team-line"></i></div>
+            <div class="stat-card-info">
+                <div class="stat-card-number">{{QTD_SISTEMAS_IMPACTADOS}}</div>
+                <div class="stat-card-label">Sistemas Impactados</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== CALLOUT: DECISAO EM DESTAQUE ====== -->
+    <!-- Espera: resumo conciso da decisao tomada, em formato de callout proeminente -->
+    <div class="callout callout-primary">
+        <div class="callout-icon"><i class="ri-lightbulb-flash-line"></i></div>
+        <div class="callout-content">
+            <div class="callout-title">Decisao</div>
+            <div class="callout-text">{{DECISAO_RESUMO}}</div>
+        </div>
+    </div>
+
+    <!-- ====== CARD: ESCOPO E IMPACTO ====== -->
+    <!-- Espera: descricao do escopo, sistemas/modulos afetados, dominio -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon bg-info"><i class="ri-focus-3-line"></i></div>
+            <span class="card-title">Escopo e Impacto</span>
+            <span class="card-badge" style="background: var(--info-light); color: var(--info);">{{DOMINIO}}</span>
+        </div>
+        <div class="card-body">
+            <div class="grid-2">
+                <div>
+                    <p class="fw-600 mb-8">Escopo</p>
+                    <p class="fs-12 text-muted">{{ESCOPO_DETALHADO}}</p>
+                </div>
+                <div>
+                    <p class="fw-600 mb-8">Sistemas / Modulos Impactados</p>
+                    <!-- {{SISTEMAS_IMPACTADOS}}: lista de sistemas ou modulos afetados pela decisao -->
+                    <p class="fs-12 text-muted">{{SISTEMAS_IMPACTADOS}}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== TIMELINE: FASES DE IMPLEMENTACAO ====== -->
+    <!-- Espera: marcos de implementacao. Remover esta secao se a ADR nao tiver fases -->
+    <!-- Classes dos milestones: completed, current, future, golive -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-icon bg-purple"><i class="ri-road-map-line"></i></div>
+            <span class="section-title">Timeline de Implementacao</span>
+        </div>
+        <div class="roadmap">
+            <!-- {{MILESTONE_1}} a {{MILESTONE_N}}: cada fase com classe, icone, data e nome -->
+            <div class="milestone completed">
+                <div class="milestone-dot"><i class="ri-check-line"></i></div>
+                <div class="milestone-label">{{FASE_1_LABEL}}</div>
+                <div class="milestone-date">{{FASE_1_DATA}}</div>
+                <div class="milestone-name">{{FASE_1_NOME}}</div>
+            </div>
+            <div class="milestone current">
+                <div class="milestone-dot"><i class="ri-play-line"></i></div>
+                <div class="milestone-label">{{FASE_2_LABEL}}</div>
+                <div class="milestone-date">{{FASE_2_DATA}}</div>
+                <div class="milestone-name">{{FASE_2_NOME}}</div>
+            </div>
+            <div class="milestone future">
+                <div class="milestone-dot"><i class="ri-time-line"></i></div>
+                <div class="milestone-label">{{FASE_3_LABEL}}</div>
+                <div class="milestone-date">{{FASE_3_DATA}}</div>
+                <div class="milestone-name">{{FASE_3_NOME}}</div>
+            </div>
+            <div class="milestone golive">
+                <div class="milestone-dot"><i class="ri-rocket-line"></i></div>
+                <div class="milestone-label">{{FASE_4_LABEL}}</div>
+                <div class="milestone-date">{{FASE_4_DATA}}</div>
+                <div class="milestone-name">{{FASE_4_NOME}}</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ================================================================== -->
+<!-- ABA 2: VISAO TECNICA                                               -->
+<!-- Detalhamento completo: contexto, decisao, alternativas,            -->
+<!-- consequencias e implementacao                                      -->
+<!-- ================================================================== -->
+<div id="tab-visao-tecnica" class="tab-content">
+
+    <!-- ====== CARD: CONTEXTO ====== -->
+    <!-- Espera: texto completo do contexto que motivou a decisao -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon bg-secondary"><i class="ri-file-text-line"></i></div>
+            <span class="card-title">Contexto</span>
+        </div>
+        <div class="card-body">
+            <p class="fs-12" style="line-height: 1.8;">{{CONTEXTO}}</p>
+        </div>
+    </div>
+
+    <!-- ====== CARD: DECISAO DETALHADA ====== -->
+    <!-- Espera: texto completo da decisao com especificacoes tecnicas -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon bg-primary"><i class="ri-lightbulb-flash-line"></i></div>
+            <span class="card-title">Decisao</span>
+            <span class="card-badge" style="background: var(--success-light); color: var(--success);">{{STATUS}}</span>
+        </div>
+        <div class="card-body">
+            <p class="fs-12" style="line-height: 1.8;">{{DECISAO_DETALHADA}}</p>
+        </div>
+    </div>
+
+    <!-- ====== SECTION: ALTERNATIVAS CONSIDERADAS ====== -->
+    <!-- Espera: cada alternativa como um delivery-card.                       -->
+    <!-- A alternativa escolhida usa status-done; rejeitadas usam status-blocked -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-icon bg-orange"><i class="ri-route-line"></i></div>
+            <span class="section-title">Alternativas Consideradas</span>
+            <span class="section-count">{{QTD_ALTERNATIVAS}} alternativas</span>
+        </div>
+        <div class="delivery-grid">
+            <!-- {{ALTERNATIVA_ESCOLHIDA}}: a alternativa selecionada -->
+            <div class="delivery-card">
+                <div class="delivery-header">
+                    <div class="delivery-icon bg-success"><i class="ri-check-double-line"></i></div>
+                    <span class="delivery-title">{{ALT_1_TITULO}}</span>
+                    <span class="delivery-marco" style="background: var(--success-light); color: var(--success);">Escolhida</span>
+                </div>
+                <div class="delivery-body">
+                    <!-- Cada item e um ponto a favor/contra desta alternativa -->
+                    <div class="delivery-item">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div>
+                        <div class="delivery-item-text">
+                            {{ALT_1_PRO_1}}
+                            <div class="delivery-item-detail">{{ALT_1_PRO_1_DETALHE}}</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div>
+                        <div class="delivery-item-text">
+                            {{ALT_1_PRO_2}}
+                            <div class="delivery-item-detail">{{ALT_1_PRO_2_DETALHE}}</div>
+                        </div>
+                    </div>
+                    <!-- Adicionar mais itens conforme necessario -->
+                </div>
+            </div>
+
+            <!-- {{ALTERNATIVA_REJEITADA}}: alternativas nao selecionadas -->
+            <div class="delivery-card">
+                <div class="delivery-header">
+                    <div class="delivery-icon bg-danger"><i class="ri-close-line"></i></div>
+                    <span class="delivery-title">{{ALT_2_TITULO}}</span>
+                    <span class="delivery-marco" style="background: var(--danger-light); color: var(--danger);">Rejeitada</span>
+                </div>
+                <div class="delivery-body">
+                    <div class="delivery-item">
+                        <div class="delivery-status status-blocked"><i class="ri-close-line"></i></div>
+                        <div class="delivery-item-text">
+                            {{ALT_2_CONTRA_1}}
+                            <div class="delivery-item-detail">{{ALT_2_CONTRA_1_DETALHE}}</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-blocked"><i class="ri-close-line"></i></div>
+                        <div class="delivery-item-text">
+                            {{ALT_2_CONTRA_2}}
+                            <div class="delivery-item-detail">{{ALT_2_CONTRA_2_DETALHE}}</div>
+                        </div>
+                    </div>
+                    <!-- Adicionar mais itens conforme necessario -->
+                </div>
+            </div>
+
+            <!-- Repetir delivery-card para cada alternativa adicional -->
+            <!-- {{ALTERNATIVAS_ADICIONAIS}} -->
+
+        </div>
+    </div>
+
+    <!-- ====== SECTION: CONSEQUENCIAS ====== -->
+    <!-- Espera: consequencias positivas, negativas/trade-offs e riscos -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-icon bg-warning"><i class="ri-scales-3-line"></i></div>
+            <span class="section-title">Consequencias</span>
+        </div>
+
+        <div class="grid-2">
+            <!-- POSITIVAS -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-success"><i class="ri-thumb-up-line"></i></div>
+                    <span class="card-title">Positivas</span>
+                </div>
+                <div class="card-body">
+                    <!-- Cada consequencia positiva como delivery-item com status-done -->
+                    <div class="delivery-item">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div>
+                        <div class="delivery-item-text">
+                            {{POSITIVA_1}}
+                            <div class="delivery-item-detail">{{POSITIVA_1_DETALHE}}</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div>
+                        <div class="delivery-item-text">
+                            {{POSITIVA_2}}
+                            <div class="delivery-item-detail">{{POSITIVA_2_DETALHE}}</div>
+                        </div>
+                    </div>
+                    <!-- {{POSITIVAS_ADICIONAIS}} -->
+                </div>
+            </div>
+
+            <!-- NEGATIVAS / TRADE-OFFS -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-warning"><i class="ri-error-warning-line"></i></div>
+                    <span class="card-title">Negativas / Trade-offs</span>
+                </div>
+                <div class="card-body">
+                    <!-- Cada trade-off como delivery-item com status-partial -->
+                    <div class="delivery-item">
+                        <div class="delivery-status status-partial"><i class="ri-arrow-left-right-line"></i></div>
+                        <div class="delivery-item-text">
+                            {{NEGATIVA_1}}
+                            <div class="delivery-item-detail">{{NEGATIVA_1_DETALHE}}</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-partial"><i class="ri-arrow-left-right-line"></i></div>
+                        <div class="delivery-item-text">
+                            {{NEGATIVA_2}}
+                            <div class="delivery-item-detail">{{NEGATIVA_2_DETALHE}}</div>
+                        </div>
+                    </div>
+                    <!-- {{NEGATIVAS_ADICIONAIS}} -->
+                </div>
+            </div>
+        </div>
+
+        <!-- RISCOS (alerta danger) -->
+        <!-- Espera: riscos identificados, cada um como um alert-danger -->
+        <div class="card mt-16">
+            <div class="card-header">
+                <div class="card-header-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+                <span class="card-title">Riscos</span>
+                <span class="card-badge" style="background: var(--danger-light); color: var(--danger);">{{QTD_RISCOS}} riscos</span>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    <i class="ri-error-warning-fill"></i>
+                    <div>
+                        <strong>{{RISCO_1_TITULO}}</strong> — {{RISCO_1_DESCRICAO}}
+                    </div>
+                </div>
+                <div class="alert alert-danger">
+                    <i class="ri-error-warning-fill"></i>
+                    <div>
+                        <strong>{{RISCO_2_TITULO}}</strong> — {{RISCO_2_DESCRICAO}}
+                    </div>
+                </div>
+                <!-- {{RISCOS_ADICIONAIS}} -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== CARD: IMPLEMENTACAO ====== -->
+    <!-- Espera: detalhes de implementacao, passos, configuracoes, migracoes -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-icon bg-info"><i class="ri-tools-line"></i></div>
+            <span class="section-title">Implementacao</span>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-info"><i class="ri-list-check-2"></i></div>
+                <span class="card-title">Detalhes de Implementacao</span>
+            </div>
+            <div class="card-body">
+                <p class="fs-12" style="line-height: 1.8;">{{IMPLEMENTACAO_DETALHES}}</p>
+
+                <!-- Opcional: progress bar para acompanhamento -->
+                <div class="progress-container mt-16">
+                    <div class="progress-header">
+                        <span class="progress-label">Progresso da Implementacao</span>
+                        <span class="progress-value">{{IMPLEMENTACAO_PROGRESSO}}%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill bg-info" style="width: {{IMPLEMENTACAO_PROGRESSO}}%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ================================================================== -->
+<!-- ABA 3: REFERENCIAS                                                 -->
+<!-- Documentos relacionados e referencias externas                     -->
+<!-- ================================================================== -->
+<div id="tab-referencias" class="tab-content">
+
+    <!-- ====== CARD: DOCUMENTOS RELACIONADOS ====== -->
+    <!-- Espera: lista de documentos internos relacionados a esta ADR -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon bg-primary"><i class="ri-file-list-3-line"></i></div>
+            <span class="card-title">Documentos Relacionados</span>
+        </div>
+        <div class="card-body">
+            <!-- Cada documento como delivery-item com link -->
+            <div class="delivery-item">
+                <div class="delivery-status bg-primary"><i class="ri-file-text-line"></i></div>
+                <div class="delivery-item-text">
+                    <a href="{{DOC_REL_1_LINK}}" style="color: var(--primary); text-decoration: none; font-weight: 500;">{{DOC_REL_1_TITULO}}</a>
+                    <div class="delivery-item-detail">{{DOC_REL_1_DESCRICAO}}</div>
+                </div>
+            </div>
+            <div class="delivery-item">
+                <div class="delivery-status bg-primary"><i class="ri-file-text-line"></i></div>
+                <div class="delivery-item-text">
+                    <a href="{{DOC_REL_2_LINK}}" style="color: var(--primary); text-decoration: none; font-weight: 500;">{{DOC_REL_2_TITULO}}</a>
+                    <div class="delivery-item-detail">{{DOC_REL_2_DESCRICAO}}</div>
+                </div>
+            </div>
+            <!-- {{DOCS_RELACIONADOS_ADICIONAIS}} -->
+        </div>
+    </div>
+
+    <!-- ====== CARD: REFERENCIAS EXTERNAS ====== -->
+    <!-- Espera: links para artigos, documentacao oficial, RFCs, etc. -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon bg-secondary"><i class="ri-external-link-line"></i></div>
+            <span class="card-title">Referencias Externas</span>
+        </div>
+        <div class="card-body">
+            <div class="delivery-item">
+                <div class="delivery-status bg-secondary"><i class="ri-link"></i></div>
+                <div class="delivery-item-text">
+                    <a href="{{REF_EXT_1_URL}}" target="_blank" style="color: var(--secondary); text-decoration: none; font-weight: 500;">{{REF_EXT_1_TITULO}}</a>
+                    <div class="delivery-item-detail">{{REF_EXT_1_DESCRICAO}}</div>
+                </div>
+            </div>
+            <div class="delivery-item">
+                <div class="delivery-status bg-secondary"><i class="ri-link"></i></div>
+                <div class="delivery-item-text">
+                    <a href="{{REF_EXT_2_URL}}" target="_blank" style="color: var(--secondary); text-decoration: none; font-weight: 500;">{{REF_EXT_2_TITULO}}</a>
+                    <div class="delivery-item-detail">{{REF_EXT_2_DESCRICAO}}</div>
+                </div>
+            </div>
+            <!-- {{REFS_EXTERNAS_ADICIONAIS}} -->
+        </div>
+    </div>
+
+</div>
+
+</div>
+
+<!-- ===== FOOTER ===== -->
+<!-- Espera: informacoes do autor da ADR -->
+<div class="container">
+    <div class="badge badge-footer" style="margin-bottom:40px; margin-top:10px; display:flex; width:100%;">
+        <div class="badge-bar"></div>
+        <div class="badge-body" style="flex:1; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="badge-icon">{{AUTOR_INICIAIS}}</div>
+                <div class="badge-text">
+                    <span class="badge-name">{{AUTOR_NOME}}</span>
+                    <span class="badge-role">{{AUTOR_CARGO}}</span>
+                    <span class="badge-date">Criado em: {{DATA_CRIACAO}} | Atualizado em: {{DATA_ATUALIZACAO}}</span>
+                </div>
+            </div>
+            <div style="text-align:right; font-size:11px; color:var(--text-muted);">
+                {{ORGANIZACAO}} &middot; {{TITULO}}<br>
+                {{ID}} &middot; {{DATA}}
+            </div>
+        </div>
+        <div class="badge-seal">Autor</div>
+    </div>
+</div>
+
+<script>
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+}
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const icon = document.getElementById('theme-icon');
+    if (html.getAttribute('data-theme') === 'light') {
+        html.removeAttribute('data-theme');
+        icon.className = 'ri-sun-line';
+        localStorage.setItem('caefe-theme', 'dark');
+    } else {
+        html.setAttribute('data-theme', 'light');
+        icon.className = 'ri-moon-line';
+        localStorage.setItem('caefe-theme', 'light');
+    }
+}
+
+// Restore saved theme
+(function() {
+    const saved = localStorage.getItem('caefe-theme');
+    if (saved === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('theme-icon').className = 'ri-moon-line';
+        });
+    }
+})();
+</script>
+
+</body>
+</html>

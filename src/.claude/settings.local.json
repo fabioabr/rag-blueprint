@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//e/Projetos/Rag/**)",
+      "Bash(done)",
+      "Bash(cd:*)"
+    ]
+  }
+}

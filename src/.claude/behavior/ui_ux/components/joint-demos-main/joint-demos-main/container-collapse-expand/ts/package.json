@@ -1,0 +1,28 @@
+{
+  "name": "@joint/demo-container-collapse-expand-ts",
+  "version": "4.2.3",
+  "main": "dist/bundle.js",
+  "author": {
+    "name": "client IO",
+    "url": "https://client.io"
+  },
+  "license": "http://jointjs.com/license",
+  "private": true,
+  "scripts": {
+    "start": "webpack-dev-server",
+    "build": "webpack"
+  },
+  "dependencies": {
+    "@joint/core": "4.2.4"
+  },
+  "devDependencies": {
+    "copy-webpack-plugin": "13.0.0",
+    "css-loader": "^6.8.1",
+    "style-loader": "^3.3.3",
+    "ts-loader": "^9.2.5",
+    "typescript": "5.8.2",
+    "webpack": "5.98.0",
+    "webpack-cli": "6.0.1",
+    "webpack-dev-server": "5.2.0"
+  }
+}

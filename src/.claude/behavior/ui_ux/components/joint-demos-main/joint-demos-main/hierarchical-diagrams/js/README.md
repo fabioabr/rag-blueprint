@@ -1,0 +1,36 @@
+# JointJS: Hierarchical Diagrams (JavaScript)
+
+Interested in advanced tips for working with hierarchical diagrams? Try this demo, which offers features such as inserting elements into a container, dropping a container over children to embed them, embedding validations, resizing a container based on the elements inside and automatic positioning of elements in the container.
+
+<a href="https://stackblitz.com/github/clientio/joint-demos/tree/main/hierarchical-diagrams/js" target="_blank">
+  <img
+    alt="Open in StackBlitz"
+    src="https://developer.stackblitz.com/img/open_in_stackblitz.svg"
+  />
+</a>
+
+This demo is also available online at [jointjs.com](https://jointjs.com/demos/hierarchical-diagrams).
+
+## How to download this demo
+
+You can download this demo using our [`@joint/cli` tool](https://www.npmjs.com/package/@joint/cli):
+
+```bash
+npx @joint/cli download hierarchical-diagrams/js
+```
+
+Alternatively, you can get the [copy of the repository](https://github.com/clientIO/joint-demos/archive/refs/heads/main.zip) from GitHub as usual.
+
+## Running the application
+
+Install the dependencies by running:
+
+```bash
+npm install
+```
+
+And then start the application with:
+
+```bash
+npm run dev
+```

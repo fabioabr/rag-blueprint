@@ -1,0 +1,191 @@
+
+================================================================================
+📋 PENDÊNCIAS — Atualizado em 22/03/2026
+================================================================================
+    📅 Criado: 22/03/2026
+    📅 Atualizado: 22/03/2026
+
+
+================================================================================
+🏗️ PROJETO 1 — rag-blueprint-adrs-kb (KB de ADRs)
+================================================================================
+
+  Caminho: kb/rag-blueprint-adrs-kb/
+  Status:  ✅ CONCLUÍDO (pipeline completo executado)
+
+  Artefatos produzidos (44 arquivos):
+
+    1 - draft/          11 .txt    (fontes brutas, iteração livre)
+    beta/               11 .beta.md (front matter leve, score médio 96.9%)
+    2 - docs/           11 .md     (front matter rico, score médio 98.2%)
+    3 - presentation/   11 .html   (3 abas: Macro + Técnica + QA)
+
+  Scores finais dos .txt (ADR Reviewer):
+
+    ADR-001  Pipeline 4 Fases ........................ 92.7%  ✅
+    ADR-002  Soberania Cloud vs On-Prem .............. 91.8%  ✅
+    ADR-003  Modelo de Dados da Base Vetorial ........ 94.8%  ✅
+    ADR-004  Segurança e Classificação ............... 92.6%  ✅
+    ADR-005  Front Matter como Contrato .............. 91.3%  ✅
+    ADR-006  Pipeline de Ingestão .................... 91.4%  ✅
+    ADR-007  Retrieval Híbrido e Agentes ............. 92.9%  ✅
+    ADR-008  Governança, Ciclo de Vida e Rollback .... 94.4%  ✅
+    ADR-009  Seleção de Modelos de Embedding ......... 95.9%  ✅
+    ADR-010  Git Flow da Base de Conhecimento ........ 92.0%  ✅
+    ADR-011  Segregação de KBs ....................... 94.3%  ✅
+
+  Scores finais dos .md (Pipeline de Promoção QA):
+
+    ADR-001 .... 98.6%    ADR-005 .... 98.9%    ADR-009 .... 98.1%
+    ADR-002 .... 99.0%    ADR-006 .... 99.0%    ADR-010 .... 97.0%
+    ADR-003 .... 96.8%    ADR-007 .... 99.0%    ADR-011 .... 97.6%
+    ADR-004 .... 97.0%    ADR-008 .... 99.0%
+
+  Pipeline executado:
+    .txt → .beta.md (Fase 2) → .md (Fase 3) → .html (Apresentação)
+    Conforme ADR-001: 4 fases, front matter leve→rico, LOCKED blocks,
+    wikilinks segregados, promoção com enriquecimento.
+
+  ------------------------------------------------------------------------
+  ITEM ABERTO — Auto-validação (Fase 4)
+  ------------------------------------------------------------------------
+
+    Objetivo:
+      Ingerir os 11 .md na Base Vetorial, completando o ciclo de
+      auto-validação: os ADRs processados pelo próprio processo.
+
+    Status: BLOQUEADO — requer infraestrutura
+      - Base Vetorial (Neo4j, Qdrant, Weaviate ou similar)
+      - Modelo de embedding (BGE-M3 on-prem ou API cloud)
+      - Pipeline de ingestão implementado (Python)
+
+    Decisão pendente:
+      - Qual Base Vetorial usar?
+      - Docker local ou cloud?
+      - Implementar pipeline real ou simulação documentada?
+
+    DOD:
+      - .md dos ADRs processados pelo pipeline de ingestão (ADR-006)
+      - Base Vetorial populada com conhecimento dos 11 ADRs
+      - Agente RAG respondendo perguntas sobre o processo
+
+  ------------------------------------------------------------------------
+  ITENS MENORES (detectados nas revisões)
+  ------------------------------------------------------------------------
+
+    [ ] Atualizar CLAUDE.md com lista completa de doc_type
+        (incluir policy, meeting-notes, onboarding, postmortem)
+        Prioridade: BAIXA
+
+    [ ] Alinhar schema_front_matter.md com ADR-005
+        (doc_type "review" presente no schema mas não no ADR)
+        Prioridade: BAIXA
+
+    [ ] Atualizar ADR-001 seção 2.3 para referenciar estrutura
+        de pastas do ADR-011 (segregação de KBs)
+        Prioridade: ALTA
+
+    [ ] Atualizar ADR-010 para documentar padrão de release
+        tags por KB (conforme ADR-011)
+        Prioridade: ALTA
+
+
+================================================================================
+🏗️ PROJETO 2 — rag-ingestion-rules-kb (KB de Regras de Ingestão)
+================================================================================
+
+  Caminho: kb/rag-ingestion-rules-kb/
+  Status:  🔜 PRÓXIMO PROJETO
+
+  ------------------------------------------------------------------------
+  ITEM 1 — Recriar documentos .txt do processo de ingestão
+  ------------------------------------------------------------------------
+
+    Objetivo:
+      Recriar os documentos descritivos (.txt) do processo de ingestão,
+      agora baseados nas decisões dos 11 ADRs (que são a fonte da verdade).
+      Os B00-B16 antigos foram criados ANTES do redesign do pipeline e
+      não refletem o modelo atual (4 fases, beta.md, 2 repos, etc.).
+
+    Ação:
+      - Usar os 11 ADRs (rag-blueprint-adrs-kb) como fonte da verdade
+      - Recriar os .txt descrevendo cada passo do processo de ingestão,
+        desde a captura de fontes até a geração da Base Vetorial
+      - Cada .txt deve ser autocontido e didático (para disseminação)
+
+    Estrutura dos novos .txt:
+
+      [ ] B00 — Visão geral do pipeline (baseado no ADR-001)
+      [ ] B01 — Seleção de fontes e Onboarding (Fase 1)
+      [ ] B02 — Mineração e geração de .beta.md (Fase 2)
+      [ ] B03 — Edição humana e blocos LOCKED (Fase 2)
+      [ ] B04 — Promoção .beta.md → .md (Fase 3)
+      [ ] B05 — Front matter e metadados (ADR-005)
+      [ ] B06 — Pipeline de ingestão na Base Vetorial (Fase 4 / ADR-006)
+      [ ] B07 — Modelo de dados da Base Vetorial (ADR-003)
+      [ ] B08 — Retrieval híbrido e agentes (ADR-007)
+      [ ] B09 — Segurança e classificação de dados (ADR-004)
+      [ ] B10 — Segregação de KBs por confidencialidade (ADR-011)
+      [ ] B11 — Governança, papéis e rollback (ADR-008)
+      [ ] B12 — Git Flow da base de conhecimento (ADR-010)
+      [ ] B13 — Soberania de dados e trilhas cloud/on-prem (ADR-002)
+      [ ] B14 — Modelos de embedding (ADR-009)
+      [ ] B15 — Temporalidade do conhecimento
+      [ ] B16 — Re-ingestão com merge
+
+    Decisão necessária:
+      - Manter os B00-B16 antigos como histórico ou substituir?
+      - Sugestão: mover antigos para subpasta "legacy/" e criar novos
+
+    DOD:
+      - Novos .txt criados em kb/rag-ingestion-rules-kb/1 - draft/
+      - Cada .txt cobre um aspecto do processo baseado nos ADRs
+      - Linguagem didática para disseminação ao time
+
+  ------------------------------------------------------------------------
+  ITEM 2 — Pipeline completo .txt → .beta.md → .md → .html
+  ------------------------------------------------------------------------
+
+    Objetivo:
+      Executar o pipeline completo nos novos .txt (Item 1), seguindo
+      o mesmo fluxo validado na KB de ADRs:
+      .txt → .beta.md → .md → .html
+
+    Fluxo:
+      1. .txt → review (QA >= 90%)
+      2. .txt → .beta.md (front matter leve, LOCKED blocks)
+      3. .beta.md → score (QA-BETA)
+      4. .beta.md → .md (promoção: front matter rico, wikilinks)
+      5. .md → score (QA-MD)
+      6. .md → .html (3 abas: Macro + Técnica + QA)
+
+    DOD:
+      - 17 .beta.md em kb/rag-ingestion-rules-kb/beta/
+      - 17 .md em kb/rag-ingestion-rules-kb/2 - docs/
+      - 17 .html em kb/rag-ingestion-rules-kb/3 - presentation/
+      - Todos os scores >= 90%
+      - Zero links quebrados
+      - Zero violações de compliance
+
+
+================================================================================
+📋 ORDEM DE EXECUÇÃO
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  PROJETO 1 — rag-blueprint-adrs-kb                                 │
+  │  ✅ CONCLUÍDO (exceto Fase 4 — bloqueada por infra)                │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  PROJETO 2 — rag-ingestion-rules-kb                                │
+  │  🔜 PRÓXIMO — Item 1 (criar .txt) → Item 2 (pipeline completo)    │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  CROSS-PROJETO — Auto-validação (Fase 4)                           │
+  │  ⏸️ BLOQUEADO — executar quando houver infraestrutura real          │
+  │  Aplica-se a: ambas as KBs (ADRs + Regras de Ingestão)            │
+  └─────────────────────────────────────────────────────────────────────┘
+
+================================================================================

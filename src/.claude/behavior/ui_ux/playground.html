@@ -1,0 +1,2047 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playground de Componentes — Banco Patria</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+    <!-- JointJS + ELK para diagramas -->
+    <script src="https://cdn.jsdelivr.net/npm/@joint/core@4.0.4/dist/joint.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@joint/core@4.0.4/dist/joint.css">
+    <script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
+    <style>
+        :root {
+            --primary: #5BA4D9;
+            --primary-dark: #3182B1;
+            --primary-light: rgba(91, 164, 217, 0.12);
+            --secondary: #5BB8C4;
+            --success: #6ABF3B;
+            --success-light: rgba(106, 191, 59, 0.12);
+            --success-border: rgba(106, 191, 59, 0.3);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.12);
+            --warning-border: rgba(244, 172, 0, 0.3);
+            --danger: #E85D54;
+            --danger-light: rgba(232, 93, 84, 0.12);
+            --danger-border: rgba(232, 93, 84, 0.3);
+            --info: #38BDF8;
+            --info-light: rgba(56, 189, 248, 0.12);
+            --info-border: rgba(56, 189, 248, 0.3);
+            --bg: #0f1319;
+            --card-bg: #1a1f2e;
+            --text: #e2e8f0;
+            --text-muted: #8b9ab5;
+            --border: #2a3244;
+            --purple: #9B96FF;
+            --purple-light: rgba(155, 150, 255, 0.12);
+            --orange: #FF9473;
+            --teal: #2DD4BF;
+            --header-bg: linear-gradient(135deg, #1a2332 0%, #15202e 50%, #1a2838 100%);
+            --progress-track: #2a3244;
+            --milestone-future: #4a5568;
+            --alert-warning-text: #f0c040;
+            --alert-danger-text: #f08a84;
+            --alert-info-text: #6ecbf5;
+            --alert-success-text: #8ad45a;
+            --pill-success-text: #8ad45a;
+            --pill-info-text: #6ecbf5;
+            --pill-warning-text: #f0c040;
+            --area-warning-text: #f0c040;
+        }
+
+        /* ====== LIGHT THEME ====== */
+        [data-theme="light"] {
+            --primary: #3182B1;
+            --primary-dark: #256a94;
+            --primary-light: rgba(49, 130, 177, 0.1);
+            --secondary: #418F9D;
+            --success: #4C7E1B;
+            --success-light: rgba(76, 126, 27, 0.08);
+            --success-border: rgba(76, 126, 27, 0.25);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.08);
+            --warning-border: rgba(244, 172, 0, 0.25);
+            --danger: #C72F25;
+            --danger-light: rgba(199, 47, 37, 0.08);
+            --danger-border: rgba(199, 47, 37, 0.25);
+            --info: #0EA5E8;
+            --info-light: rgba(14, 165, 232, 0.08);
+            --info-border: rgba(14, 165, 232, 0.25);
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text: #212B37;
+            --text-muted: #6E829F;
+            --border: #e2e8f0;
+            --purple: #7B76FE;
+            --purple-light: rgba(123, 118, 254, 0.08);
+            --orange: #FE7C58;
+            --teal: #00D8D8;
+            --header-bg: linear-gradient(135deg, #3182B1 0%, #256a94 50%, #418F9D 100%);
+            --progress-track: #e9ecef;
+            --milestone-future: #adb5bd;
+            --alert-warning-text: #8a6600;
+            --alert-danger-text: #a52820;
+            --alert-info-text: #0878a8;
+            --alert-success-text: #3a6112;
+            --pill-success-text: #3a6112;
+            --pill-info-text: #0878a8;
+            --pill-warning-text: #9a6d00;
+            --area-warning-text: #8a6600;
+        }
+
+        html, body, div, span, h1, h2, h3, h4, h5, h6, p, a, img, ul, ol, li,
+        header, footer, nav, section, article, aside, button, input, select, textarea,
+        table, tr, td, th, form, label, fieldset, legend { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+        /* ====== DIAGRAM ISOLATION ====== */
+        .diagram-wrap { position: relative; width: 100%; overflow: auto; background: var(--bg); border-radius: 0 0 12px 12px; padding: 8px 0; }
+        .diagram-wrap .joint-paper { background: transparent !important; }
+        .diagram-wrap .joint-paper,
+        .diagram-wrap .joint-paper svg,
+        .diagram-wrap .joint-paper svg * {
+            line-height: normal;
+            font-family: sans-serif;
+            box-sizing: content-box;
+        }
+        .diagram-wrap .joint-port { display: none; }
+
+        /* ====== HEADER ====== */
+        .header {
+            background: var(--header-bg);
+            color: white;
+            padding: 36px 0 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 50%;
+            z-index: 0;
+        }
+        .header-content { position: relative; z-index: 1; }
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-icon {
+            width: 52px;
+            height: 52px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            backdrop-filter: blur(10px);
+        }
+        .header-logo {
+            height: 36px;
+            width: auto;
+            opacity: 0.95;
+            flex-shrink: 0;
+            filter: brightness(0) invert(1);
+        }
+        [data-theme="light"] .header-logo {
+            filter: brightness(0) invert(1);
+        }
+        .header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+        .header .subtitle { font-size: 0.95rem; opacity: 0.85; font-weight: 300; margin-top: 2px; }
+        .header-right { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .header-badge {
+            background: rgba(255,255,255,0.15);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(10px);
+            color: white;
+        }
+
+        /* ====== TABS ====== */
+        .tabs-nav {
+            display: flex;
+            gap: 4px;
+            margin-top: 20px;
+            padding: 0 24px;
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .tab-btn {
+            padding: 10px 24px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 10px 10px 0 0;
+            color: rgba(255,255,255,0.7);
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.18); color: white; }
+        .tab-btn.active { background: var(--bg); color: var(--primary); font-weight: 600; }
+        .tab-btn i { font-size: 1.1rem; }
+        .tab-content { display: none; padding-top: 24px; padding-bottom: 32px; }
+        .tab-content.active { display: block; }
+
+        /* ====== STAT CARDS ====== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .stat-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .stat-card-info { flex: 1; }
+        .stat-card-number { font-size: 1.12rem; font-weight: 700; line-height: 1.1; }
+        .stat-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+
+        /* ====== CARDS ====== */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+        .card-header-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .card-badge {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .card-body { padding: 18px; }
+
+        /* ====== PROGRESS BAR ====== */
+        .progress-container { margin-bottom: 16px; }
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .progress-label { font-size: 0.82rem; font-weight: 500; }
+        .progress-value { font-size: 0.82rem; font-weight: 600; }
+        .progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: var(--progress-track);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s;
+        }
+
+        /* ====== ALERTS ====== */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            border: 1px solid;
+        }
+        .alert i { font-size: 1.1rem; flex-shrink: 0; }
+        .alert-warning { background: var(--warning-light); border-color: var(--warning-border); color: var(--alert-warning-text); }
+        .alert-danger { background: var(--danger-light); border-color: var(--danger-border); color: var(--alert-danger-text); }
+        .alert-info { background: var(--info-light); border-color: var(--info-border); color: var(--alert-info-text); }
+        .alert-success { background: var(--success-light); border-color: var(--success-border); color: var(--alert-success-text); }
+
+        /* ====== TIMELINE / ROADMAP ====== */
+        .roadmap { display: flex; gap: 0; margin: 24px 0; position: relative; }
+        .roadmap::before {
+            content: '';
+            position: absolute;
+            top: 24px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--border);
+            z-index: 0;
+        }
+        .milestone { flex: 1; position: relative; z-index: 1; text-align: center; padding: 0 8px; }
+        .milestone-dot {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            margin: 0 auto 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: white;
+            border: 4px solid var(--bg);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .milestone-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted); }
+        .milestone-date { font-size: 0.82rem; font-weight: 600; color: var(--text); margin-top: 2px; }
+        .milestone-name { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+        .milestone.completed .milestone-dot { background: var(--success); }
+        .milestone.current .milestone-dot { background: var(--primary); animation: pulse 2s infinite; }
+        .milestone.future .milestone-dot { background: var(--milestone-future); }
+        .milestone.golive .milestone-dot { background: var(--orange); }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(49,130,177,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(49,130,177,0); }
+        }
+
+        /* ====== DELIVERY CARDS ====== */
+        .delivery-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .delivery-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        }
+        .delivery-card.full-width { grid-column: 1 / -1; }
+        .delivery-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        .delivery-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .delivery-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .delivery-marco {
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .delivery-body { padding: 16px 18px; }
+        .delivery-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+        }
+        .delivery-item:last-child { border-bottom: none; }
+        .delivery-status {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: white;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .delivery-item-text { flex: 1; }
+        .delivery-item-detail { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+        .status-done { background: var(--success); }
+        .status-progress { background: var(--primary); }
+        .status-partial { background: var(--warning); }
+        .status-blocked { background: var(--danger); }
+        .status-pending { background: var(--milestone-future); }
+
+        /* ====== AREA CARDS ====== */
+        .areas-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .area-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            padding: 16px;
+        }
+        .area-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .area-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            color: white;
+        }
+        .area-name { font-weight: 600; font-size: 0.82rem; }
+        .area-item { font-size: 0.75rem; color: var(--text-muted); padding: 3px 0; display: flex; align-items: center; gap: 6px; }
+        .area-item i { font-size: 0.65rem; }
+        .area-item.critical { color: var(--danger); font-weight: 500; }
+        .area-item.warning { color: var(--area-warning-text); }
+
+        /* ====== CONTEXT CARDS (UC Mapping) ====== */
+        .contexts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .context-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        }
+        .context-card.full-width { grid-column: 1 / -1; }
+        .context-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+        .context-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .context-name { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .context-body { padding: 16px 18px; }
+        .context-badge {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .module { margin-bottom: 16px; }
+        .module:last-child { margin-bottom: 0; }
+        .module-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .module-name { font-weight: 600; font-size: 0.85rem; }
+        .module-count { font-size: 0.7rem; color: var(--text-muted); font-weight: 500; }
+        .module-divider { flex: 1; height: 1px; background: var(--border); margin-left: 8px; }
+        .submodule { margin-bottom: 10px; margin-left: 12px; }
+        .submodule:last-child { margin-bottom: 0; }
+        .submodule-name {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .submodule-name::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .uc-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+        .uc-pill {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 6px;
+            font-size: 0.68rem;
+            font-weight: 400;
+            white-space: nowrap;
+            line-height: 1.6;
+            border: 1px solid;
+        }
+        .section-active .submodule-name::before { background: var(--success); }
+        .section-active .uc-pill { background: var(--success-light); color: var(--pill-success-text); border-color: var(--success-border); }
+        .section-active .card-badge, .section-active .context-badge { background: var(--success-light); color: var(--success); }
+        .section-backend .submodule-name::before { background: var(--info); }
+        .section-backend .uc-pill { background: var(--info-light); color: var(--pill-info-text); border-color: var(--info-border); }
+        .section-backend .card-badge, .section-backend .context-badge { background: var(--info-light); color: var(--info); }
+        .section-unused .submodule-name::before { background: var(--warning); }
+        .section-unused .uc-pill { background: var(--warning-light); color: var(--pill-warning-text); border-color: var(--warning-border); }
+        .section-unused .card-badge, .section-unused .context-badge { background: var(--warning-light); color: var(--pill-warning-text); }
+
+        /* ====== SECTION HEADERS ====== */
+        .section { margin-top: 32px; }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .section-title { font-size: 1.15rem; font-weight: 600; }
+        .section-count {
+            background: var(--bg);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        /* ====== LEGEND ====== */
+        .legend { display: flex; gap: 20px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-muted); }
+        .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+        /* ====== FOOTER (badge-footer) ====== */
+        .badge {
+            display: inline-flex;
+            align-items: stretch;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.30);
+            font-family: 'Poppins', sans-serif;
+            margin-bottom: 10px;
+        }
+        .badge-bar { width: 5px; flex-shrink: 0; }
+        .badge-body {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 14px 7px 10px;
+            background: var(--card-bg);
+        }
+        .badge-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--bg);
+            flex-shrink: 0;
+        }
+        .badge-text { display: flex; flex-direction: column; gap: 1px; }
+        .badge-name { font-weight: 700; font-size: 13px; color: var(--text); }
+        .badge-role { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+        .badge-date { font-size: 10.5px; color: var(--text-muted); }
+        .badge-seal {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 7px 10px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            color: var(--bg);
+        }
+        .badge-footer {
+            margin-top: 40px;
+            margin-bottom: 32px;
+            display: flex;
+            width: 100%;
+        }
+        .badge-footer .badge-bar,
+        .badge-footer .badge-icon,
+        .badge-footer .badge-seal { background: var(--primary); }
+        .badge-footer .badge { display: flex; width: 100%; }
+        .badge-footer .badge-body { flex: 1; justify-content: space-between; }
+
+        /* ====== HELPERS ====== */
+        .bg-primary { background: var(--primary); }
+        .bg-success { background: var(--success); }
+        .bg-info { background: var(--info); }
+        .bg-warning { background: var(--warning); }
+        .bg-danger { background: var(--danger); }
+        .bg-secondary { background: var(--secondary); }
+        .bg-purple { background: var(--purple); }
+        .bg-orange { background: var(--orange); }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .text-success { color: var(--success); }
+        .text-warning { color: var(--warning); }
+        .text-danger { color: var(--danger); }
+        .text-info { color: var(--info); }
+        .text-muted { color: var(--text-muted); }
+        .fw-600 { font-weight: 600; }
+        .fs-12 { font-size: 0.75rem; }
+        .mt-16 { margin-top: 16px; }
+        .mb-8 { margin-bottom: 8px; }
+
+        /* ====== PLAYGROUND EXTRAS ====== */
+        .playground-label {
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            padding: 6px 12px;
+            background: var(--card-bg);
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            display: inline-block;
+        }
+        .playground-section {
+            margin-bottom: 40px;
+        }
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+        .color-swatch {
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .color-swatch-block {
+            height: 64px;
+        }
+        .color-swatch-info {
+            padding: 8px 10px;
+            background: var(--card-bg);
+            font-size: 0.7rem;
+        }
+        .color-swatch-name { font-weight: 600; margin-bottom: 2px; }
+        .color-swatch-hex { color: var(--text-muted); }
+
+        /* ====== RESPONSIVE ====== */
+        @media (max-width: 1024px) {
+            .contexts-grid, .delivery-grid, .grid-2 { grid-template-columns: 1fr; }
+            .context-card.full-width, .delivery-card.full-width { grid-column: auto; }
+            .areas-grid, .grid-3 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .areas-grid, .color-grid { grid-template-columns: 1fr; }
+            .roadmap { flex-direction: column; gap: 16px; }
+            .roadmap::before { display: none; }
+            .tabs-nav { flex-wrap: wrap; }
+            .tab-btn { font-size: 0.78rem; padding: 8px 16px; }
+        }
+
+        /* ====== PRINT ====== */
+        @media print {
+            body { background: #1a1f2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .header { padding: 16px 0 0; }
+            .card, .stat-card, .context-card, .delivery-card { box-shadow: none; break-inside: avoid; }
+            .tab-content { display: block !important; page-break-before: always; }
+            .tabs-nav { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+    <div class="container">
+        <div class="header-content">
+            <div class="header-top">
+                <div class="header-left">
+                    <img class="header-logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARcAAABgCAYAAAA3gzYZAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsIAAA7CARUoSoAAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuOBtp6qgAAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAA8nYBAOgDAADydgEA6AMAAFBhaW50Lk5FVCA1LjEuOAADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAADMbhZ8SlPoHAAAIIdJREFUeF7t3XmcHHWd8PHP91dHH3MRknDJ7ktF8WDV1cDDKq7RdX2MZGaSuMQVXUFdN+gqkswkAR6f54lhPYDcsCJmEV1cLwIkcwQioG6QyyWsoKsseIO7IFeSObq7rt93/+iZnunKTDIxAyQz9X69OpOu37eme6p/9a2u+lb9CjKZTCaTyWQymUwmk8lkMplMJpPJHMD8j81IT8pMAYtX+byjsyE9ebqR9IQjWuuqIm7wKojSLfvhQWIreMkAjruHLZftTUc8F5wFnW1JvvmfqfRdQNe6r6XbJ6St8yXki0cTldItk8gDIqiE/8GOK4N0Kxzi+zCmj7zzNN+4dHe66ZCdufw4Ggovqr6vCfwdk2X+su/iysvw9JXcsKGcbp4uplhy6TwN3/831IIqoOB4YJx0ZD2bQByBTfZieAJ1fouRn6JyFyb+AVvXPZme5VDJ/I47tXnGGQzsfoCe9a9Pt09Ie+c3yDeeTfgc9l8xYGOI45PYvvFX6WYA2jt7aDmmleAgkosqaAJRAGp3I85jiN6PuLfgBL2TslK2d1xEvunzhOWJ/R2ToW3Zn+EX7sHxMJXBc2332uvSIdPF1Eou7UtPxcndV0suYsAmvwB+nQ6tsTaHMS1gj8V4x5FrqCalJK7+jMM9InK9loLP851Nv0nP/odw25b9Wezl7iGJwfFw43Bu3L3ujnTcAbV3bqVp5sJ9VmoZ42NVC+HQBluGVm7XHz/xDv8OccBGEJReTs+GX6TDAFjYcTZOYQ7RBPKBWgFnFkabUE5CzGvJNUASVT8vQKLgV4L+g+1a+9X07AelrWMl+YbLaskliSyYl9Gzbvz+cIikveN69YuLsQkSBru0d/1p6ZjpYoxeeARrX3oqxh9JLn4eKuX30rv+2+nQfcxdlWdm+GKS+C9A/hbPfwNRUF1CXgHiym4nCs9Nejf2pGc9WLUOGJbBLyBh6UbtXn9WOu6A2pafQS73UiqVkWlGPcQcPToMANU/Rsz5qK0+dz2Iwn9C5QfpUACEAkaaAbCq5N1rnpNdxoUrXyXIB5WkA3FdkrCa9BwfgoF1dK9fnp5lwto7V+AXLq8lF41j1Jz8nCWXts6XIOZhBA+14Pq4UfTmuGftXenQ6WDqJ5eg9AF6NvxLOvQAxCxYcbF1nM+SJNWv724OrI2Q8DS2bngwPcOEpTugGFAixJxM12WT8s1oTAvPPwkKv0gl3kX0rt+WDn1BtC0/A1e6wMysfYvxi5hg8Gzbve5b6fAJeZ6Ti7R3bNBcw9LaN0m/gJRL1+v29X+djp0Oqt9DpzI1f0gCVdu15nMmjjrw/GoOjgNwfY/YXJYOPhiCPZ9cvppYGNpdyeU9sfF56dhJZZ0xKlPSlJ7ygulZe5cTxudUd41MNQEmEVaT1cxd5abDDzvzL5qhyoeIRh0rjgLUdRbQ+sk/Hh06XUz95HIIbPe6DYSVO3Fz1QQTVQB9G+0rTkjHTsj8i2YoTrUDOt7IcY04RIUPTffyZbJ9w80SVL5XTehUD7K7uZNp6X9NOvZwY5z4Q+QbWlBb/WzR6obDz+dEzJJ0/HSQJZcDEfkiw19+1IKX85HkD+rs1Q5YOAoEiaO7SZJ+RKoHj/3CsabAe9LzTDcq5sbhA7vVap8LVl+VCju8zFniWZJPkMSQ6B5JgvuqCWZow4HzYc5aVkjPNtVlyeVANLqfoGxr3zKMgViPTYcd0Jwlng53QGuTXN49W8T8AHdoK20TVPWC9GzTjkkewSb109QMramHJ3Ni47vxG16CcRCjXR7uB6qHM4c2HLnC8SZ0Fqfnm+qy5HIg1nkGtYMjW1PAHPxxHHNi47vVb3gJxiBEt1S2XPaoCF+r/d44RP3865z2ZW9LzzutGB2sHY8a5ojWTzi8qNVO1IJNcKzzlbB7zcMkwX0jGw6LWnt+er6pLksuB+QVEZOvnpRX/aaO6EGcLVZV64CqGNxNANa3XYSDT+AMHa8Ug8V8MjXr9JJ4x9Sde2MtwH+PijisuAtW/Ll6+eq5LGH4o7h3zU4AY2UzZnjDEaB+7lS3bfkZdTNPcVlyORATnoSXGyoby9DJXsnP02H7U+uACkTlHyfda28H4IYNZVH5Wm0LFwUoZn7u3Re9tP43TCf2jNq3OeNAHPYh0a501OEisbYDY0AMxnDl8HRrnG8TlJ6pJUrjkFg7rTYcWXI5IGkf6SAu2PhRAvtQOmp/ah3QGIxIrQMCKLqZoJIgUitLh1H40dEx08a883PA2SRR9Suil0eU6+natCcdejjw21e8QsVpwyYQDj5hbf/IyZrda/pF+CZervo8ClAjC6dTWTpLLvuz8KKZiDmXOBzq7D6C/PNBXfi2sONkFVPtgMHgk7Yk36xr79nwC1F7e7XcDUQhKvJBFq9qrIubBsRzPkeueGK1BO0j0WC/WvvpdNzhIiL5JL7v4HiIyjX0bq7bXdZEvkQUaG3DkS/606ksnSWX/RCNr8bLzSCJq2folkuPa+JtSMftj1guwM9VO6CYa7ht3WA6Rg1fqD2xMeSKs03Qd3Zd0FTX1vkJ9YsdhBXwfLDWGpuczfYN/5UOPSy0dsxS4QMkMYSlilq9Oh3C9nX/IXE0UhGcZmXpLLmMaZVh4Ypr1MufRViubkWtJo7V97H9IIYGGN0BK6VQbfSldAgAx/bvICj/pnZuRBKjmI+nw6akxcuPk/aVX8LPXzlUtgXlaceG7Un3xu3p8MOFMXwEv6EJx0Ws3jReEhRHrqodQ5pmZeksuaS1X/gWaS/fiZv7W8IK+EVQO2DiyqJk+7p/TYfvT10HVL2J3iseTccAsHlzZIx8GXfUiVdebmqUpdNb6bmr8iz41B/R3jmf9uVfINSfab64ZPigqMTBlpwtn3Y4Jxbmrsqr6sdJIkhiHJWN6ZBh1tNuKqXHaxXBaVSWzpLLglVHsWjFG2hf+UnaO/8Vh53qe2+sXtyXQ5LouyThnx301dCjO6CNcUQ3pUNGsza6jrAS1LZyYrCJHPEn1TmhtLLo4v+gtfM+2jp+RNPAI2j5EbxcL40z/h6vMIPK4ONEwTUu9o269fL3BF2TM7TFc8UcNbBYcw0nVpNh5c64d9196ZiaGzaUxZivjuwaTZ+y9PRKLu2dn2XRp+6jteM22jp30drxn+jAbxH3foqNmyi2zMX1IarERNGtJOEC3XrZX9Kz8afpX3Ug9R0wvDfu2XBvOqZO7xWPik1666oLjnPmkV6WTnJNXRJHT9F01Km4/p/iuX+E4+UJgwEG915IlPwl8Aq2Xf538dbL97+MDhOaJMuwSbX8LM5+NxoAqsm1ROV45Czv6VGWnl7JRTmJQvFUCg1/Sa4wh1z+FUAzcfQ0pb3/Trn/OqJgCY55Nd2Xv5Ota7rTv2KiRndAEcb92jyaEXN1+mrpI74svWV1qNZ9t5T7HqudJ2QTcD3ficNf0fX579K9pj892+HKaev8C80VXw8K4eCvk+P6u9Ix++jZ8AsSe+tIRXB6XC09vZJL5J9P0PcGotKpxPGphOHrkPwfk2t4Cd3r5tC15ly2Xf5P3LTmoE6SS6t1QFUIB39r/aat6ZixJN1rvktYeWjkpLoQpkJZevulu50kfg+JTTDO0BCX1k/c3LfcBR1vSocfzqzoChBwPIzK1WzePKEBmx0jV9dGT5omV0tPr+Sy4/NPceNlP2LbuvvZdun99Kz9MV2ffYwtqwfSoYfCop0g4HoYNV9iy+owHTM2UYN8eeTgX4xOkbJ03LPhXmPD5Xj56gQbg2OcRNwtnHXx7HT84chrW3mKGved2BjCwX6rXJuOGU9ybP8OwtKvp9PV0tMruTwf2laeoo77rmr5uTxgXb6cDtkf6/I1KuWB2nUpSYzCJ9JxRyLbs2GjBAM3kStWJ8QB6vonSFC5Ph17OIpJluL6guMhlm/Qu/7pdMy4Nm+ODObaWkVwGpSls+QyyWS4A7oeQvKtg75zwNZ1T4okW2v753GIeoXXTomyNKA5/8MSlX5T+/vCMppvequ0LV2Xjj2snLn8ODXmbOII4lBV5Ip0yIFYx/kqYalSqwhO8bJ0llwmU9vFx47qgKjhoDsggGOcL2LjkQkiU6IsDcCWy/Y6NlmMxjFmaPcvLKG5xg7TvvT96fDDhXE5Dz/fgOMiSXwb3et+lo45oK2X/06sbq9VBKd4WTpLLpPISPDRagd0kDi+na4NP0nHTES8be09ElZ+VHe19BQoSw+LuzfuMlH8idpKpgpxhBXvGm/+stel419wrUuKluSjw9eYGcP6dMhEGeQqdNRgWFO4LJ0ll8nSuqRo0aEOKBjHOahrkNJEnKtxhq7GVp0aZelRbO+GL0lQ+mrtPlE2AtfLx55zA/POr97S5DBhTON7yTUchxgkrDyUdK27NR0zUUnP2u9LGIyqCE7dq6Wz5DJJjGl8L37DcYggQfnh5E+LO9IxB8Pm3W9TKe+pDfcwVcrSo2gYflQq5QfwhgomUQX1Ci8T3/96OvaFo6Kqy0gScFwEroRDGRlPVDCbaxXBKXy1dJZcJom1LMUmVK9+ln9k9erUWI0Hactle0WSb44MlTh1ytI1O64MPBu8Bxv3V0u0AkEJzTW0Stuyw2KoBad1+Tz1i3+CtRCUnrZRdMiJz0bB1wnKgyMj1U3NsnSWXCaB07Z8Hrn8a7AWKoPP2LL7h91YPsUV3Vwd+W7o7KspVJYeFm6/4udOFH4I4478nWEJ9QurnLalC9LxzzcrSWdtLB+1X2XHlX3pmIO248qnBN1Sq5hN0bJ0llwmgSVeDjI0mJRex+2Tc9vTqGvTAxLHd9aNB+IVXuu0r5gSZelhSe+GGyWqXI4/dP6LKtgE6/jX8a6Ok9Pxz5tFy16nbu7tJDEElUgxV6VD/lAOXF1XEZyCZeksuRwir9YBQ4jKsTrOyMBPk0BEr66784AINkmmRll6FO1ed6FUSv+KX6ge4E0i1PGaxTM3MnfV0Gm9zy9JZBmOB66HaNI9mbeBjbvX/VCi8N+n8tXSWXI5RHGtA/qItdvZtvaX6ZhDYcuyjbD8+9oBwChAXZnPFClLj6aE7yWsPIUzdAvdqIzmCn8iLQPXpWOfc4tWnqhi3kscgrU4mEOq/o1FDV+sVQSplqXjKVSWzpLLoah1wKDaAc2hlZ/HdNu6QVE7cocAVfCLrkTBx9KhR7yeK37vEH+oOnDU0E3Fqgd4F0v7skO6R/fBkiT5GH4hh3GQMNgV96y9Kx1z6JIbCEq7RyqCAUyhq6Wz5HIIRjqgi8TBv8fbqvesmWyeuNcQBNU7BDA8iLc5l/YVh8+N5CdJ0r1xu4TlDbXjLwwf4G1YaVqXnTc69jmzeFWjwt8Rh1TvojixITMOWtemPaLyjZGTCafW1dJTK7mouOSK4Beqj1wR1D43++uLlh6PyP/BuJArIpgDDhr0hwq71zwsRDtpOKr6d7keNM2cbUgmPs6uiltbLsMPdKhXH160r3mlVAYeoNhSfZ9eHoyDbTzqaqe986x0/Pi0ONIfiuAVXLCj9kPGZoKBDppmziZXRMLy03Zv043pmMniWvtPqEK+ofo+jYMacyHzzj8irhTfnwMu6CPKKadBREIS3U0c3o1yN4nexiN3P54OPWQvf+NxuP4TRJUdhJUdOqPxn3lw56jD/5PsZW98EMf5JVHlNmx4Gwm3q41+zcP3TOwal1ec4aHJ0cTRj4mDHwM/xtodPHL3Y+nQF9xvd1peftr3MFQIw7tJwurnKfxQbSI8fM8P07OM6VVvBmufIizfjY3vJonuJOB2fnlvOR06mr7yjBeRJD/EcitJeBW3XvpIOmay2J/f+3tedupjKHeShLcRV25D3DvAf4hH7pqUqmMmk8lkMplMJpPJZDKZTCaTyWQymUwmk8lkMplMJpPJZDKZTCaTyWQymUwmk8lkMplMJpPJZDKZTOZ5MzS0WWbyqDD3087iY07RLf0/cHEaii1uWY2f192Vch68Yt7DAqgVN0CP8gDPqo0cR1STYqw0OBbritFYreCIm8TMMiKKWHXEKGolETFWmYGIb6wqgJHqDbusqIAIqnkr0oy1yFBblWh6pDCr1kzW+GFGVNM3D7Norb+pqmAMqFaMSB+A0epysVqNs0YEq2pEnkKxjsEmagVVscYVVAccw6BrsbFaSQwGdULP2D7PujZyrETqCNhSToOyOK5WIgyuE7XYYMD4ed1dEkMYhYuPOr0CsOXJnwo7Vz934/JMI1M7ucxd5c4Fdh5TaWgJK7LX5BpzVlxVm1NjGwEiKzMcxwhJ1KhiGh1VG6nOdo1xrBXHYmc5Yqy1mldjj3YwiVUKCkeJWAvGVcsMMVYBVE2LiPVExargKTSJVlcyVXyMzYsVi4CqOLjVEZoFrf4rwvBo/8MfTjVrjLfST+2PsGqsGxxKdVhIVaQuQhFrh6ZUlyo2QZQIVVWjBiQWldJwigMNDKakqqqiRlT2ChJagxGlArYfNUbR0BGetahRNYEjPGtFBKslR6TPCgarux0kiAzWEZ5GrYgwKOKUoiTRnHi7A6BJpN9E2L3ybDC3//hw5xRMaIdVz5yzZIl3/+4ZxUYt+VHgN6pQUEPBJrSA+Cp2JoiP6EzAV2uOQtXH2KOxjofoDMR6WNNMtRMdBaBWW0REVGxR1DgIrhpHBKg+ZWilHl4cB1osWh0ou/Y0/f/089qTMdaT1IRqGqqfljk4tc+xbmLq6X6ej76VCzJq1tF9ZH+qn7OoHfo4LaKKokhio2rasyVELFbLGALFBGIZUEMssEer39SetmhiME9b1cgR2W2tDTCyR5Qyov2SMCiulAXtN0YC39j+PgnCuU/OrrzQCWsiS2piFq/yoVIokhSSittotdKsxmlUaFLhaCwtQJMamYG1TYi0ADNQbQCaEGlENY9IM6gLUlRjEHGo/hR0+EMf/QGPXhmHV+Taz6E7qtZW8OGVe7yVP5N5Dkjtn5Gfw9NqP2VU2+ifo5PbqP6u1YcMfXvDxqhNrGBKqAYgJYQBRMtY2Qv0IzqAmGfBDgrsQeVZjAwIskcc3StBMmA8Z8AV7c8npvzMcXsrbN4cjXr1gzLx5DLv/Gbj5xYiMlvVHo0yE5EZqLYgtABHYWlAaEApYDSPcUTFVLcEoxfe6GQwvKUf/bOWAFSxqmCUod2OTCYzijUCVjCmuoLVJaShpFWblkpwtfXNVnclE5tghhITdhDMAGgfyF5gN7AH4VlR8wzYx22u3MuWqwZG3ky9g0kuOQr5U1BxiSJwXEtiFUctahKIExK1uFgS3+KpJYqrCcE4WWLIZA5XNhE8V0gSwbqCg8GIIUocjBjEVn/GGNQKngcSBbjND7FldZj+dZlMJpPJZDKZTCaTyWQymUwmk8lkMplMJpPJZDKZTCaTyWQymUwmk8lkMplMJpPJZDKZTCaTyWQy09jEx3M5Usw7/0Ry3in8buB73D/OKFoLLnwxxaZXMLj3J3Sv+e+6tvbOtyDSR9faB+qmD2tf9jZim3DzpjvSTczvnINrj2VP861jDvLc2jELPz+HqOJhRg+n54INI44f/O5+R/5q/3CTcWa9z1F5vRVVhQfss3tuZOfmp9OhACy+sIWQt8DQW7E2AgeMegd8zfYVJ5DPv4a+Pfew48q+dDMMxTS0vIa+Z55g+4YH083M75xDQ/MsSnvvp3f92O+xtWMWvjuHKE4tk+pI3WjT9+hdXaqbDoAKrSvfgok8ujfeXtc0vJxL3j3sWL3ve5+38kSK7utJAkgAR0NQB4yDk4Mk2kPXmh+kZ6tpXVLEa1kklv8F4qsxDxH0dXHzVb9Nh46pvfMtjnHbEFosPKlxcAs9G+9Khx3pxhv1+cjleW04uR3MbGhKN9Vo8n5cbwdqu9NNkNyI1UvTU0fISopNO3nn0uPrJs9dlcfhTixXcMzPxh4cy8jpuN4ORLpJ2Fp7qG5FzHX819GN6VlqWjtm4cy613r5q+M4equN4rdZr3A1M2c+yMKOk9PhAMT2JFS3YqX6Om7uFlznlgm9piRn4uV34JtXpZtqkmQejrMDkVuYs8Sra3tHZwNiv4/j7MDI6XVtoxk5Hbe4A5GeumVizVZEbkAGjk3PAsDcTzsYewMNs26jtfMD9Y3yRvzCDvyBsd+7F70VhpYJdhtObgfibq++rm7F2rXpWWraPvla3Bk/w2/8F1V7ttqoFcfdRL7l16btgg+mw/cxf9nFFJt3JknyEZtEp2sSddJw9J3StnR1OvRIN/WSixIRh+Dlxl7BAdCQ8gAUm+bQdsHS+iYGEcp100YzdgNeHnLSWje9ae9baJyRx5j1bNmS1LWNFlUAnYN6s2uPxMxG4pPZ/vk96fAaQweO/2pKe9+kvetfqb3rX0l575vxcidg5R/T4QC4pz1IYmZj3errxNGDxPF3JvSaViKiAJDx/xY0ptwPfu54jm94U11TQd9OrthEMABqx/8dFouNQXl73TKxzmwS73je0Li/bwN9xCEYrmT+RTNGTY+JA8CM/br55uvJJ0OvpS8niUGjz6LebIo6myh8R3oWABZccBRO/mbEOYbB/nfSve4Yejb8EcHAn2Dt/bY44yu0LT8jPVtN+4oTyOU/R2Xgy/Q1zNbu9a9jb2U2lYFt2jjr/4+7kThCTb3kMhGqHkFpgEr/9/Hya2hfccJIm9lPUgIeK32f0u7dWK3fSol5P5VBxUY31k0fi8b/zfZLd9c9ujbtSd/nZzSBOVRKj9O76Z7axJ6Nd1HacwmqT9UFD9vynqTuNcSGiFYm+poHZIxHVOkjCh9BTWqrrecSVn5CHJYw7oH7mfDEPstk+6W7Wb16aJT1MVjbSHngdjBFTLgx3TyuLatDvjH0+wfCJ6sTpZ/tl+7mG5fuHnc3UJ1zKba8iLh0Nr1rb61N79n4UyqlM4nDANV/qJtnFFeSF4uXh0rwzdpu886rBogrFxCGt2FldII84h34Q5+KBEHUI47OQyXBxpvTIeO6f3OE1a+RK76JM5cfB0O7RMb5K4Ly7fRc8fv0LPsQ9wTmXzSj9njfRTM4a1khHTaaKv9G88zjaV/xFRZ2vquWEHs2rqJn/fvT8WNSY9BJ/MxVBUuE6FcwtNd2jRb/fSPK28FeC0Pjrh6Ictw+y+QdnQ3psDpCA0Z2YpO/p/Hoc5i/9M8BJvR6w3I5HwAVN920L1lE/7PP0rOxK93CjiufIhjcipG3Mm9Vc7oZIDbuoxqUlFzhyyxc+Xf81fLXMu/8HL1XPMqNl/xvutf9MD3PkWzyOtqRRkyO7Vf8nLj8UZpnzWf+J8+sTp9AxzTmK7g+ONoOQFPf6RQaGxD5Ujq0jmiMGLByHxI9VXtUnKeoyKp0eB1xLqe092u47gfJNd2M6/4X7SseZtGKz9C6pJgOf94YacRwE2KbeVHzXAAqxYUIFpUdiJNPz1LHUYtNQLl1n2VS0C+kw+uoUdCZ9K6/hsG+X+L4XwHAcZ6bQaPVvhhN/jM9eZgR70f4eSE/ODvdBsDWy39HHJ2Ng8EvbMYpPkjef4p3X9xVS4xTyPRNLlRvl0LPpq8y+Owu/Py1LFnioaaSDttH19oHGOz7DWo/DICYv6HcX4HmW9Kh9dRBLRj7MRwW1R7oIoxcl46u072mn22Xn0MlOp5KaR5J/FlUA4ozPoVp+jarVr1Qn2WObet/DuYu1H6oOkk/gpqbKTT9bvw7RQ6xRhADhhX7LBPYlA7fh1L95hGXz6Gh6STaOz+KMHZl6lCJKaPSkp48zKLNqIWKCdJtNb3rv80z976UYPD1VMofA3Mr0E6usJPWztPS4UeyA3zyU5x1q1+FlXPxCsfyRONqxI57H5Y6opvxc6czb+WJqC7C2uvHLpmOoqb6rcjKVrrW9dQeN32uh+51P0uH17yjs4EFy9fT2vFmbl77BF2Xf4euNf+XnrWvZeDZTfiFVu6vnJie7XmkINci0jpURXsTcC3hngPvaqgO3WvH3LzvMln/o3T4voaOGd185d30P3stOP9IYs8g2be6Pgl24edexcKPz0w3AKCcSRg8RbnwRLoJgPbOs2hb+hl27ozpWvsA3WuuZtuas/xK6dWIQRz5m/QsR7LpnVyGK0rd635Gqe9zeIWLMblXo7r/JAFg5F9I4hg3+QKuMxPMxI/b9Cf7ngOzP2FjguMtw5FL0k0kySMiwv73PZ5jZy0rkHO6sFbImS8i9hnyj+4EZ/zTAdKMHtwyGYtxlyK6G8/9HDZh8m+kZ6+l0GjQ/OXpFtO67H20zHw9hs1jnuMEgJ5K87Gf4l0fr6sKhTdveog4irHqjJ5+pJuCyUV8vBxEufGPnQg+rg9RMBJzwuCnCcu/pHlmAeHAW9yu9Y8Rx99nxrHtWPsLetbcnQ7Zh2DwctDsfob2zktGHisuoa3z06ly6oidqysSBZ+h4ei30bbi686Cjne6C1b8OQtWXEiu8AWC0p2VOfnfpWcbQxHDfg8c16h6uH51V248QjWmjwJbLtsL3MHRJy7AmpvZsiXBag7X3//BUlEHx4OET9Uvk85LWLjikrpKXpqRRqyO5NXuNf1Yex65hmb8AmDHf+/DklBw/WqfOJDuDd+n75nNNM36MAs6v0drx1/T2tlG+/Iv2MYZX5fS3gdQc1l6tprEbqbUP0i+8Q5al53nLuh4E+2dZ7Hwwjskl/dU9VvpWY5kUy+5iPyKMPgOLYx/UE/5LXGwCxOPbGE2b44Q+TBBeRfIw3Xx43GdK0nC+1FZP6GSrrVPEYa7EN6F2nNqDzgH7N/ghmOf0AZoz/r/x+Czq3GdNmu8HYnIHQifwcbfVOMt3G/JtsbuAv1JeuqYhCeIgl0Yxi7LAiiPE4Yjy9HIZsqD94NWD6xaykThLtQ+k5pzFH2aoLwLTd4C9pyRh5yDlXOQeOxdkGNOUdT+AMMjddN71t1Eac9mVHeB7a9rG4tnIuLKLpT9nU8zonfDefQ/cyHGvBo/9y3x/W7gI1QGv6yDT7+d7jXjv+b2jb8iGHw7yO/wclcn4t6F424BOc6U9pxF7/o707McycbfumcOT/POz9FSPD4XiQlKg0+Pe05G5rm1eLEDL31RLhE3cHJPsmX1xI7VDVu8/LicyTUE4pb51ur6S1AymUwmk8lkMplMJpPJZDKZTCaTeT79D3dWjaxlAGYSAAAAAElFTkSuQmCC" alt="Banco Patria">
+                    <div>
+                        <h1>Playground de Componentes</h1>
+                        <div class="subtitle">Catálogo visual de todos os componentes do Design System</div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="header-badge"><i class="ri-calendar-check-line"></i> 17/03/2026</div>
+                    <div class="header-badge"><i class="ri-git-branch-line"></i> v1.0</div>
+                    <div class="header-badge"><i class="ri-file-list-3-line"></i> 15 componentes</div>
+                    <button onclick="toggleTheme()" class="header-badge" style="border:none;cursor:pointer;" title="Alternar tema claro/escuro">
+                        <i id="theme-icon" class="ri-sun-line"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- TABS -->
+    <div class="tabs-nav container" style="padding-bottom: 0;">
+        <button class="tab-btn active" onclick="switchTab('visao-macro')">
+            <i class="ri-eye-line"></i> Visão Macro
+        </button>
+        <button class="tab-btn" onclick="switchTab('visao-tecnica')">
+            <i class="ri-code-s-slash-line"></i> Visão Técnica
+        </button>
+        <button class="tab-btn" onclick="switchTab('mapeamento')">
+            <i class="ri-stack-line"></i> Mapeamento
+        </button>
+        <button class="tab-btn" onclick="switchTab('diagramas')">
+            <i class="ri-flow-chart"></i> Diagramas
+        </button>
+        <button class="tab-btn" onclick="switchTab('elk-test')">
+            <i class="ri-bug-line"></i> ELK Test
+        </button>
+    </div>
+</header>
+
+<div class="container">
+
+<!-- ================================================================== -->
+<!-- ABA 1: VISÃO MACRO                                                 -->
+<!-- ================================================================== -->
+<div id="tab-visao-macro" class="tab-content active">
+
+    <!-- ========== STAT CARDS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componente: Stat Cards (KPIs)</div>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-card-icon bg-primary"><i class="ri-stack-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number" style="color: var(--primary)">15</div>
+                    <div class="stat-card-label">Componentes</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon bg-success"><i class="ri-check-double-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number" style="color: var(--success)">2</div>
+                    <div class="stat-card-label">Temas</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon bg-warning"><i class="ri-paint-brush-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number" style="color: var(--warning)">10</div>
+                    <div class="stat-card-label">Cores de Token</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon" style="background: var(--orange);"><i class="ri-rocket-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number" style="color: var(--orange)">100%</div>
+                    <div class="stat-card-label">Self-Contained</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon bg-purple"><i class="ri-font-size-2"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number" style="color: var(--purple)">1</div>
+                    <div class="stat-card-label">Família Tipográfica</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-icon bg-secondary"><i class="ri-remixicon-line"></i></div>
+                <div class="stat-card-info">
+                    <div class="stat-card-number" style="color: var(--secondary)">2.8k+</div>
+                    <div class="stat-card-label">Ícones Remix</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== TIMELINE / ROADMAP ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componente: Timeline / Roadmap</div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-primary"><i class="ri-flag-line"></i></div>
+                <div class="card-title">Marcos do Projeto</div>
+                <div class="card-badge" style="background: var(--primary-light); color: var(--primary);">Marco 2 em andamento</div>
+            </div>
+            <div class="card-body">
+                <div class="roadmap">
+                    <div class="milestone completed">
+                        <div class="milestone-dot"><i class="ri-check-line"></i></div>
+                        <div class="milestone-label">Marco 1</div>
+                        <div class="milestone-date">15/01/2026</div>
+                        <div class="milestone-name">Descoberta</div>
+                    </div>
+                    <div class="milestone completed">
+                        <div class="milestone-dot"><i class="ri-check-line"></i></div>
+                        <div class="milestone-label">Marco 2</div>
+                        <div class="milestone-date">15/02/2026</div>
+                        <div class="milestone-name">Estruturação</div>
+                    </div>
+                    <div class="milestone current">
+                        <div class="milestone-dot"><i class="ri-code-s-slash-line"></i></div>
+                        <div class="milestone-label">Marco 3</div>
+                        <div class="milestone-date">15/04/2026</div>
+                        <div class="milestone-name">Desenvolvimento</div>
+                    </div>
+                    <div class="milestone future">
+                        <div class="milestone-dot"><i class="ri-test-tube-line"></i></div>
+                        <div class="milestone-label">Marco 4</div>
+                        <div class="milestone-date">15/05/2026</div>
+                        <div class="milestone-name">Validação</div>
+                    </div>
+                    <div class="milestone golive">
+                        <div class="milestone-dot"><i class="ri-rocket-line"></i></div>
+                        <div class="milestone-label">GO LIVE</div>
+                        <div class="milestone-date">16/06/2026</div>
+                        <div class="milestone-name">Produção</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== PROGRESS BARS + ALERTS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componentes: Progress Bars + Alertas</div>
+        <div class="grid-2">
+            <!-- Progress Bars -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-success"><i class="ri-bar-chart-2-line"></i></div>
+                    <div class="card-title">Progresso por Módulo</div>
+                </div>
+                <div class="card-body">
+                    <div class="progress-container">
+                        <div class="progress-header">
+                            <span class="progress-label">Módulo de Cadastro</span>
+                            <span class="progress-value text-success">85%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill bg-success" style="width: 85%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-header">
+                            <span class="progress-label">Módulo Financeiro</span>
+                            <span class="progress-value text-info">62%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill bg-info" style="width: 62%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-header">
+                            <span class="progress-label">Módulo de Cobrança</span>
+                            <span class="progress-value text-warning">35%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill bg-warning" style="width: 35%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-header">
+                            <span class="progress-label">Integrações</span>
+                            <span class="progress-value text-danger">12%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill bg-danger" style="width: 12%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-header">
+                            <span class="progress-label">Relatórios</span>
+                            <span class="progress-value" style="color: var(--purple)">50%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill bg-purple" style="width: 50%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-warning"><i class="ri-alarm-warning-line"></i></div>
+                    <div class="card-title">Alertas e Notificações</div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-success">
+                        <i class="ri-checkbox-circle-line"></i>
+                        <span><strong>Sucesso:</strong> Deploy realizado com êxito no ambiente de homologação.</span>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="ri-information-line"></i>
+                        <span><strong>Info:</strong> Nova versão da API disponível para testes — v2.4.0.</span>
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="ri-error-warning-line"></i>
+                        <span><strong>Atenção:</strong> 3 dependências estão com versão desatualizada há mais de 60 dias.</span>
+                    </div>
+                    <div class="alert alert-danger">
+                        <i class="ri-close-circle-line"></i>
+                        <span><strong>Crítico:</strong> Pipeline de CI/CD falhando no stage de integração desde 15/03.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== LEGEND ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componente: Legenda</div>
+        <div class="card">
+            <div class="card-body">
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-dot bg-success"></div> Concluído</div>
+                    <div class="legend-item"><div class="legend-dot bg-primary"></div> Em andamento</div>
+                    <div class="legend-item"><div class="legend-dot bg-warning"></div> Parcial / Atenção</div>
+                    <div class="legend-item"><div class="legend-dot bg-danger"></div> Bloqueado / Crítico</div>
+                    <div class="legend-item"><div class="legend-dot" style="background: var(--milestone-future)"></div> Pendente</div>
+                    <div class="legend-item"><div class="legend-dot bg-purple"></div> Customizado</div>
+                    <div class="legend-item"><div class="legend-dot bg-orange"></div> Go Live</div>
+                    <div class="legend-item"><div class="legend-dot bg-secondary"></div> Secundário</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== COLOR PALETTE ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Referência: Paleta de Cores (Tokens)</div>
+        <div class="color-grid">
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--primary);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Primary</div><div class="color-swatch-hex">--primary</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--primary-dark);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Primary Dark</div><div class="color-swatch-hex">--primary-dark</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--secondary);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Secondary</div><div class="color-swatch-hex">--secondary</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--success);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Success</div><div class="color-swatch-hex">--success</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--warning);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Warning</div><div class="color-swatch-hex">--warning</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--danger);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Danger</div><div class="color-swatch-hex">--danger</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--info);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Info</div><div class="color-swatch-hex">--info</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--purple);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Purple</div><div class="color-swatch-hex">--purple</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--orange);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Orange</div><div class="color-swatch-hex">--orange</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--teal);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Teal</div><div class="color-swatch-hex">--teal</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--card-bg);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Card BG</div><div class="color-swatch-hex">--card-bg</div></div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-swatch-block" style="background: var(--bg);"></div>
+                <div class="color-swatch-info"><div class="color-swatch-name">Background</div><div class="color-swatch-hex">--bg</div></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ================================================================== -->
+<!-- ABA 2: VISÃO TÉCNICA                                               -->
+<!-- ================================================================== -->
+<div id="tab-visao-tecnica" class="tab-content">
+
+    <!-- ========== DELIVERY CARDS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componente: Delivery Cards (5 estados de status)</div>
+        <div class="delivery-grid">
+            <div class="delivery-card">
+                <div class="delivery-header">
+                    <div class="delivery-icon bg-primary"><i class="ri-user-settings-line"></i></div>
+                    <div class="delivery-title">Módulo de Cadastro</div>
+                    <div class="delivery-marco" style="background: var(--success-light); color: var(--success);">Marco 1</div>
+                </div>
+                <div class="delivery-body">
+                    <div class="delivery-item">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div>
+                        <div class="delivery-item-text">
+                            CRUD de Associados
+                            <div class="delivery-item-detail">Entidades, validações, API e tela completos</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div>
+                        <div class="delivery-item-text">
+                            CRUD de Fornecedores
+                            <div class="delivery-item-detail">Incluindo busca por CNPJ na Receita Federal</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-progress"><i class="ri-loader-4-line"></i></div>
+                        <div class="delivery-item-text">
+                            Importação em lote via planilha
+                            <div class="delivery-item-detail">Parser pronto, falta validação de duplicatas</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="delivery-card">
+                <div class="delivery-header">
+                    <div class="delivery-icon bg-success"><i class="ri-money-dollar-circle-line"></i></div>
+                    <div class="delivery-title">Módulo Financeiro</div>
+                    <div class="delivery-marco" style="background: var(--primary-light); color: var(--primary);">Marco 2</div>
+                </div>
+                <div class="delivery-body">
+                    <div class="delivery-item">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div>
+                        <div class="delivery-item-text">
+                            Lançamentos contábeis
+                            <div class="delivery-item-detail">Débito e crédito com partidas dobradas</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-partial"><i class="ri-subtract-line"></i></div>
+                        <div class="delivery-item-text">
+                            Conciliação bancária
+                            <div class="delivery-item-detail">Importação OFX pronta, matching parcial</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-blocked"><i class="ri-close-line"></i></div>
+                        <div class="delivery-item-text">
+                            Integração com gateway de pagamento
+                            <div class="delivery-item-detail">Bloqueado — aguardando credenciais do parceiro</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-pending"><i class="ri-time-line"></i></div>
+                        <div class="delivery-item-text">
+                            Relatório DRE
+                            <div class="delivery-item-detail">Planejado para Marco 3</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="delivery-card full-width">
+                <div class="delivery-header">
+                    <div class="delivery-icon bg-purple"><i class="ri-links-line"></i></div>
+                    <div class="delivery-title">Integrações Externas</div>
+                    <div class="delivery-marco" style="background: var(--purple-light); color: var(--purple);">Marco 3</div>
+                </div>
+                <div class="delivery-body">
+                    <div class="delivery-item">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div>
+                        <div class="delivery-item-text">
+                            API de consulta CNPJ (Receita Federal)
+                            <div class="delivery-item-detail">Endpoint REST com cache de 24h</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-progress"><i class="ri-loader-4-line"></i></div>
+                        <div class="delivery-item-text">
+                            Webhook de notificações (ClickUp)
+                            <div class="delivery-item-detail">Receiver implementado, falta retry policy</div>
+                        </div>
+                    </div>
+                    <div class="delivery-item">
+                        <div class="delivery-status status-pending"><i class="ri-time-line"></i></div>
+                        <div class="delivery-item-text">
+                            Sincronização com ERP legado
+                            <div class="delivery-item-detail">Aguardando documentação da API do ERP</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== SECTION HEADERS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componente: Section Headers</div>
+
+        <div class="section" style="margin-top: 0;">
+            <div class="section-header">
+                <div class="section-icon bg-primary"><i class="ri-dashboard-3-line"></i></div>
+                <div class="section-title">Seção com ícone Primary</div>
+                <div class="section-count">12 itens</div>
+            </div>
+        </div>
+
+        <div class="section" style="margin-top: 16px;">
+            <div class="section-header">
+                <div class="section-icon bg-warning"><i class="ri-error-warning-line"></i></div>
+                <div class="section-title">Seção com ícone Warning</div>
+                <div class="section-count">5 pendências</div>
+            </div>
+        </div>
+
+        <div class="section" style="margin-top: 16px;">
+            <div class="section-header">
+                <div class="section-icon bg-danger"><i class="ri-bug-line"></i></div>
+                <div class="section-title">Seção com ícone Danger</div>
+                <div class="section-count">2 críticos</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== AREA CARDS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componente: Area Cards (Grid de informação)</div>
+        <div class="areas-grid">
+            <div class="area-card">
+                <div class="area-header">
+                    <div class="area-icon bg-danger"><i class="ri-database-2-line"></i></div>
+                    <div class="area-name">Banco de Dados</div>
+                </div>
+                <div class="area-item critical"><i class="ri-arrow-right-s-line"></i> Migration pendente em produção</div>
+                <div class="area-item warning"><i class="ri-arrow-right-s-line"></i> Índice faltando na tabela Lancamentos</div>
+                <div class="area-item"><i class="ri-arrow-right-s-line"></i> Backup agendado para domingo</div>
+            </div>
+            <div class="area-card">
+                <div class="area-header">
+                    <div class="area-icon bg-warning"><i class="ri-shield-keyhole-line"></i></div>
+                    <div class="area-name">Segurança</div>
+                </div>
+                <div class="area-item warning"><i class="ri-arrow-right-s-line"></i> Certificado SSL expira em 15 dias</div>
+                <div class="area-item"><i class="ri-arrow-right-s-line"></i> Auditoria de acessos concluída</div>
+                <div class="area-item"><i class="ri-arrow-right-s-line"></i> MFA habilitado para admins</div>
+            </div>
+            <div class="area-card">
+                <div class="area-header">
+                    <div class="area-icon bg-info"><i class="ri-cloud-line"></i></div>
+                    <div class="area-name">Infraestrutura</div>
+                </div>
+                <div class="area-item"><i class="ri-arrow-right-s-line"></i> Uptime 99.8% no último mês</div>
+                <div class="area-item"><i class="ri-arrow-right-s-line"></i> Kubernetes v1.29 atualizado</div>
+                <div class="area-item"><i class="ri-arrow-right-s-line"></i> CDN configurado para assets</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== CARDS GENÉRICOS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componente: Cards Genéricos (com badges)</div>
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-success"><i class="ri-shield-check-line"></i></div>
+                    <div class="card-title">Card com Badge de Sucesso</div>
+                    <div class="card-badge" style="background: var(--success-light); color: var(--success);">Aprovado</div>
+                </div>
+                <div class="card-body">
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Conteúdo de exemplo dentro de um card genérico. Pode conter qualquer tipo de informação: texto, listas, tabelas, gráficos.</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-header-icon bg-danger"><i class="ri-alarm-warning-line"></i></div>
+                    <div class="card-title">Card com Badge de Perigo</div>
+                    <div class="card-badge" style="background: var(--danger-light); color: var(--danger);">Crítico</div>
+                </div>
+                <div class="card-body">
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Exemplo de card com variação de cor no badge e ícone do header. As combinações são livres entre os tokens disponíveis.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STATUS LEGEND ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Referência: Status de Delivery (5 estados)</div>
+        <div class="card">
+            <div class="card-body">
+                <div style="display: flex; gap: 24px; flex-wrap: wrap; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem;">
+                        <div class="delivery-status status-done"><i class="ri-check-line"></i></div> Concluído
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem;">
+                        <div class="delivery-status status-progress"><i class="ri-loader-4-line"></i></div> Em andamento
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem;">
+                        <div class="delivery-status status-partial"><i class="ri-subtract-line"></i></div> Parcial
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem;">
+                        <div class="delivery-status status-blocked"><i class="ri-close-line"></i></div> Bloqueado
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem;">
+                        <div class="delivery-status status-pending"><i class="ri-time-line"></i></div> Pendente
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ================================================================== -->
+<!-- ABA 3: MAPEAMENTO (Aba customizada)                                -->
+<!-- ================================================================== -->
+<div id="tab-mapeamento" class="tab-content">
+
+    <!-- ========== CONTEXT CARDS + UC PILLS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Componente: Context Cards + Módulos + Sub-módulos + Pills</div>
+
+        <!-- Legend -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-body">
+                <div class="legend">
+                    <div class="legend-item"><div class="legend-dot bg-success"></div> Ativo (UI + Backend)</div>
+                    <div class="legend-item"><div class="legend-dot bg-info"></div> Backend Only</div>
+                    <div class="legend-item"><div class="legend-dot bg-warning"></div> Sem uso na UI</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="contexts-grid">
+            <!-- Context Card: Active section -->
+            <div class="context-card section-active">
+                <div class="context-header">
+                    <div class="context-icon bg-success"><i class="ri-user-line"></i></div>
+                    <div class="context-name">Contexto: Cadastro</div>
+                    <div class="context-badge">8 UCs</div>
+                </div>
+                <div class="context-body">
+                    <div class="module">
+                        <div class="module-header">
+                            <div class="module-name">Associado</div>
+                            <div class="module-count">5 use cases</div>
+                            <div class="module-divider"></div>
+                        </div>
+                        <div class="submodule">
+                            <div class="submodule-name">Gestão de Associados</div>
+                            <div class="uc-pills">
+                                <span class="uc-pill">UC-001 Criar</span>
+                                <span class="uc-pill">UC-002 Editar</span>
+                                <span class="uc-pill">UC-003 Listar</span>
+                                <span class="uc-pill">UC-004 Detalhar</span>
+                                <span class="uc-pill">UC-005 Inativar</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <div class="module-header">
+                            <div class="module-name">Fornecedor</div>
+                            <div class="module-count">3 use cases</div>
+                            <div class="module-divider"></div>
+                        </div>
+                        <div class="submodule">
+                            <div class="submodule-name">Gestão de Fornecedores</div>
+                            <div class="uc-pills">
+                                <span class="uc-pill">UC-010 Criar</span>
+                                <span class="uc-pill">UC-011 Editar</span>
+                                <span class="uc-pill">UC-012 Buscar CNPJ</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Context Card: Backend section -->
+            <div class="context-card section-backend">
+                <div class="context-header">
+                    <div class="context-icon bg-info"><i class="ri-server-line"></i></div>
+                    <div class="context-name">Contexto: Integrações</div>
+                    <div class="context-badge">4 UCs</div>
+                </div>
+                <div class="context-body">
+                    <div class="module">
+                        <div class="module-header">
+                            <div class="module-name">APIs Externas</div>
+                            <div class="module-count">4 use cases</div>
+                            <div class="module-divider"></div>
+                        </div>
+                        <div class="submodule">
+                            <div class="submodule-name">Serviços REST</div>
+                            <div class="uc-pills">
+                                <span class="uc-pill">UC-050 Consulta CNPJ</span>
+                                <span class="uc-pill">UC-051 Webhook ClickUp</span>
+                                <span class="uc-pill">UC-052 Sync ERP</span>
+                                <span class="uc-pill">UC-053 Health Check</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Context Card: Unused section (full width) -->
+            <div class="context-card section-unused full-width">
+                <div class="context-header">
+                    <div class="context-icon bg-warning"><i class="ri-archive-line"></i></div>
+                    <div class="context-name">Contexto: Aguardando UI</div>
+                    <div class="context-badge">6 UCs</div>
+                </div>
+                <div class="context-body">
+                    <div class="module">
+                        <div class="module-header">
+                            <div class="module-name">Financeiro</div>
+                            <div class="module-count">3 use cases</div>
+                            <div class="module-divider"></div>
+                        </div>
+                        <div class="submodule">
+                            <div class="submodule-name">Conciliação</div>
+                            <div class="uc-pills">
+                                <span class="uc-pill">UC-100 Importar OFX</span>
+                                <span class="uc-pill">UC-101 Matching automático</span>
+                                <span class="uc-pill">UC-102 Ajuste manual</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="module">
+                        <div class="module-header">
+                            <div class="module-name">Relatórios</div>
+                            <div class="module-count">3 use cases</div>
+                            <div class="module-divider"></div>
+                        </div>
+                        <div class="submodule">
+                            <div class="submodule-name">Exportações</div>
+                            <div class="uc-pills">
+                                <span class="uc-pill">UC-200 DRE</span>
+                                <span class="uc-pill">UC-201 Balancete</span>
+                                <span class="uc-pill">UC-202 Fluxo de Caixa</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== BADGES VARIANTS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Referência: Todas as variantes de Card Badge</div>
+        <div class="card">
+            <div class="card-body">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <span class="card-badge" style="background: var(--primary-light); color: var(--primary);">Primary</span>
+                    <span class="card-badge" style="background: var(--success-light); color: var(--success);">Success</span>
+                    <span class="card-badge" style="background: var(--warning-light); color: var(--warning);">Warning</span>
+                    <span class="card-badge" style="background: var(--danger-light); color: var(--danger);">Danger</span>
+                    <span class="card-badge" style="background: var(--info-light); color: var(--info);">Info</span>
+                    <span class="card-badge" style="background: var(--purple-light); color: var(--purple);">Purple</span>
+                    <span class="card-badge" style="background: rgba(255,148,115,0.12); color: var(--orange);">Orange</span>
+                    <span class="card-badge" style="background: rgba(45,212,191,0.12); color: var(--teal);">Teal</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== BG HELPER CLASSES ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Referência: Classes utilitárias .bg-*</div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <div style="padding: 10px 18px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: white;" class="bg-primary">.bg-primary</div>
+            <div style="padding: 10px 18px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: white;" class="bg-success">.bg-success</div>
+            <div style="padding: 10px 18px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: white;" class="bg-info">.bg-info</div>
+            <div style="padding: 10px 18px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: white;" class="bg-warning">.bg-warning</div>
+            <div style="padding: 10px 18px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: white;" class="bg-danger">.bg-danger</div>
+            <div style="padding: 10px 18px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: white;" class="bg-secondary">.bg-secondary</div>
+            <div style="padding: 10px 18px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: white;" class="bg-purple">.bg-purple</div>
+            <div style="padding: 10px 18px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; color: white;" class="bg-orange">.bg-orange</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ==================== TAB 4: DIAGRAMAS (JointJS + ELK) ==================== -->
+<div id="tab-diagramas" class="tab-content">
+
+    <!-- ========== DIAGRAMA 1: PIPELINE DE INGESTÃO ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Diagrama: Pipeline de Ingestão RAG (JointJS + ELK)</div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-primary"><i class="ri-flow-chart"></i></div>
+                <div class="card-title">Pipeline de Ingestão</div>
+                <div class="card-badge" style="background:var(--primary-light);color:var(--primary);">Fluxograma</div>
+            </div>
+            <div class="diagram-wrap" id="diagram-pipeline" style="min-height:200px;"></div>
+        </div>
+    </div>
+
+    <!-- ========== DIAGRAMA 2: MODELO DE GRAFO ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Diagrama: Knowledge Graph (JointJS + ELK)</div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-success"><i class="ri-share-circle-line"></i></div>
+                <div class="card-title">Knowledge Graph — Entidades e Relações</div>
+                <div class="card-badge" style="background:var(--success-light);color:var(--success);">Grafo</div>
+            </div>
+            <div class="diagram-wrap" id="diagram-grafo" style="min-height:250px;"></div>
+        </div>
+    </div>
+
+    <!-- ========== DIAGRAMA 3: ARQUITETURA EM BLOCOS ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Diagrama: Arquitetura em Blocos (JointJS + ELK)</div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-purple"><i class="ri-layout-masonry-line"></i></div>
+                <div class="card-title">Arquitetura Macro — Blocos do RAG</div>
+                <div class="card-badge" style="background:var(--purple-light);color:var(--purple);">Arquitetura</div>
+            </div>
+            <div class="diagram-wrap" id="diagram-arquitetura" style="min-height:180px;"></div>
+        </div>
+    </div>
+
+    <!-- ========== DIAGRAMA 4: FLOWCHART DE RETRIEVAL ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Diagrama: Flowchart de Retrieval (JointJS + ELK)</div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-danger"><i class="ri-git-branch-line"></i></div>
+                <div class="card-title">Fluxo de Retrieval — com decisoes</div>
+                <div class="card-badge" style="background:var(--danger-light);color:var(--danger);">Flowchart</div>
+            </div>
+            <div class="diagram-wrap" id="diagram-flowchart" style="min-height:300px;"></div>
+        </div>
+    </div>
+
+    <!-- ========== DIAGRAMA 5: TIMELINE DO PROJETO ========== -->
+    <div class="playground-section">
+        <div class="playground-label">Diagrama: Timeline do Projeto RAG (JointJS)</div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-secondary"><i class="ri-time-line"></i></div>
+                <div class="card-title">Timeline — Fases do RAG Corporativo</div>
+                <div class="card-badge" style="background:rgba(91,184,196,0.12);color:var(--secondary);">Timeline</div>
+            </div>
+            <div class="diagram-wrap" id="diagram-timeline" style="min-height:250px;"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ==================== TAB 5: ELK TEST (mesmo código, standalone) ==================== -->
+<div id="tab-elk-test" class="tab-content">
+    <div class="playground-section">
+        <div class="playground-label">Teste: ELK Layout standalone (mesmo HTML, sem iframe)</div>
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon bg-info"><i class="ri-bug-line"></i></div>
+                <div class="card-title">ELK Test — Standalone</div>
+            </div>
+            <div class="diagram-wrap" id="elk-test-canvas" style="min-height:400px;"></div>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- ===== FOOTER ===== -->
+<div class="container">
+    <div class="badge badge-footer" style="margin-bottom:40px; margin-top:10px; display:flex; width:100%;">
+        <div class="badge-bar"></div>
+        <div class="badge-body" style="flex:1; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="badge-icon">FR</div>
+                <div class="badge-text">
+                    <span class="badge-name">Fabio A. B. Rodrigues</span>
+                    <span class="badge-role">Arquitetura e Produtividade Corporativa</span>
+                    <span class="badge-date">Criado em: 17/03/2026</span>
+                </div>
+            </div>
+            <div style="text-align:right; font-size:11px; color:var(--text-muted);">
+                Banco Patria &middot; Playground de Componentes<br>
+                Catálogo de referência visual do Design System &middot; 17/Mar/2026
+            </div>
+        </div>
+        <div class="badge-seal">Criado por</div>
+    </div>
+</div>
+
+<script>
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+    // Inicializar diagramas na primeira vez que a aba fica visível
+    if (tabId === 'diagramas' && typeof initDiagrams === 'function') { initDiagrams(); }
+    if (tabId === 'elk-test' && typeof initElkTest === 'function') { initElkTest(); }
+}
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const icon = document.getElementById('theme-icon');
+    if (html.getAttribute('data-theme') === 'light') {
+        html.removeAttribute('data-theme');
+        icon.className = 'ri-sun-line';
+        localStorage.setItem('caefe-theme', 'dark');
+    } else {
+        html.setAttribute('data-theme', 'light');
+        icon.className = 'ri-moon-line';
+        localStorage.setItem('caefe-theme', 'light');
+    }
+}
+
+// Restore saved theme
+(function() {
+    const saved = localStorage.getItem('caefe-theme');
+    if (saved === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('theme-icon').className = 'ri-moon-line';
+        });
+    }
+})();
+
+// ====== DIAGRAMAS JOINTJS + ELK ======
+// Shapes e helpers no escopo global. Diagramas inicializados lazy.
+
+var isDark = !document.documentElement.getAttribute('data-theme');
+var COLORS = {
+    primary: '#5BA4D9', info: '#38BDF8', purple: '#9B96FF',
+    success: '#6ABF3B', warning: '#F4AC00', danger: '#E85D54',
+    orange: '#FF9473', secondary: '#5BB8C4', teal: '#2DD4BF',
+    nodeFill: isDark ? 'rgba(91,164,217,0.15)' : 'rgba(49,130,177,0.1)',
+    nodeStroke: isDark ? '#5BA4D9' : '#3182B1',
+    edgeStroke: isDark ? '#8b9ab5' : '#6E829F',
+    bg: isDark ? '#0f1319' : '#f4f6f9',
+    text: isDark ? '#e2e8f0' : '#212B37'
+};
+
+var NodeShape = joint.shapes.standard.Rectangle.define('elk.Node', {
+    z: 1,
+    attrs: {
+        body: { fill: COLORS.nodeFill, stroke: COLORS.nodeStroke, strokeWidth: 1.5, rx: 6, ry: 6 },
+        label: { fontFamily: 'Poppins, sans-serif', fontSize: 11, fill: COLORS.text, textWrap: { width: -12 } }
+    },
+    ports: { groups: { port: { position: { name: 'absolute' }, attrs: { portBody: { magnet: 'passive', width: 'calc(w)', height: 'calc(h)', fill: COLORS.nodeStroke } }, markup: [{ tagName: 'rect', selector: 'portBody' }] } } }
+});
+
+var EdgeShape = joint.dia.Link.define('elk.Edge', {
+    z: 2,
+    attrs: {
+        line: { fill: 'none', connection: true, stroke: COLORS.edgeStroke, strokeWidth: 1.2,
+            targetMarker: { d: 'M 6 3 0 0 6 -3 Z', fill: COLORS.edgeStroke } }
+    }
+}, { markup: [{ tagName: 'path', selector: 'line' }] });
+
+var LabelShape = joint.dia.Element.define('elk.Label', {
+    z: 3, attrs: { label: { fontFamily: 'Poppins, sans-serif', fill: COLORS.text } }
+}, { markup: [{ tagName: 'text', selector: 'label' }] });
+
+joint.shapes.elk = { Node: NodeShape, Edge: EdgeShape, Label: LabelShape };
+
+function buildElkDiagram(containerId, elkGraph) {
+        var el = document.getElementById(containerId);
+        if (!el) return;
+
+        var graph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
+        var paper = new joint.dia.Paper({
+            model: graph, cellViewNamespace: joint.shapes,
+            width: 800, height: 400, gridSize: 1,
+            interactive: false, async: true, frozen: true,
+            background: { color: 'transparent' }
+        });
+        el.appendChild(paper.el);
+
+        var portMap = {};
+
+        function addNodes(children, parent) {
+            children.forEach(function(child) {
+                var labelText = (child.labels && child.labels[0]) ? child.labels[0].text : '';
+                var shape = new NodeShape({
+                    id: child.id,
+                    position: { x: child.x, y: child.y },
+                    size: { width: child.width, height: child.height },
+                    attrs: { label: { text: labelText } }
+                });
+                (child.ports || []).forEach(function(p) {
+                    shape.addPort({
+                        group: 'port', id: p.id,
+                        args: { x: p.x, y: p.y },
+                        size: { width: p.width || 0, height: p.height || 0 }
+                    });
+                    portMap[p.id] = shape.id;
+                });
+                shape.addTo(graph);
+                if (parent) {
+                    parent.embed(shape);
+                    shape.position(child.x, child.y, { parentRelative: true });
+                }
+                if ((child.children || []).length > 0) addNodes(child.children, shape);
+                if (child.edges) addLinks(child.edges, shape);
+            });
+        }
+
+        function addLinks(edges, parent) {
+            edges.forEach(function(e) {
+                var bp = (e.sections && e.sections[0] && e.sections[0].bendPoints) || [];
+                if (parent) {
+                    var pp = parent.position();
+                    bp = bp.map(function(p) { return { x: p.x + pp.x, y: p.y + pp.y }; });
+                }
+                var link = new EdgeShape({
+                    source: { id: portMap[e.sources[0]], port: e.sources[0] },
+                    target: { id: portMap[e.targets[0]], port: e.targets[0] },
+                    vertices: bp
+                });
+                link.addTo(graph);
+            });
+        }
+
+        var elk = new ELK();
+        elk.layout(elkGraph).then(function(res) {
+            addNodes(res.children || []);
+            addLinks(res.edges || []);
+            paper.unfreeze();
+            paper.fitToContent({ useModelGeometry: true, padding: 30, allowNewOrigin: 'any' });
+            // Resize container to fit
+            var area = paper.getContentArea();
+            el.style.minHeight = (area.height + 60) + 'px';
+        });
+}
+
+var _diagramsReady = false;
+function initDiagrams() {
+    if (_diagramsReady) return;
+    _diagramsReady = true;
+
+    // =====================================================
+    // DIAGRAMA 1: PIPELINE DE INGESTÃO (fluxo horizontal)
+    // =====================================================
+    buildElkDiagram('diagram-pipeline', {
+        id: 'root',
+        layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': '30', 'elk.layered.spacing.nodeNodeBetweenLayers': '40' },
+        children: [
+            { id: 'src', labels: [{ text: 'Git Repos (.md)', width: 100, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 110, height: 40, ports: [{ id: 'src_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 's1', labels: [{ text: '1. Descoberta', width: 90, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 110, height: 40, ports: [{ id: 's1_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 's1_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 's2', labels: [{ text: '2. Parse', width: 60, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 100, height: 40, ports: [{ id: 's2_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 's2_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 's3', labels: [{ text: '3. Chunking', width: 80, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 100, height: 40, ports: [{ id: 's3_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 's3_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 's4', labels: [{ text: '4. Embeddings', width: 90, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 110, height: 40, ports: [{ id: 's4_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 's4_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 's5', labels: [{ text: '5. Persistencia', width: 95, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 115, height: 40, ports: [{ id: 's5_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 's5_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 's6', labels: [{ text: '6. Indexacao', width: 85, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 105, height: 40, ports: [{ id: 's6_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 's6_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 's7', labels: [{ text: '7. Observab.', width: 85, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 105, height: 40, ports: [{ id: 's7_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 's7_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'neo', labels: [{ text: 'Neo4j', width: 40, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 80, height: 40, ports: [{ id: 'neo_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } }
+        ],
+        edges: [
+            { id: 'e1', sources: ['src_out'], targets: ['s1_in'] },
+            { id: 'e2', sources: ['s1_out'], targets: ['s2_in'] },
+            { id: 'e3', sources: ['s2_out'], targets: ['s3_in'] },
+            { id: 'e4', sources: ['s3_out'], targets: ['s4_in'] },
+            { id: 'e5', sources: ['s4_out'], targets: ['s5_in'] },
+            { id: 'e6', sources: ['s5_out'], targets: ['s6_in'] },
+            { id: 'e7', sources: ['s6_out'], targets: ['s7_in'] },
+            { id: 'e8', sources: ['s7_out'], targets: ['neo_in'] }
+        ]
+    });
+
+    // =====================================================
+    // DIAGRAMA 2: KNOWLEDGE GRAPH
+    // =====================================================
+    buildElkDiagram('diagram-grafo', {
+        id: 'root',
+        layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': '25', 'elk.layered.spacing.nodeNodeBetweenLayers': '50' },
+        children: [
+            { id: 'chunk', labels: [{ text: 'Chunk', width: 50, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 80, height: 36, ports: [{ id: 'chunk_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'adr', labels: [{ text: 'ADR', width: 30, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 70, height: 36, ports: [{ id: 'adr_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'doc', labels: [{ text: 'Document', width: 65, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 100, height: 44, ports: [{ id: 'doc_in1', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 'doc_out1', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }, { id: 'doc_out2', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '2' } }, { id: 'doc_out3', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '3' } }, { id: 'doc_out4', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '4' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'mod', labels: [{ text: 'Module', width: 50, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 80, height: 36, ports: [{ id: 'mod_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 'mod_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'sys', labels: [{ text: 'System', width: 50, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 80, height: 36, ports: [{ id: 'sys_in1', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 'sys_in2', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'owner', labels: [{ text: 'Owner', width: 45, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 80, height: 36, ports: [{ id: 'owner_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 'owner_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'team', labels: [{ text: 'Team', width: 40, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 70, height: 36, ports: [{ id: 'team_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'task', labels: [{ text: 'Task', width: 35, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 70, height: 36, ports: [{ id: 'task_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'gloss', labels: [{ text: 'GlossaryTerm', width: 85, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 105, height: 36, ports: [{ id: 'gloss_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } }
+        ],
+        edges: [
+            { id: 'g1', sources: ['chunk_out'], targets: ['doc_in1'] },
+            { id: 'g2', sources: ['doc_out1'], targets: ['mod_in'] },
+            { id: 'g3', sources: ['mod_out'], targets: ['sys_in1'] },
+            { id: 'g4', sources: ['doc_out2'], targets: ['owner_in'] },
+            { id: 'g5', sources: ['owner_out'], targets: ['team_in'] },
+            { id: 'g6', sources: ['doc_out3'], targets: ['task_in'] },
+            { id: 'g7', sources: ['doc_out4'], targets: ['gloss_in'] },
+            { id: 'g8', sources: ['adr_out'], targets: ['sys_in2'] }
+        ]
+    });
+
+    // =====================================================
+    // DIAGRAMA 3: ARQUITETURA EM BLOCOS
+    // =====================================================
+    buildElkDiagram('diagram-arquitetura', {
+        id: 'root',
+        layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': '30', 'elk.layered.spacing.nodeNodeBetweenLayers': '50' },
+        children: [
+            { id: 'b1', labels: [{ text: 'Pipeline de Ingestao', width: 130, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 150, height: 50, ports: [{ id: 'b1_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '0' } }, { id: 'b1_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'gov', labels: [{ text: 'Governanca', width: 80, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 110, height: 44, ports: [{ id: 'gov_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'neo', labels: [{ text: 'Neo4j (Grafo+Vetor)', width: 130, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 160, height: 50, ports: [{ id: 'neo_in1', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 'neo_in2', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '1' } }, { id: 'neo_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '2' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'b3', labels: [{ text: 'Consulta / IA', width: 90, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 120, height: 50, ports: [{ id: 'b3_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 'b3_out', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'b4', labels: [{ text: 'Retroalimentacao', width: 110, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 140, height: 44, ports: [{ id: 'b4_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }, { id: 'b4_out', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } }
+        ],
+        edges: [
+            { id: 'a1', sources: ['b1_out'], targets: ['neo_in1'] },
+            { id: 'a2', sources: ['gov_out'], targets: ['neo_in2'] },
+            { id: 'a3', sources: ['neo_out'], targets: ['b3_in'] },
+            { id: 'a4', sources: ['b3_out'], targets: ['b4_in'] },
+            { id: 'a5', sources: ['b4_out'], targets: ['b1_in'] }
+        ]
+    });
+
+    // =====================================================
+    // DIAGRAMA 4: FLOWCHART DE RETRIEVAL (ELK com decisoes)
+    // =====================================================
+    buildElkDiagram('diagram-flowchart', {
+        id: 'root',
+        layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'DOWN', 'elk.spacing.nodeNode': '25', 'elk.layered.spacing.nodeNodeBetweenLayers': '35' },
+        children: [
+            { id: 'q', labels: [{ text: 'Pergunta do Usuario', width: 130, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 150, height: 40, ports: [{ id: 'q_out', width: 5, height: 5, layoutOptions: { 'port.side': 'SOUTH', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'intent', labels: [{ text: 'Interpretar Intencao', width: 130, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 150, height: 40, ports: [{ id: 'intent_in', width: 5, height: 5, layoutOptions: { 'port.side': 'NORTH', 'port.index': '0' } }, { id: 'intent_out', width: 5, height: 5, layoutOptions: { 'port.side': 'SOUTH', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'access', labels: [{ text: 'Filtro de Acesso (RBAC)', width: 140, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 165, height: 40, ports: [{ id: 'access_in', width: 5, height: 5, layoutOptions: { 'port.side': 'NORTH', 'port.index': '0' } }, { id: 'access_out', width: 5, height: 5, layoutOptions: { 'port.side': 'SOUTH', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'search', labels: [{ text: 'Busca Hibrida', width: 90, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 130, height: 40, ports: [{ id: 'search_in', width: 5, height: 5, layoutOptions: { 'port.side': 'NORTH', 'port.index': '0' } }, { id: 'search_vec', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '1' } }, { id: 'search_key', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '2' } }, { id: 'search_graph', width: 5, height: 5, layoutOptions: { 'port.side': 'EAST', 'port.index': '3' } }, { id: 'search_out', width: 5, height: 5, layoutOptions: { 'port.side': 'SOUTH', 'port.index': '4' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'vec', labels: [{ text: 'Vector Search', width: 85, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 110, height: 35, ports: [{ id: 'vec_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'key', labels: [{ text: 'Keyword Search', width: 95, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 120, height: 35, ports: [{ id: 'key_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'gra', labels: [{ text: 'Graph Search', width: 85, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 110, height: 35, ports: [{ id: 'gra_in', width: 5, height: 5, layoutOptions: { 'port.side': 'WEST', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'rerank', labels: [{ text: 'Reranking', width: 65, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 130, height: 40, ports: [{ id: 'rerank_in', width: 5, height: 5, layoutOptions: { 'port.side': 'NORTH', 'port.index': '0' } }, { id: 'rerank_out', width: 5, height: 5, layoutOptions: { 'port.side': 'SOUTH', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'prompt', labels: [{ text: 'Montar Prompt', width: 90, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 130, height: 40, ports: [{ id: 'prompt_in', width: 5, height: 5, layoutOptions: { 'port.side': 'NORTH', 'port.index': '0' } }, { id: 'prompt_out', width: 5, height: 5, layoutOptions: { 'port.side': 'SOUTH', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'llm', labels: [{ text: 'Enviar para LLM', width: 100, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 130, height: 40, ports: [{ id: 'llm_in', width: 5, height: 5, layoutOptions: { 'port.side': 'NORTH', 'port.index': '0' } }, { id: 'llm_out', width: 5, height: 5, layoutOptions: { 'port.side': 'SOUTH', 'port.index': '1' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } },
+            { id: 'resp', labels: [{ text: 'Resposta + Citacoes', width: 130, height: 11, layoutOptions: { 'nodeLabels.placement': '[H_CENTER, V_CENTER, INSIDE]' } }], width: 150, height: 40, ports: [{ id: 'resp_in', width: 5, height: 5, layoutOptions: { 'port.side': 'NORTH', 'port.index': '0' } }], layoutOptions: { portConstraints: 'FIXED_ORDER' } }
+        ],
+        edges: [
+            { id: 'f1', sources: ['q_out'], targets: ['intent_in'] },
+            { id: 'f2', sources: ['intent_out'], targets: ['access_in'] },
+            { id: 'f3', sources: ['access_out'], targets: ['search_in'] },
+            { id: 'f4', sources: ['search_vec'], targets: ['vec_in'] },
+            { id: 'f5', sources: ['search_key'], targets: ['key_in'] },
+            { id: 'f6', sources: ['search_graph'], targets: ['gra_in'] },
+            { id: 'f7', sources: ['search_out'], targets: ['rerank_in'] },
+            { id: 'f8', sources: ['rerank_out'], targets: ['prompt_in'] },
+            { id: 'f9', sources: ['prompt_out'], targets: ['llm_in'] },
+            { id: 'f10', sources: ['llm_out'], targets: ['resp_in'] }
+        ]
+    });
+
+    // =====================================================
+    // DIAGRAMA 5: TIMELINE DO PROJETO RAG
+    // =====================================================
+    (function() {
+        var el = document.getElementById('diagram-timeline');
+        if (!el) return;
+
+        var tGraph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
+        var tPaper = new joint.dia.Paper({
+            model: tGraph, cellViewNamespace: joint.shapes,
+            width: '100%', gridSize: 20, async: true,
+            sorting: joint.dia.Paper.sorting.APPROX,
+            defaultConnector: { name: 'smooth' },
+            defaultConnectionPoint: { name: 'anchor' },
+            interactive: false,
+            background: { color: 'transparent' }
+        });
+        el.appendChild(tPaper.el);
+
+        // Timeline Event shape
+        var tlColors = {
+            body: isDark ? '#1e2a3a' : '#d9e1f2',
+            bodyStroke: isDark ? '#5BA4D9' : '#557ac5',
+            text: isDark ? '#e2e8f0' : '#333',
+            date: isDark ? '#2DD4BF' : '#2CA58D',
+            dateBg: isDark ? '#0f1319' : '#fff',
+            dateBorder: isDark ? '#2a3244' : '#d9e1f2',
+            link: isDark ? '#E85D54' : '#b73e66',
+            boundary: isDark ? 'rgba(91,164,217,0.08)' : '#ecf0f9',
+            boundaryStroke: isDark ? 'rgba(91,164,217,0.25)' : '#d9e1f2',
+            yearText: isDark ? '#5BA4D9' : '#2CA58D'
+        };
+
+        var TlEvent = joint.dia.Element.define('TlEvent', {
+            z: 1,
+            attrs: {
+                root: { cursor: 'default' },
+                body: {
+                    d: 'M 8 0 H calc(w-8) A 8 8 0 0 1 calc(w) 8 V calc(h-25) H 8 A 8 8 0 0 1 0 calc(h-33) V 8 A 8 8 0 0 1 8 0 Z',
+                    strokeWidth: 1.5, fill: tlColors.body, stroke: tlColors.bodyStroke
+                },
+                label: {
+                    fontFamily: 'Poppins, sans-serif', fontSize: 12, fontWeight: 500,
+                    x: 'calc(w/2)', y: 'calc(h/2 - 12)', textAnchor: 'middle', textVerticalAnchor: 'middle',
+                    lineHeight: 18, textWrap: { width: -14 }, fill: tlColors.text
+                },
+                date: {
+                    fontFamily: 'Poppins, sans-serif', fontSize: 11, fontWeight: 600,
+                    x: 'calc(w - 28)', y: 'calc(h - 12)', textAnchor: 'middle', textVerticalAnchor: 'middle',
+                    fill: tlColors.date
+                },
+                dateBg: {
+                    width: 56, height: 30, x: 'calc(w - 56)', y: 'calc(h - 30)',
+                    stroke: tlColors.dateBorder, fill: tlColors.dateBg, strokeWidth: 1, rx: 8, ry: 8
+                }
+            }
+        }, {
+            markup: [
+                { tagName: 'rect', selector: 'dateBg' },
+                { tagName: 'text', selector: 'date' },
+                { tagName: 'path', selector: 'body' },
+                { tagName: 'text', selector: 'label' }
+            ]
+        });
+
+        joint.shapes.TlEvent = TlEvent;
+
+        function createTlEvent(text, phase, quarter) {
+            return new TlEvent({
+                size: { width: 140, height: 90 },
+                phase: phase,
+                attrs: { label: { text: text }, date: { text: quarter } }
+            });
+        }
+
+        function createTlLink(src, tgt) {
+            return new joint.shapes.standard.Link({
+                source: { id: src.id }, target: { id: tgt.id }, z: 2,
+                attrs: { line: { stroke: tlColors.link, strokeWidth: 2.5 } }
+            });
+        }
+
+        // Fases do RAG
+        var milestones = [
+            createTlEvent('Definir modelo\nde embedding', 'Fase 1', 'Q2 2026'),
+            createTlEvent('Configurar\nNeo4j', 'Fase 1', 'Q2 2026'),
+            createTlEvent('Pipeline de\ningestao (.md)', 'Fase 1', 'Q2 2026'),
+            createTlEvent('Vector index\n+ busca simples', 'Fase 1', 'Q2 2026'),
+            createTlEvent('Front matter\npadronizado', 'Fase 2', 'Q3 2026'),
+            createTlEvent('Filtros por\nmetadados', 'Fase 2', 'Q3 2026'),
+            createTlEvent('Landing zone\n(preparacao)', 'Fase 2', 'Q3 2026'),
+            createTlEvent('Knowledge Graph\n(entidades)', 'Fase 3', 'Q4 2026'),
+            createTlEvent('Fontes expandidas\n(PDFs, tickets)', 'Fase 3', 'Q4 2026'),
+            createTlEvent('RBAC + ABAC', 'Fase 3', 'Q4 2026'),
+            createTlEvent('Hybrid search\n(V+K+G)', 'Fase 4', 'Q1 2027'),
+            createTlEvent('Agentes por\ndominio', 'Fase 4', 'Q1 2027'),
+            createTlEvent('Retroalimentacao\ne curadoria', 'Fase 4', 'Q1 2027')
+        ];
+
+        var tlLinks = [];
+        for (var i = 0; i < milestones.length - 1; i++) {
+            tlLinks.push(createTlLink(milestones[i], milestones[i+1]));
+        }
+
+        tGraph.addCells(milestones.concat(tlLinks));
+
+        // Serpentine layout (adaptado do demo ChatGPT Timeline)
+        function serpentineLayout(elements, opts) {
+            var gap = opts.gap || 20, width = opts.width || 800;
+            var rowHeight = opts.rowHeight || 120, x0 = opts.x || 0, y0 = opts.y || 0;
+            var currentX = x0, currentY = y0 + rowHeight / 2;
+            var leftToRight = true;
+            var links = [];
+            elements.forEach(function(el, i) {
+                var next = elements[i+1];
+                if (!next) return;
+                var link = tGraph.getConnectedLinks(el, { outbound: true }).find(function(l) { return l.target().id === next.id; });
+                if (link) links.push(link);
+            });
+
+            elements.forEach(function(item, index) {
+                var size = item.size();
+                if (leftToRight && currentX + size.width > x0 + width) {
+                    currentY += rowHeight;
+                    leftToRight = false;
+                    if (index > 0 && links[index-1]) {
+                        var turnX = x0 + width + 30;
+                        var prevY = currentY - rowHeight;
+                        links[index-1].prop({ source: { anchor: { name: 'right' } }, target: { anchor: { name: 'right' } } });
+                        links[index-1].vertices([{ x: turnX, y: prevY }, { x: turnX, y: currentY }]);
+                    }
+                    currentX = x0 + width;
+                } else if (!leftToRight && currentX - size.width < x0) {
+                    currentY += rowHeight;
+                    leftToRight = true;
+                    if (index > 0 && links[index-1]) {
+                        var turnXL = x0 - 30;
+                        var prevYL = currentY - rowHeight;
+                        links[index-1].prop({ source: { anchor: { name: 'left' } }, target: { anchor: { name: 'left' } } });
+                        links[index-1].vertices([{ x: turnXL, y: prevYL }, { x: turnXL, y: currentY }]);
+                    }
+                    currentX = x0;
+                }
+
+                item.prop('leftToRight', leftToRight);
+                if (leftToRight) {
+                    item.position(currentX, currentY - size.height / 2);
+                    currentX += size.width + gap;
+                    if (index < links.length && links[index]) {
+                        links[index].prop({ source: { anchor: { name: 'right' } }, target: { anchor: { name: 'left' } } });
+                    }
+                } else {
+                    item.position(Math.max(currentX - size.width, x0), currentY - size.height / 2);
+                    currentX -= size.width + gap;
+                    if (index < links.length && links[index]) {
+                        links[index].prop({ source: { anchor: { name: 'left' } }, target: { anchor: { name: 'right' } } });
+                    }
+                }
+            });
+            return currentY;
+        }
+
+        var containerWidth = el.offsetWidth || 900;
+        var yMax = serpentineLayout(milestones, {
+            gap: 30, rowHeight: 150, x: 20, y: 10,
+            width: containerWidth - 40
+        });
+        tPaper.setDimensions('100%', yMax + 120);
+    })();
+
+} // end initDiagrams
+
+var _elkTestReady = false;
+function initElkTest() {
+    if (_elkTestReady) return;
+    _elkTestReady = true;
+    // =====================================================
+    // ELK TEST: mesmo grafo do elk-test.html, standalone
+    // =====================================================
+    (function() {
+        var el = document.getElementById('elk-test-canvas');
+        if (!el) return;
+
+        var elkTestGraph = {"id":"n0","children":[{"id":"n1","labels":[{"text":"DatagramReader","layoutOptions":{"nodeLabels.placement":"[H_LEFT, V_TOP, OUTSIDE]"},"width":100,"height":12}],"ports":[{"id":"tp1","width":7,"height":7,"layoutOptions":{"port.side":"EAST","port.index":"0"}},{"id":"tp2","width":7,"height":7,"layoutOptions":{"port.side":"EAST","port.index":"1"}},{"id":"tp3","width":7,"height":7,"layoutOptions":{"port.side":"EAST","port.index":"2"}},{"id":"tp4","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"3"}}],"layoutOptions":{"portConstraints":"FIXED_ORDER"},"width":55,"height":40},{"id":"n2","labels":[{"text":"Ramp","layoutOptions":{"nodeLabels.placement":"[H_LEFT, V_TOP, OUTSIDE]"},"width":50,"height":12}],"ports":[{"id":"tp1_g837978","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"0"}},{"id":"tp2_g739884","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"1"}},{"id":"tp3_g539420","width":7,"height":7,"layoutOptions":{"port.side":"EAST","port.index":"2"}}],"layoutOptions":{"portConstraints":"FIXED_ORDER"},"width":55,"height":40},{"id":"n3","labels":[{"text":"QueueControl","layoutOptions":{"nodeLabels.placement":"[H_LEFT, V_TOP, OUTSIDE]"},"width":100,"height":12}],"ports":[{"id":"tp1_g572291","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"0"}},{"id":"tp2_g653563","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"1"}},{"id":"tp5","width":7,"height":7,"layoutOptions":{"port.side":"EAST","port.index":"4"}},{"id":"tp6","width":7,"height":7,"layoutOptions":{"port.side":"EAST","port.index":"5"}},{"id":"tp7","width":7,"height":7,"layoutOptions":{"port.side":"EAST","port.index":"6"}}],"layoutOptions":{"portConstraints":"FIXED_ORDER"},"width":55,"height":40},{"id":"n4","labels":[{"text":"Display","layoutOptions":{"nodeLabels.placement":"[H_LEFT, V_TOP, OUTSIDE]"},"width":35,"height":12}],"ports":[{"id":"tp1_g255145","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"0"}}],"layoutOptions":{"portConstraints":"FIXED_ORDER"},"width":35,"height":27},{"id":"n9","labels":[{"text":"Counter - q1","layoutOptions":{"nodeLabels.placement":"[H_LEFT, V_TOP, OUTSIDE]"},"width":55,"height":12}],"ports":[{"id":"tp1_g650325","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"0"}},{"id":"tp2_g732355","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"1"}}],"layoutOptions":{"portConstraints":"FIXED_ORDER"},"width":55,"height":35},{"id":"n10","labels":[{"text":"Counter - q2","layoutOptions":{"nodeLabels.placement":"[H_LEFT, V_TOP, OUTSIDE]"},"width":55,"height":12}],"ports":[{"id":"tp1_g006148","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"0"}},{"id":"tp2_g008338","width":7,"height":7,"layoutOptions":{"port.side":"WEST","port.index":"1"}}],"layoutOptions":{"portConstraints":"FIXED_ORDER"},"width":55,"height":35}],"edges":[{"id":"te0","sources":["tp3"],"targets":["tp2_g739884"]},{"id":"te1","sources":["tp3_g539420"],"targets":["tp2_g653563"]},{"id":"te2","sources":["tp5"],"targets":["tp1_g255145"]},{"id":"te5","sources":["tp6"],"targets":["tp2_g732355"]},{"id":"te6","sources":["tp6"],"targets":["tp1_g650325"]},{"id":"te7","sources":["tp7"],"targets":["tp2_g008338"]},{"id":"te8","sources":["tp7"],"targets":["tp1_g006148"]}]};
+
+        // Reuse shapes from the main diagrams (already defined above)
+        var tGraph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
+        var tPaper = new joint.dia.Paper({
+            model: tGraph, cellViewNamespace: joint.shapes,
+            width: 900, height: 400, gridSize: 1,
+            interactive: false, async: true, frozen: true,
+            background: { color: 'transparent' }
+        });
+        el.appendChild(tPaper.el);
+
+        var tPortMap = {};
+        function tAddNodes(children, parent) {
+            children.forEach(function(child) {
+                var shape = new NodeShape({
+                    id: 'elk_' + child.id,
+                    position: { x: child.x, y: child.y },
+                    size: { width: child.width, height: child.height }
+                });
+                (child.ports || []).forEach(function(p) {
+                    shape.addPort({ group: 'port', id: p.id, args: { x: p.x, y: p.y }, size: { width: p.width || 0, height: p.height || 0 } });
+                    tPortMap[p.id] = shape.id;
+                });
+                shape.addTo(tGraph);
+                if (parent) { parent.embed(shape); shape.position(child.x, child.y, { parentRelative: true }); }
+                if ((child.children || []).length > 0) tAddNodes(child.children, shape);
+                if (child.edges) tAddEdges(child.edges, shape);
+                (child.labels || []).forEach(function(lbl) {
+                    var le = new LabelShape({ attrs: { label: { fontSize: Math.max(lbl.height, 10), text: lbl.text, textAnchor: 'start', textVerticalAnchor: 'top' } } });
+                    le.addTo(tGraph); shape.embed(le); le.position(lbl.x, lbl.y, { parentRelative: true });
+                });
+            });
+        }
+        function tAddEdges(edges, parent) {
+            edges.forEach(function(e) {
+                var bp = (e.sections && e.sections[0] && e.sections[0].bendPoints) || [];
+                if (parent) { var pp = parent.position(); bp = bp.map(function(p) { return { x: p.x + pp.x, y: p.y + pp.y }; }); }
+                var link = new EdgeShape({
+                    source: { id: tPortMap[e.sources[0]], port: e.sources[0] },
+                    target: { id: tPortMap[e.targets[0]], port: e.targets[0] },
+                    vertices: bp
+                });
+                link.addTo(tGraph);
+            });
+        }
+
+        var tElk = new ELK();
+        tElk.layout(elkTestGraph).then(function(res) {
+            tAddNodes(res.children || []);
+            tAddEdges(res.edges || []);
+            tPaper.unfreeze();
+            tPaper.fitToContent({ useModelGeometry: true, padding: 40, allowNewOrigin: 'any' });
+        });
+    })();
+} // end initElkTest
+</script>
+
+</body>
+</html>

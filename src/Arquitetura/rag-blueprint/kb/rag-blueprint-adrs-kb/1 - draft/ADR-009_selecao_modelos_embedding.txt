@@ -1,0 +1,1776 @@
+================================================================================
+📋 ADR-009 — Selecao de Modelos de Embedding (Trilha On-Premises)
+================================================================================
+
+IDENTIFICACAO
+  ID:                ADR-009
+  Tipo:              ADR (Architecture Decision Record)
+  Sistema:           RAG Corporativo
+  Modulo:            Embedding e Representacao Vetorial
+  Dominio:           Arquitetura
+  Owner:             fabio
+  Time:              arquitetura
+  Status:            proposed
+  Confidencialidade: internal
+  Data da decisao:   22/03/2026
+  Criado em:         22/03/2026
+  Atualizado em:     22/03/2026
+  Versao:            1.1
+  Decisor:           Fabio A. B. Rodrigues
+  Escopo:            RAG Corporativo — Selecao e configuracao de modelos de embedding
+                     para a Trilha B (On-Premises) do pipeline de ingestao
+  Supersede:         (nenhum)
+  Tags:              adr, embedding, bge-m3, reranker, on-premises, soberania,
+                     trilha-b, sentence-transformers, base-vetorial, retrieval
+
+REFERENCIAS CRUZADAS
+  Depende de:
+    - ADR-001: Pipeline de geracao de conhecimento em 4 fases
+    - ADR-002: Soberania de dados — Trilha Cloud vs. On-Premises
+  Relaciona-se:
+    - ADR-006: Pipeline de ingestao — Da fonte a Base Vetorial
+    - ADR-007: Retrieval hibrido e agentes especializados
+    - ADR-008: Governanca — Papeis, ciclo de vida e rollback
+
+================================================================================
+INDICE DE SECOES
+================================================================================
+
+  SUMARIO
+  1. CONTEXTO
+     1.1. Por que a selecao do modelo de embedding e critica
+     1.2. Requisito de soberania de dados (ADR-002, Trilha B)
+     1.3. Posicao no pipeline (ADR-001, Fase 4 — Ingestao na Base Vetorial)
+     1.4. Hardware do ambiente-alvo
+     1.5. Requisitos de idioma
+  2. DECISAO
+     2.1. Modelo primario — BGE-M3
+     2.2. Modelo alternativo — multilingual-e5-large-instruct
+     2.3. Modelo de query — BGE-M3 (busca assimetrica)
+     2.4. Reranker — BGE-Reranker-v2-m3
+  3. REQUISITOS DE HARDWARE
+  4. ESTRATEGIA DE EXECUCAO
+  5. DIMENSAO DO VETOR E IMPACTO NA BASE VETORIAL
+  6. BENCHMARKS E VALIDACAO
+  7. ALTERNATIVAS DESCARTADAS
+  8. CONSEQUENCIAS
+  9. IMPLEMENTACAO — FASES
+  10. REFERENCIAS
+  REVISAO DE QUALIDADE
+
+================================================================================
+SUMARIO
+================================================================================
+
+Este ADR define a selecao, configuracao e operacao dos modelos de embedding
+para a Trilha B (On-Premises) do RAG Corporativo. A Trilha B, estabelecida
+pela ADR-002, e obrigatoria para documentos classificados como "restricted"
+ou "confidential" — dados que NAO PODEM sair da infraestrutura controlada
+pela organizacao.
+
+A decisao central e: QUAL MODELO de embedding executar localmente, com qual
+hardware, sob qual estrategia de operacao, para gerar vetores que alimentam
+a Base Vetorial com qualidade competitiva em relacao a opcoes cloud.
+
+Esta decisao impacta diretamente:
+  - A qualidade de toda busca semantica no RAG (retrieval quality)
+  - O tamanho e custo de armazenamento dos indices vetoriais
+  - A viabilidade de rodar o pipeline no hardware disponivel
+  - O custo de re-indexacao futura (se o modelo precisar mudar)
+
+================================================================================
+🧠 1. CONTEXTO
+================================================================================
+
+1.1. Por que a selecao do modelo de embedding e critica
+---------------------------------------------------------------------------
+
+O modelo de embedding e o componente mais determinante da qualidade de um
+sistema RAG. Ele transforma texto em vetores numericos que capturam o
+significado semantico — e toda busca vetorial subsequente depende da
+qualidade dessa transformacao.
+
+Para entender a importancia: se o modelo de embedding nao "entende" bem
+portugues tecnico, ele vai gerar vetores que colocam termos distintos
+proximos no espaco vetorial (falsos positivos) ou termos relacionados
+distantes (falsos negativos). O resultado e um RAG que retorna documentos
+irrelevantes ou nao encontra documentos relevantes. Nenhum reranker ou
+prompt engineering corrige um embedding ruim na origem.
+
+Especificamente, o modelo de embedding define:
+
+  a) DIMENSAO DO VETOR
+     Cada chunk de texto e transformado em um vetor de N dimensoes. Essa
+     dimensao e fixa para cada modelo (ex: 768, 1024, 1536). Ela impacta:
+     - Tamanho do indice vetorial na Base Vetorial (mais dimensoes = mais bytes)
+     - Latencia de busca (mais dimensoes = mais calculo por comparacao)
+     - Capacidade expressiva (mais dimensoes = mais nuances semanticas)
+
+  b) QUALIDADE SEMANTICA
+     A capacidade do modelo de capturar significado em portugues tecnico-
+     corporativo. Um modelo treinado predominantemente em ingles pode confundir
+     termos em portugues que tem significados distintos, especialmente jargao
+     financeiro, regulatorio e tecnico.
+
+  c) CUSTO DE RE-EMBEDDING
+     Se o modelo mudar no futuro, TODOS os chunks existentes na Base Vetorial
+     precisam ser re-processados. Vetores de modelos diferentes vivem em
+     espacos dimensionais incompativeis — nao se pode misturar vetores de
+     modelos distintos no mesmo indice. Para uma base com 50.000 chunks, isso
+     significa re-processar TODOS eles. Escolher bem desde o inicio evita esse
+     custo.
+
+  d) TAMANHO DO INDICE NA BASE VETORIAL
+     O tamanho do indice vetorial e calculado por:
+       tamanho = num_chunks x dimensao x 4 bytes (float32)
+     Exemplo: 50.000 chunks x 1024 dimensoes x 4 bytes = ~200 MB
+     Esse valor pode parecer pequeno, mas com replicas, indices auxiliares e
+     crescimento da base, ele se multiplica rapidamente.
+
+  e) COMPATIBILIDADE COM O PIPELINE DE RETRIEVAL
+     O modelo de embedding precisa ser compativel com a estrategia de
+     retrieval hibrido definida na ADR-007. Idealmente, o modelo deve
+     suportar multiplos modos de busca (densa, esparsa, ColBERT) para
+     maximizar a qualidade de recuperacao.
+
+1.2. Requisito de soberania de dados (ADR-002, Trilha B)
+---------------------------------------------------------------------------
+
+A ADR-002 estabeleceu que documentos com confidencialidade "restricted" ou
+"confidential" DEVEM ser processados exclusivamente em infraestrutura
+controlada pela organizacao. Isso significa que:
+
+  - O modelo de embedding DEVE rodar localmente (on-premises)
+  - Os textos dos chunks NUNCA podem ser enviados para APIs externas
+  - Os pesos do modelo devem estar armazenados em disco local
+  - A inferencia deve acontecer em GPU/CPU local
+
+Para uma instituicao financeira regulada por BACEN, CVM e sujeita a LGPD,
+isso nao e opcional — e uma OBRIGACAO REGULATORIA. Documentos que contem
+dados de clientes, informacoes privilegiadas de mercado, atas de comites
+de risco ou detalhes de operacoes financeiras DEVEM permanecer dentro do
+perimetro da organizacao durante TODO o processamento, incluindo a geracao
+de embeddings.
+
+Violacoes potenciais:
+  - Enviar texto de chunk para API da OpenAI: violacao de sigilo bancario
+  - Usar servico cloud de embedding sem contrato de processamento de dados:
+    violacao de LGPD (transferencia internacional sem base legal)
+  - Usar modelo cloud sem auditoria de retencao: risco de que o fornecedor
+    armazene temporariamente os textos para debug/treinamento
+
+A Trilha B elimina TODOS esses riscos porque o dado nunca sai da maquina.
+
+1.3. Posicao no pipeline (ADR-001, Fase 4 — Ingestao na Base Vetorial)
+---------------------------------------------------------------------------
+
+O pipeline definido na ADR-001 tem 4 fases:
+  Fase 1 (Selecao) -> Fase 2 (.beta.md) -> Fase 3 (.md final) -> Fase 4 (Base Vetorial)
+
+Este ADR impacta especificamente a Fase 4, na etapa 4 do pipeline de
+ingestao detalhado na ADR-006:
+
+  [1.Descoberta] -> [2.Parse] -> [3.Chunking] -> [4.Embeddings] -> [5.Persistencia] -> [6.Indexacao] -> [7.Observabilidade]
+
+A etapa 4 (Embeddings) recebe chunks de texto produzidos pela etapa 3
+(Chunking) e gera vetores numericos que serao persistidos na etapa 5
+e indexados na etapa 6. Cada chunk recebe um vetor de dimensao fixa
+que sera armazenado na Base Vetorial junto com o texto original e os
+metadados do documento.
+
+O modelo de embedding escolhido aqui tambem impacta a ADR-007 (Retrieval
+Hibrido), porque:
+  - A busca vetorial usa os embeddings gerados por este modelo
+  - A qualidade do retrieval depende diretamente da qualidade dos embeddings
+  - O reranker (tambem definido neste ADR) atua APOS a busca vetorial,
+    refinando os resultados
+
+1.4. Hardware do ambiente-alvo
+---------------------------------------------------------------------------
+
+O ambiente de producao inicial possui a seguinte configuracao:
+
+  +-------------------------------------------------------------------+
+  | HARDWARE DISPONIVEL                                               |
+  +-------------------------------------------------------------------+
+  | CPU ........: Processador multi-core (8+ cores)                   |
+  | RAM ........: 64 GB DDR4                                          |
+  | GPU ........: NVIDIA GeForce GTX 1070 (8 GB VRAM, arquitetura     |
+  |               Pascal, CUDA Compute Capability 6.1)                |
+  | Disco ......: SSD (500+ GB livres)                                |
+  | OS .........: Linux (Ubuntu/Debian) ou Windows com WSL2           |
+  | CUDA .......: 11.x ou 12.x (compativel com GTX 1070)             |
+  +-------------------------------------------------------------------+
+
+Implicacoes da GTX 1070 (8 GB VRAM):
+
+  - NAO suporta modelos com mais de ~7B parametros (nao cabem em 8GB)
+  - Suporta modelos de embedding ate ~1.5B parametros confortavelmente
+  - BGE-M3 (~568M parametros) cabe com folga (~2GB VRAM em inferencia)
+  - Batch size limitado: para BGE-M3 com sequencias de 512 tokens, o
+    batch size maximo e aproximadamente 16-32 na GTX 1070
+  - NAO suporta bf16 nativamente (Pascal nao tem Tensor Cores), mas
+    suporta fp16 via CUDA
+  - Throughput estimado: ~50-100 chunks/segundo para BGE-M3 (dependendo
+    do tamanho dos chunks e batch size)
+
+NOTA IMPORTANTE: a GTX 1070 e uma GPU consumer de 2016. Ela e SUFICIENTE
+para embedding batch (processamento offline de documentos), mas NAO e
+ideal para inferencia de LLM em tempo real. Este ADR trata apenas de
+embedding, onde a GTX 1070 e perfeitamente adequada.
+
+1.5. Requisitos de idioma
+---------------------------------------------------------------------------
+
+A base de conhecimento corporativa e predominantemente em portugues
+brasileiro (pt-BR). Porem, ha cenarios multilingues:
+
+  - Documentos tecnicos frequentemente misturam portugues com termos em
+    ingles (ex: "o endpoint de callback do webhook")
+  - Nomes de sistemas, APIs e bibliotecas sao em ingles
+  - Siglas regulatorias brasileiras (BACEN, CVM, LGPD) precisam ser
+    reconhecidas como entidades distintas, nao confundidas com palavras
+  - Documentacao de fornecedores internacionais pode estar em ingles
+  - ADRs podem conter trechos de codigo, configuracoes e logs em ingles
+
+Portanto, o modelo de embedding deve ter:
+  - EXCELENTE suporte a portugues brasileiro
+  - BOM suporte a ingles (para termos tecnicos misturados)
+  - Capacidade de lidar com code-switching (mistura de idiomas no mesmo texto)
+  - Reconhecimento de siglas e termos tecnicos sem "diluir" seu significado
+
+================================================================================
+✅ 2. DECISAO
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │ DECISAO:                                                               │
+  │                                                                        │
+  │ Adotar uma ESTRATEGIA EM CAMADAS (tiered) com 3 componentes:          │
+  │                                                                        │
+  │   1. MODELO PRIMARIO DE INDEXACAO: BGE-M3 (BAAI)                      │
+  │      - Gera embeddings densos (1024d) para todos os chunks            │
+  │      - Roda na GTX 1070 com ~2GB VRAM                                 │
+  │                                                                        │
+  │   2. MODELO DE QUERY: o proprio BGE-M3 (busca assimetrica via         │
+  │      prefixo de instrucao)                                             │
+  │                                                                        │
+  │   3. RERANKER: BGE-Reranker-v2-m3 (BAAI)                             │
+  │      - Cross-encoder para re-ordenar top-K resultados da busca        │
+  │      - Roda em CPU ou GPU                                              │
+  │                                                                        │
+  │   MODELO ALTERNATIVO (baixo recurso): multilingual-e5-large-instruct  │
+  │   - Para ambientes sem GPU ou como fallback                            │
+  │                                                                        │
+  │ Todos os modelos rodam 100% on-premises, via sentence-transformers.   │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+2.1. MODELO PRIMARIO — BGE-M3 (BAAI/bge-m3)
+---------------------------------------------------------------------------
+
+O BGE-M3 (Multi-Functionality, Multi-Linguality, Multi-Granularity) e,
+em marco de 2026, o melhor modelo de embedding open-source para cenarios
+multilingues on-premises. Ele foi desenvolvido pelo BAAI (Beijing Academy
+of Artificial Intelligence) e e disponibilizado sob licenca MIT.
+
+Por que BGE-M3:
+
+  a) MULTILINGUAL DE ALTA QUALIDADE
+     - Treinado em 100+ idiomas com corpus balanceado
+     - Performance em portugues: comparavel ou superior a modelos treinados
+       exclusivamente em portugues, porque o corpus de treinamento inclui
+       fontes juridicas, tecnicas e academicas em pt-BR
+     - No MTEB (Massive Text Embedding Benchmark), o BGE-M3 alcanca scores
+       competitivos com modelos proprietarios:
+         * Retrieval (avg): ~65-68 nDCG@10 em benchmarks multilingues
+         * STS (Semantic Textual Similarity): ~84-86 em pares pt-BR
+         * Classification: ~75-78 em tarefas multilingues
+     - Para comparacao: OpenAI text-embedding-3-small alcanca ~68-70 nDCG@10
+       nos mesmos benchmarks. A diferenca e de 2-5 pontos percentuais —
+       margem aceitavel considerando que o BGE-M3 roda 100% local.
+
+  b) TRES MODOS DE EMBEDDING (Multi-Functionality)
+     O BGE-M3 e unico por suportar 3 tipos de representacao simultaneamente:
+
+     1. MODO DENSO (Dense Retrieval)
+        - Gera um unico vetor de 1024 dimensoes para cada texto
+        - E o modo padrao e mais comum — usado para busca por similaridade
+          coseno na Base Vetorial
+        - Captura significado semantico global do texto
+        - Uso: indice vetorial principal na Base Vetorial
+
+     2. MODO ESPARSO (Sparse Retrieval / Lexical Weights)
+        - Gera um vetor esparso com pesos por token (similar a BM25 aprendido)
+        - Cada token do vocabulario recebe um peso de importancia
+        - Excelente para termos exatos, siglas, codigos
+        - Uso: complementa a busca densa para termos especificos (ex: "BACEN
+          4893", "CU-4567", "SKU-12345")
+        - VANTAGEM: resolve o problema #1 e #3 da ADR-007 (termos exatos e
+          codigos/siglas) usando o PROPRIO modelo de embedding, sem depender
+          de full-text search separado
+
+     3. MODO ColBERT (Multi-Vector / Late Interaction)
+        - Gera um vetor por token (multi-vector)
+        - Permite interacao tardia (late interaction) entre tokens da query
+          e tokens do documento
+        - Qualidade superior para retrieval, mas requer mais armazenamento
+        - Uso: pode ser ativado seletivamente para domínios criticos (ex:
+          documentos regulatorios onde a precisao maxima e necessaria)
+
+     RECOMENDACAO PARA FASE INICIAL: usar apenas o MODO DENSO (1024d).
+     Os modos esparso e ColBERT podem ser ativados nas fases subsequentes
+     do rollout, conforme a necessidade de qualidade aumente.
+
+  c) DIMENSAO OTIMA (1024 dimensoes)
+     - 1024 dimensoes oferecem excelente equilibrio entre qualidade e custo
+     - Para comparacao:
+       * 384d (MiniLM): rapido mas perde nuances semanticas
+       * 768d (E5-base): bom mas inferior em benchmarks multilingues
+       * 1024d (BGE-M3): ponto otimo para multilingue
+       * 1536d (OpenAI): marginalmente melhor mas 50% mais caro em storage
+       * 3072d (OpenAI large): overhead significativo, ganho marginal
+     - Na Base Vetorial, 1024d significa:
+       * 4 KB por chunk (1024 x 4 bytes float32)
+       * 50.000 chunks = ~200 MB de indice vetorial puro
+       * Perfeitamente gerenciavel mesmo em hardware modesto
+
+  d) CABE NA GTX 1070
+     - Tamanho do modelo: ~2.2 GB (pesos em fp16)
+     - VRAM em inferencia: ~2.0-2.5 GB (dependendo do batch size)
+     - Sobram ~5.5 GB de VRAM para batch processing
+     - Batch size recomendado para GTX 1070: 16-24 chunks de 512 tokens
+     - Throughput estimado: 50-100 chunks/segundo (inferencia batch)
+
+  e) LICENCA ABERTA
+     - Licenca MIT: uso comercial irrestrito, sem royalties, sem restricoes
+     - Pesos disponiveis no HuggingFace: BAAI/bge-m3
+     - Sem risco de lock-in ou mudanca unilateral de termos
+
+  f) ECOSSISTEMA MADURO
+     - Suportado por sentence-transformers (biblioteca padrao de mercado)
+     - Suportado por Ollama (para quem prefere setup simplificado)
+     - Suportado por LangChain, LlamaIndex, Haystack
+     - Documentacao extensa e comunidade ativa
+
+2.2. MODELO ALTERNATIVO (BAIXO RECURSO) — multilingual-e5-large-instruct
+---------------------------------------------------------------------------
+
+Para cenarios onde a GPU nao esta disponivel ou esta ocupada com outra
+carga (ex: inferencia de LLM), o modelo alternativo e o
+multilingual-e5-large-instruct (intfloat/multilingual-e5-large-instruct).
+
+Caracteristicas:
+
+  - Dimensao: 1024 (compativel com indice do BGE-M3)
+  - Parametros: ~560M
+  - Roda em CPU: sim, com throughput razoavel (~10-20 chunks/segundo
+    em CPU com 8 cores e 64GB RAM)
+  - Roda em GPU: sim, com throughput similar ao BGE-M3
+  - Qualidade: ligeiramente inferior ao BGE-M3 em benchmarks multilingues
+    (~2-3 pontos abaixo no MTEB), mas ainda competitivo
+  - Suporte a instrucao: aceita prefixo "query:" e "passage:" para busca
+    assimetrica (similar ao BGE-M3)
+  - Licenca: MIT
+
+Trade-off:
+  - VANTAGEM: funciona em CPU (fallback quando GPU esta indisponivel)
+  - DESVANTAGEM: qualidade um pouco inferior, especialmente em textos longos
+  - DESVANTAGEM: suporta apenas modo denso (sem esparso ou ColBERT)
+
+IMPORTANTE: Se usar E5 como fallback, os vetores gerados sao INCOMPATIVEIS
+com os vetores do BGE-M3. Isso significa que NAO se pode misturar vetores
+dos dois modelos no mesmo indice. O E5 deve ser usado apenas como:
+  - Modelo para ambiente de desenvolvimento/teste (sem GPU)
+  - Modelo para processamento emergencial quando GPU esta indisponivel
+  - Nestes casos, os chunks processados por E5 devem ser RE-EMBEDDADOS
+    com BGE-M3 assim que a GPU estiver disponivel
+
+RASTREABILIDADE POR CHUNK: Para garantir que chunks processados por modelos
+diferentes sejam identificaveis, cada chunk persistido na Base Vetorial DEVE
+conter os seguintes metadados obrigatorios:
+  - embedding_model: nome do modelo (ex: "BAAI/bge-m3" ou "intfloat/multilingual-e5-large-instruct")
+  - embedding_model_version: hash do commit ou tag do modelo no HuggingFace
+  - embedding_timestamp: data/hora em que o embedding foi gerado
+Isso permite que o pipeline de re-embedding identifique automaticamente chunks
+que precisam ser re-processados (ex: chunks gerados por E5 durante fallback)
+e e fundamental para a premissa de idempotencia da ADR-006.
+
+2.3. MODELO DE QUERY — BGE-M3 (mesmo modelo, busca assimetrica)
+---------------------------------------------------------------------------
+
+Na maioria dos sistemas RAG, o mesmo modelo e usado para gerar embeddings
+dos chunks (indexacao) e da query do usuario (busca). Isso e o correto,
+porque os vetores precisam estar no MESMO espaco vetorial para que a
+similaridade coseno funcione.
+
+O BGE-M3 suporta busca assimetrica via prefixo de instrucao:
+
+  - Para INDEXACAO (chunks):
+    Nenhum prefixo necessario. O texto do chunk e passado diretamente.
+
+  - Para QUERY (busca do usuario):
+    Prefixo: "Represent this sentence for searching relevant passages: "
+    Este prefixo instrui o modelo a gerar um vetor otimizado para BUSCA,
+    que tende a ser mais "aberto" semanticamente (captura intencao da
+    pergunta, nao apenas conteudo literal).
+
+Exemplo pratico:
+
+  # Indexacao (chunk)
+  embedding = model.encode("O modulo de cobranca gera boletos via API do banco.")
+
+  # Query (busca do usuario)
+  embedding = model.encode(
+    "Represent this sentence for searching relevant passages: "
+    "como funciona a geracao de boletos?"
+  )
+
+  # A similaridade coseno entre esses dois vetores sera alta,
+  # mesmo que as palavras sejam diferentes, porque o modelo
+  # "entende" que a pergunta e sobre o mesmo assunto.
+
+NOTA: o prefixo de instrucao NAO e obrigatorio — o BGE-M3 funciona bem
+sem ele. Porem, benchmarks mostram ganho de 1-3 pontos em recall@10
+quando o prefixo e usado para queries. Para indexacao, NAO usar prefixo.
+
+ACAO DE VALIDACAO: o prefixo recomendado acima e em ingles (conforme
+paper original do BGE-M3). Para um corpus predominantemente em pt-BR,
+e RECOMENDADO validar via benchmark (Secao 6, golden set) se o prefixo
+em ingles produz resultados equivalentes ou superiores a um prefixo em
+portugues (ex: "Represente esta sentenca para buscar passagens relevantes: ").
+Essa validacao deve ser realizada na Fase 1 da implementacao (Secao 9.1)
+como parte do benchmark comparativo.
+
+2.4. RERANKER — BGE-Reranker-v2-m3 (BAAI/bge-reranker-v2-m3)
+---------------------------------------------------------------------------
+
+O reranker e o segundo componente mais importante apos o modelo de
+embedding. Ele atua DEPOIS da busca vetorial, recebendo os top-K
+resultados e re-ordenando-os com base em uma analise mais profunda
+da relacao query-documento.
+
+Por que reranker e essencial (e nao opcional):
+
+  A busca vetorial usa REPRESENTACAO BI-ENCODER: query e documento sao
+  codificados SEPARADAMENTE em vetores, e a similaridade e calculada
+  por distancia coseno. Isso e rapido (permite busca em milhoes de
+  vetores em milissegundos) mas IMPRECISO — a interacao entre query
+  e documento e superficial (apenas comparacao de vetores).
+
+  O reranker usa REPRESENTACAO CROSS-ENCODER: query e documento sao
+  processados JUNTOS pelo modelo, que atribui um score de relevancia.
+  Isso e LENTO (nao escala para milhoes de documentos) mas PRECISO —
+  a interacao entre query e documento e profunda (atencao cruzada
+  token a token).
+
+  Em termos praticos:
+    - Busca vetorial (BGE-M3) retorna top-50 candidatos em ~10ms
+    - Reranker (BGE-Reranker-v2-m3) re-ordena esses 50 em ~200ms
+    - O resultado final e significativamente melhor do que apenas
+      busca vetorial: ganho tipico de 5-10 pontos em nDCG@10
+
+Caracteristicas do BGE-Reranker-v2-m3:
+
+  - Tipo: Cross-encoder multilingue
+  - Suporte a portugues: excelente (mesmo corpus do BGE-M3)
+  - Tamanho: ~1.1 GB (pesos em fp16)
+  - Pode rodar em CPU: sim (~500ms para re-ranquear 50 passagens)
+  - Pode rodar em GPU: sim (~50ms para re-ranquear 50 passagens)
+  - VRAM necessaria: ~1.5 GB (cabe na GTX 1070 junto com BGE-M3)
+  - Licenca: MIT
+  - Benchmarks: comparavel ao Cohere Rerank v3 em cenarios multilingues
+    (diferenca de 1-2 pontos em nDCG@10)
+
+Integracao no pipeline de retrieval (ADR-007):
+
+  1. Usuario faz pergunta
+  2. Query e embeddada com BGE-M3 (modo query)
+  3. Busca vetorial na Base Vetorial retorna top-50 chunks
+  4. Filtragem por metadados (confidencialidade, sistema, modulo)
+  5. BGE-Reranker-v2-m3 re-ordena os chunks filtrados
+  6. Top-10 chunks re-ranqueados sao enviados ao LLM como contexto
+  7. LLM gera resposta citando fontes
+
+O reranker e usado APENAS no momento da busca (online), NAO na
+indexacao (offline). Nao ha custo de reranking na ingestao.
+
+================================================================================
+3. REQUISITOS DE HARDWARE
+================================================================================
+
+3.1. Perfis de hardware e modelos recomendados
+---------------------------------------------------------------------------
+
+  +---------------------+------------------+------------------+--------------------+
+  | Perfil              | Hardware         | Modelo           | Throughput         |
+  +---------------------+------------------+------------------+--------------------+
+  | MINIMO              | 16 GB RAM        | E5-large-instruct| ~10-15 chunks/s    |
+  | (sem GPU)           | 4+ cores CPU     | (CPU only)       | Viavel para bases  |
+  |                     | SSD 256 GB       |                  | ate 10.000 chunks  |
+  +---------------------+------------------+------------------+--------------------+
+  | RECOMENDADO         | 32 GB RAM        | BGE-M3           | ~50-80 chunks/s    |
+  | (GPU basica)        | 8+ cores CPU     | (GPU inference)  | Viavel para bases  |
+  |                     | GPU 8 GB VRAM    |                  | ate 100.000 chunks |
+  |                     | SSD 512 GB       |                  |                    |
+  +---------------------+------------------+------------------+--------------------+
+  | IDEAL               | 64+ GB RAM       | BGE-M3           | ~100-200 chunks/s  |
+  | (GPU moderna)       | 16+ cores CPU    | (GPU otimizado)  | Viavel para bases  |
+  |                     | GPU 16+ GB VRAM  |                  | de qualquer porte  |
+  |                     | SSD 1 TB         | + batch grande   |                    |
+  +---------------------+------------------+------------------+--------------------+
+
+3.2. Avaliacao do ambiente-alvo (64 GB RAM + GTX 1070)
+---------------------------------------------------------------------------
+
+O ambiente-alvo se encaixa entre o perfil RECOMENDADO e o IDEAL:
+
+  CPU ........: SUFICIENTE (8+ cores para paralelismo de pre-processamento)
+  RAM ........: EXCELENTE (64 GB e mais do que suficiente; o modelo usa ~4 GB
+                em RAM para carregar, sobrando 60 GB para pipeline, OS e
+                Base Vetorial)
+  GPU ........: ADEQUADA (GTX 1070 com 8 GB VRAM comporta BGE-M3 + batch de
+                16-24 chunks confortavelmente)
+  Disco ......: Deve ter ao menos 20 GB livres para modelos + cache
+
+  Limitacoes especificas da GTX 1070:
+    - Arquitetura Pascal (2016): nao possui Tensor Cores (presentes a partir
+      da Volta/Turing). Isso significa que operacoes em fp16 nao tem
+      aceleracao de hardware dedicada, mas ainda funcionam via CUDA.
+    - Bandwidth de memoria: 256 GB/s (GDDR5). GPUs modernas como RTX 3060
+      tem 360 GB/s (GDDR6) ou RTX 4090 tem 1 TB/s (GDDR6X). Isso limita
+      o throughput maximo, mas para embedding batch e aceitavel.
+    - CUDA Compute Capability 6.1: compativel com PyTorch e CUDA 11.x/12.x
+      mas nao suporta algumas otimizacoes modernas (Flash Attention v2
+      requer CC 8.0+).
+
+  VEREDICTO: a GTX 1070 e SUFICIENTE para BGE-M3 em modo batch. O
+  processamento de 50.000 chunks levaria aproximadamente:
+    50.000 chunks / 60 chunks por segundo = ~14 minutos
+  Isso e perfeitamente aceitavel para um pipeline offline disparado por
+  release tag (ADR-006).
+
+3.3. Armazenamento de pesos dos modelos
+---------------------------------------------------------------------------
+
+Espaco em disco necessario para os modelos:
+
+  +----------------------------+-----------+-----------------------------------+
+  | Modelo                     | Tamanho   | Localizacao                       |
+  +----------------------------+-----------+-----------------------------------+
+  | BGE-M3 (fp16)              | ~2.2 GB   | ~/.cache/huggingface/ ou          |
+  |                            |           | /opt/models/bge-m3/               |
+  +----------------------------+-----------+-----------------------------------+
+  | E5-large-instruct (fp16)   | ~2.1 GB   | ~/.cache/huggingface/ ou          |
+  |                            |           | /opt/models/e5-large/             |
+  +----------------------------+-----------+-----------------------------------+
+  | BGE-Reranker-v2-m3 (fp16)  | ~1.1 GB   | ~/.cache/huggingface/ ou          |
+  |                            |           | /opt/models/bge-reranker/         |
+  +----------------------------+-----------+-----------------------------------+
+  | TOTAL                      | ~5.4 GB   |                                   |
+  +----------------------------+-----------+-----------------------------------+
+
+RECOMENDACAO: baixar os modelos UMA VEZ e armazena-los em diretorio fixo
+(/opt/models/ ou equivalente). NAO depender de download automatico do
+HuggingFace Hub em cada execucao do pipeline — em ambiente on-premises,
+a maquina pode nao ter acesso a internet.
+
+Procedimento de download offline:
+
+  # Em maquina com acesso a internet:
+  huggingface-cli download BAAI/bge-m3 --local-dir /tmp/bge-m3
+  huggingface-cli download BAAI/bge-reranker-v2-m3 --local-dir /tmp/bge-reranker
+
+  # Transferir para maquina on-premises via SCP/USB/rede interna:
+  scp -r /tmp/bge-m3 user@onprem:/opt/models/bge-m3
+  scp -r /tmp/bge-reranker user@onprem:/opt/models/bge-reranker
+
+================================================================================
+4. ESTRATEGIA DE EXECUCAO
+================================================================================
+
+4.1. Framework principal — sentence-transformers (Python)
+---------------------------------------------------------------------------
+
+O framework recomendado para execucao local dos modelos de embedding e o
+sentence-transformers (https://sbert.net). Razoes:
+
+  a) MATURIDADE: Biblioteca mais usada e testada para embedding local.
+     Mantida ativamente com atualizacoes regulares (ultima release: marco 2026).
+
+  b) SUPORTE NATIVO A BGE-M3: O sentence-transformers suporta BGE-M3 como
+     modelo de primeira classe, incluindo os 3 modos (denso, esparso, ColBERT).
+
+  c) CONTROLE TOTAL: Permite configurar batch size, device (CPU/GPU),
+     precisao (fp32/fp16), truncamento, normalizacao e pooling.
+
+  d) SEM SERVIDOR: Roda como biblioteca Python — nao precisa de servidor
+     HTTP, daemon ou container adicional. Importa, carrega, usa.
+
+  e) COMPATIBILIDADE: Funciona com PyTorch, CUDA, e opcionalmente ONNX
+     Runtime para inferencia otimizada em CPU.
+
+Exemplo de uso basico:
+
+  from sentence_transformers import SentenceTransformer
+
+  # Carregar modelo de diretorio local (offline)
+  model = SentenceTransformer('/opt/models/bge-m3', device='cuda')
+
+  # Gerar embeddings para chunks (indexacao)
+  chunks = ["O modulo de cobranca gera boletos...", "O sistema de pagamentos..."]
+  embeddings = model.encode(chunks, batch_size=16, show_progress_bar=True,
+                            normalize_embeddings=True)
+
+  # embeddings.shape = (2, 1024) — 2 chunks, 1024 dimensoes cada
+
+  # Gerar embedding para query (busca)
+  query = "Represent this sentence for searching relevant passages: como funciona a geracao de boletos?"
+  query_embedding = model.encode(query, normalize_embeddings=True)
+
+  # Calcular similaridade coseno
+  from sentence_transformers.util import cos_sim
+  scores = cos_sim(query_embedding, embeddings)
+  # scores = tensor([[0.82, 0.45]]) — chunk 1 e mais relevante
+
+Exemplo de uso do reranker:
+
+  from sentence_transformers import CrossEncoder
+
+  # Carregar reranker
+  reranker = CrossEncoder('/opt/models/bge-reranker-v2-m3', device='cuda')
+
+  # Re-ranquear top-K resultados
+  query = "como funciona a geracao de boletos?"
+  passages = [
+      "O modulo de cobranca gera boletos via API do banco.",
+      "O sistema de pagamentos processa TED e PIX.",
+      "A cobranca emite boletos registrados conforme FEBRABAN."
+  ]
+
+  # Calcular scores de relevancia (cross-encoder)
+  pairs = [(query, p) for p in passages]
+  scores = reranker.predict(pairs)
+  # scores = [0.92, 0.15, 0.88] — reranker reordena com maior precisao
+
+4.2. Framework alternativo — Ollama
+---------------------------------------------------------------------------
+
+Para equipes que preferem setup simplificado sem Python, o Ollama
+(https://ollama.ai) oferece uma alternativa:
+
+  Vantagens:
+    - Instalacao em 1 comando (curl + install)
+    - API REST padrao (compativel com OpenAI API format)
+    - Gerenciamento automatico de modelos (download, cache, versoes)
+    - Suporte a GPU automatico (detecta CUDA)
+
+  Desvantagens:
+    - MENOS CONTROLE: nao permite configurar batch size, precisao ou pooling
+    - OVERHEAD: roda como servidor HTTP (daemon), consome memoria mesmo idle
+    - LIMITACOES: suporta apenas modo denso do BGE-M3 (sem esparso/ColBERT)
+    - DEPENDENCIA: adiciona mais um servico para gerenciar em producao
+
+  Uso com Ollama:
+    ollama pull bge-m3
+    curl http://localhost:11434/api/embeddings -d '{"model": "bge-m3", "prompt": "texto"}'
+
+  RECOMENDACAO: usar Ollama apenas para prototipagem rapida ou ambientes
+  de desenvolvimento. Para producao, sentence-transformers oferece mais
+  controle e previsibilidade.
+
+4.3. Otimizacao de batch para GTX 1070
+---------------------------------------------------------------------------
+
+A GTX 1070 tem 8 GB VRAM. O BGE-M3 consome ~2-2.5 GB, deixando ~5.5 GB
+para tensores de entrada e saida. A otimizacao de batch e critica para
+maximizar throughput sem estourar VRAM.
+
+  Parametros recomendados para GTX 1070 + BGE-M3:
+
+  +-----------------------+------------------------+---------------------------+
+  | Parametro             | Valor recomendado       | Justificativa             |
+  +-----------------------+------------------------+---------------------------+
+  | batch_size            | 16                     | Equilibrio entre          |
+  |                       |                        | throughput e VRAM         |
+  +-----------------------+------------------------+---------------------------+
+  | max_seq_length        | 512 tokens             | Padrao do BGE-M3;        |
+  |                       |                        | chunks devem ter <512t   |
+  +-----------------------+------------------------+---------------------------+
+  | precision             | fp16                   | Metade da VRAM vs fp32;  |
+  |                       |                        | qualidade identica        |
+  +-----------------------+------------------------+---------------------------+
+  | normalize_embeddings  | True                   | Necessario para cosine   |
+  |                       |                        | similarity               |
+  +-----------------------+------------------------+---------------------------+
+  | device                | 'cuda'                 | Usar GPU quando          |
+  |                       |                        | disponivel               |
+  +-----------------------+------------------------+---------------------------+
+
+  Se ocorrer CUDA Out of Memory (OOM):
+    1. Reduzir batch_size para 8
+    2. Se persistir, reduzir max_seq_length para 256
+    3. Se persistir, usar CPU como fallback (device='cpu')
+
+  Monitoramento de VRAM durante processamento:
+
+    import torch
+    print(f"VRAM alocada: {torch.cuda.memory_allocated()/1024**3:.2f} GB")
+    print(f"VRAM reservada: {torch.cuda.memory_reserved()/1024**3:.2f} GB")
+
+4.4. Fallback para CPU
+---------------------------------------------------------------------------
+
+Cenarios em que o fallback para CPU pode ser necessario:
+
+  1. GPU ocupada com inferencia de LLM (se a mesma GTX 1070 for usada)
+  2. Driver CUDA corrompido ou incompativel apos atualizacao
+  3. Processamento de emergencia quando GPU esta em manutencao
+  4. Ambiente de desenvolvimento/teste sem GPU
+
+  Comportamento do fallback:
+    - O pipeline detecta automaticamente se CUDA esta disponivel
+    - Se nao estiver, carrega o modelo em CPU
+    - Throughput em CPU (8 cores, 64 GB RAM): ~10-20 chunks/segundo
+    - Para uma base de 50.000 chunks: ~40-80 minutos (vs ~14 min em GPU)
+    - Aceitavel para processamento offline
+
+  Codigo de fallback:
+
+    import torch
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = SentenceTransformer('/opt/models/bge-m3', device=device)
+    batch_size = 16 if device == 'cuda' else 4  # menor batch em CPU
+
+4.5. Ambiente de execucao — Docker com suporte CUDA
+---------------------------------------------------------------------------
+
+Para reproducibilidade e isolamento, o pipeline de embedding deve rodar
+em container Docker com suporte a CUDA:
+
+  Imagem base recomendada:
+    pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime
+    (ou a versao estavel mais recente compativel com CUDA e GTX 1070 no
+    momento do deploy — verificar https://pytorch.org/get-started/locally/)
+
+  Dockerfile minimo:
+
+    FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime
+    RUN pip install sentence-transformers==3.4.0
+    COPY /opt/models /opt/models
+    WORKDIR /app
+    COPY pipeline/ /app/pipeline/
+    CMD ["python", "pipeline/embedding_stage.py"]
+
+  Execucao com acesso a GPU:
+
+    docker run --gpus all \
+      -v /opt/models:/opt/models \
+      -v /data/chunks:/data/chunks \
+      -v /data/embeddings:/data/embeddings \
+      rag-embedding-pipeline:latest
+
+  NOTA: o nvidia-container-toolkit deve estar instalado no host para
+  que o Docker acesse a GPU. Instrucoes:
+    https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+
+================================================================================
+5. DIMENSAO DO VETOR E IMPACTO NA BASE VETORIAL
+================================================================================
+
+5.1. Dimensao escolhida: 1024 (BGE-M3, modo denso)
+---------------------------------------------------------------------------
+
+O BGE-M3 em modo denso gera vetores de 1024 dimensoes (float32). Cada
+vetor ocupa:
+  1024 dimensoes x 4 bytes = 4.096 bytes (~4 KB) por chunk
+
+5.2. Impacto no tamanho do indice vetorial
+---------------------------------------------------------------------------
+
+  +-------------------+-------------------+------------------+-----------------+
+  | Num. de chunks    | Tamanho do indice | Com overhead     | Com 2 replicas  |
+  |                   | (vetores puros)   | (metadados ~30%) | (alta disp.)    |
+  +-------------------+-------------------+------------------+-----------------+
+  | 1.000             | 4 MB              | 5.2 MB           | 15.6 MB         |
+  | 10.000            | 40 MB             | 52 MB            | 156 MB          |
+  | 50.000            | 200 MB            | 260 MB           | 780 MB          |
+  | 100.000           | 400 MB            | 520 MB           | 1.56 GB         |
+  | 500.000           | 2 GB              | 2.6 GB           | 7.8 GB          |
+  +-------------------+-------------------+------------------+-----------------+
+
+Para o cenario inicial do projeto (estimativa de 10.000-50.000 chunks),
+o indice vetorial ocupara entre 52 MB e 260 MB — perfeitamente gerenciavel.
+
+5.3. Comparacao com a Trilha Cloud (OpenAI 1536d)
+---------------------------------------------------------------------------
+
+  +----------------------------+--------------------+------------------------+
+  | Aspecto                    | Trilha B (BGE-M3)  | Trilha A (OpenAI)      |
+  +----------------------------+--------------------+------------------------+
+  | Dimensao                   | 1024               | 1536                   |
+  | Bytes por vetor            | 4.096              | 6.144                  |
+  | Indice (50k chunks)        | 200 MB             | 300 MB                 |
+  | Qualidade (MTEB avg)       | ~65-68 nDCG@10     | ~68-70 nDCG@10         |
+  | Custo por embedding        | Zero (local)       | US$ 0.02/1M tokens     |
+  | Latencia por batch (100)   | ~1.5s (GPU local)  | ~100ms (API)           |
+  | Soberania                  | Total              | Nenhuma                |
+  +----------------------------+--------------------+------------------------+
+
+NOTA: os vetores das duas trilhas sao INCOMPATIVEIS. Documentos da Trilha A
+(cloud) e Trilha B (on-premises) NAO compartilham o mesmo indice vetorial.
+A Base Vetorial deve manter indices separados por trilha, ou operar duas
+instancias separadas — conforme definido na ADR-002 (Soberania de Dados),
+que estabelece formalmente as duas trilhas e seus criterios de roteamento
+baseados no campo confidentiality do front matter.
+
+5.4. Custo de re-embedding (por que acertar de primeira importa)
+---------------------------------------------------------------------------
+
+Se o modelo de embedding precisar mudar no futuro (ex: surge um modelo
+superior), TODOS os chunks ja indexados precisam ser re-processados:
+
+  Cenario: 50.000 chunks, BGE-M3, GTX 1070
+  Tempo de re-embedding: ~14 minutos (batch GPU)
+  Impacto operacional: downtime de busca vetorial durante re-indexacao
+                       (a menos que se use blue-green deployment com
+                       indice temporario)
+
+  Procedimento de re-embedding (ADR-006, premissa 2):
+    1. Criar indice temporario com novo modelo
+    2. Processar todos os chunks com novo modelo
+    3. Validar qualidade com golden set (secao 7 deste ADR)
+    4. Trocar indice ativo (swap atomico)
+    5. Remover indice antigo
+
+Para uma base de 500.000 chunks, o re-embedding levaria ~2.3 horas.
+Isso e gerenciavel, mas indesejavel. Por isso, a escolha do modelo
+inicial deve ser feita com cuidado e baseada em benchmarks solidos.
+
+================================================================================
+6. BENCHMARKS E VALIDACAO
+================================================================================
+
+6.1. Golden set para validacao do modelo
+---------------------------------------------------------------------------
+
+Antes de adotar qualquer modelo de embedding em producao, ele DEVE ser
+validado com um golden set — um conjunto curado de pares (query, documentos
+relevantes) que representam as perguntas reais dos usuarios do RAG.
+
+Estrutura do golden set:
+
+  {
+    "query": "como funciona a geracao de boletos no modulo de cobranca?",
+    "relevant_doc_ids": ["DOC-000045", "DOC-000046"],
+    "relevant_chunk_ids": ["CHK-000123", "CHK-000124", "CHK-000125"],
+    "domain": "Financeiro",
+    "difficulty": "medium"
+  }
+
+Requisitos do golden set:
+
+  - MINIMO 50 pares query-documentos para avaliacao inicial
+  - IDEAL 200+ pares para avaliacao robusta
+  - Distribuicao equilibrada por dominio (Financeiro, Regulatorio, Tecnico)
+  - Incluir queries dificeis (ambiguas, com siglas, com termos exatos)
+  - Incluir queries em portugues, ingles e mistas (code-switching)
+  - Curadoria por especialistas de dominio (nao gerado por IA)
+
+6.2. Metricas de avaliacao
+---------------------------------------------------------------------------
+
+  Recall@K: De todos os documentos relevantes, quantos foram encontrados
+            nos top-K resultados?
+    Formula: |relevantes ∩ retornados@K| / |relevantes|
+
+  Precision@K: Dos top-K resultados retornados, quantos sao relevantes?
+    Formula: |relevantes ∩ retornados@K| / K
+
+  MRR (Mean Reciprocal Rank): Qual a posicao media do primeiro documento
+    relevante nos resultados?
+    Formula: media(1 / rank_do_primeiro_relevante) sobre todas as queries
+
+  nDCG@K (Normalized Discounted Cumulative Gain): Mede a qualidade do
+    ranking considerando relevancia graduada (nao binaria).
+
+6.3. Thresholds minimos (alinhados com ADR-008)
+---------------------------------------------------------------------------
+
+A ADR-008 define gates progressivos para transicao entre fases do projeto.
+Os thresholds de qualidade de embedding devem acompanhar essas fases:
+
+  +-------------------+-------------+-------------+-------------+
+  | Metrica           | Fase 1 MVP  | Fase 2 Meta | Fase 3 Prod |
+  +-------------------+-------------+-------------+-------------+
+  | Recall@10         | >= 70%      | >= 80%      | >= 85%      |
+  | Precision@10      | >= 50%      | >= 60%      | >= 70%      |
+  | MRR               | >= 0.50     | >= 0.65     | >= 0.75     |
+  +-------------------+-------------+-------------+-------------+
+
+Se o modelo NAO atingir os thresholds da fase atual, as acoes corretivas
+sao (em ordem de prioridade):
+
+  1. Verificar qualidade do chunking (chunks mal formados degradam embedding)
+  2. Verificar pre-processamento de texto (limpeza, normalizacao)
+  3. Testar modelo alternativo (E5 vs BGE-M3)
+  4. Ajustar max_seq_length (chunks truncados perdem informacao)
+  5. Considerar fine-tuning do modelo com dados do dominio (avancado)
+
+6.4. Processo de benchmark comparativo
+---------------------------------------------------------------------------
+
+Para validar a escolha do BGE-M3 contra alternativas, executar o seguinte
+processo:
+
+  ETAPA 1 — PREPARACAO
+    1. Montar golden set com 50+ pares query-documento
+    2. Gerar chunks dos documentos relevantes (mesma estrategia de chunking
+       do pipeline de producao)
+    3. Listar modelos candidatos:
+       - BGE-M3 (BAAI/bge-m3)
+       - multilingual-e5-large-instruct (intfloat)
+       - nomic-embed-text (nomic-ai)
+       - all-MiniLM-L12-v2 (sentence-transformers — baseline)
+
+  ETAPA 2 — EMBEDDING
+    Para cada modelo candidato:
+    1. Carregar modelo
+    2. Gerar embeddings para TODOS os chunks
+    3. Gerar embeddings para TODAS as queries do golden set
+    4. Registrar tempo de processamento e uso de recursos
+
+  ETAPA 3 — AVALIACAO
+    Para cada modelo candidato:
+    1. Para cada query, buscar top-10 chunks por similaridade coseno
+    2. Comparar com documentos relevantes do golden set
+    3. Calcular Recall@10, Precision@10, MRR
+    4. Calcular media e desvio padrao de cada metrica
+
+  ETAPA 4 — COMPARACAO
+    Consolidar resultados em tabela comparativa:
+
+    +------------------------------+------------+-------------+--------+----------+
+    | Modelo                       | Recall@10  | Precision@10| MRR    | Tempo(s) |
+    +------------------------------+------------+-------------+--------+----------+
+    | BGE-M3                       | ?.??%      | ?.??%       | ?.??   | ?.??     |
+    | E5-large-instruct            | ?.??%      | ?.??%       | ?.??   | ?.??     |
+    | nomic-embed-text             | ?.??%      | ?.??%       | ?.??   | ?.??     |
+    | all-MiniLM-L12-v2 (baseline) | ?.??%      | ?.??%       | ?.??   | ?.??     |
+    +------------------------------+------------+-------------+--------+----------+
+
+  ETAPA 5 — DECISAO
+    Selecionar o modelo que:
+    1. Atinge os thresholds da fase atual (secao 6.3)
+    2. Tem melhor equilibrio qualidade/throughput
+    3. Cabe no hardware disponivel
+
+    Se BGE-M3 confirmar superioridade (como esperado por benchmarks publicos),
+    mantemos a decisao. Se outro modelo surpreender, este ADR deve ser
+    revisado.
+
+================================================================================
+❌ 7. ALTERNATIVAS DESCARTADAS
+================================================================================
+
+7.1. OpenAI text-embedding-3-small / text-embedding-3-large
+---------------------------------------------------------------------------
+
+  Status: DESCARTADO para Trilha B
+  Razao principal: CLOUD-ONLY — dados sao enviados para servidores da OpenAI
+
+  Detalhamento:
+    - Qualidade excelente (referencia de mercado em MTEB)
+    - Custo baixo (US$ 0.02/1M tokens para small, US$ 0.13 para large)
+    - Mas VIOLA a soberania de dados (ADR-002) para documentos restricted
+      e confidential
+    - Mesmo com a politica de "zero data retention" da OpenAI (anunciada
+      em 2024), a regulacao BACEN e LGPD exige que dados NEM SEQUER
+      TRANSITEM por infraestrutura nao controlada
+    - Continua disponivel e RECOMENDADO para a Trilha A (documentos
+      public e internal)
+
+7.2. all-MiniLM-L6-v2 / all-MiniLM-L12-v2
+---------------------------------------------------------------------------
+
+  Status: DESCARTADO como modelo principal
+  Razao principal: PERFORMANCE FRACA EM PORTUGUES
+
+  Detalhamento:
+    - Modelo extremamente popular (mais de 100M downloads no HuggingFace)
+    - Muito rapido e leve (dimensao 384, ~90 MB)
+    - Excelente para ingles, mas treinado predominantemente em corpus ingles
+    - Performance em portugues: 8-15 pontos abaixo do BGE-M3 em MTEB
+    - Para um RAG corporativo em pt-BR, essa diferenca e inaceitavel:
+      termos como "cobranca", "compensacao", "liquidacao" tem nuances
+      financeiras especificas em portugues que o MiniLM nao captura
+    - Pode ser usado APENAS como baseline de benchmark (secao 6.4)
+
+7.3. nomic-embed-text (nomic-ai/nomic-embed-text-v1.5)
+---------------------------------------------------------------------------
+
+  Status: DESCARTADO como modelo principal
+  Razao principal: INFERIOR AO BGE-M3 EM BENCHMARKS MULTILINGUES
+
+  Detalhamento:
+    - Modelo de boa qualidade com contexto longo (8192 tokens)
+    - Dimensao: 768
+    - Licenca Apache 2.0 (aberta)
+    - Popular no ecossistema Ollama
+    - Porem:
+      * Em benchmarks multilingues (MIRACL, Mr-TyDi), BGE-M3 supera
+        nomic-embed-text por 5-8 pontos em nDCG@10
+      * O contexto longo (8192 tokens) nao e vantagem neste projeto porque
+        os chunks sao limitados a 300-800 tokens (conforme CLAUDE.md)
+      * Nao suporta modos esparso e ColBERT (apenas denso)
+
+7.4. Modelos com mais de 10B parametros (ex: Instructor-XL, E5-Mistral-7B)
+---------------------------------------------------------------------------
+
+  Status: DESCARTADO
+  Razao principal: NAO CABEM NA GTX 1070 (8 GB VRAM)
+
+  Detalhamento:
+    - Modelos como E5-Mistral-7B-Instruct (~14 GB em fp16) oferecem
+      qualidade superior, mas requerem 16+ GB de VRAM
+    - Na GTX 1070 (8 GB), esses modelos simplesmente nao carregam
+    - Quantizacao (4-bit) poderia faze-los caber, mas com degradacao
+      significativa de qualidade em embeddings (embeddings sao mais
+      sensiveis a quantizacao do que LLMs generativos)
+    - Para viabilizar esses modelos, seria necessario upgrade de GPU
+      (RTX 3090 24GB ou A100 40/80GB) — fora do escopo atual
+
+7.5. Rerankers cloud-only (Cohere Rerank, Voyage Reranker)
+---------------------------------------------------------------------------
+
+  Status: DESCARTADO para Trilha B
+  Razao principal: CLOUD-ONLY — mesma restricao de soberania
+
+  Detalhamento:
+    - Cohere Rerank v3 e o melhor reranker do mercado em benchmarks
+    - Voyage Reranker tambem e excelente
+    - Ambos requerem envio do texto (query + passagens) para API externa
+    - Para a Trilha B, o texto dos chunks restricted/confidential NAO pode
+      ser enviado para rerankers cloud
+    - BGE-Reranker-v2-m3 e a alternativa local com qualidade comparavel
+      (diferenca de 1-2 pontos em nDCG@10)
+    - Cohere/Voyage continuam disponiveis para Trilha A
+
+7.6. Fine-tuning de modelo generico com dados do dominio
+---------------------------------------------------------------------------
+
+  Status: DESCARTADO PARA A FASE INICIAL (possivel em fases futuras)
+  Razao principal: COMPLEXIDADE PREMATURA
+
+  Detalhamento:
+    - Fine-tuning de modelo de embedding com dados especificos do dominio
+      financeiro poderia melhorar qualidade em 3-5 pontos
+    - Porem, requer:
+      * Dataset de treinamento curado (pares de sentencas similares/distintas)
+      * Conhecimento de tecnicas de contrastive learning
+      * Pipeline de treinamento com GPU (possivel na GTX 1070, mas lento)
+      * Avaliacao rigorosa para evitar overfitting
+    - O BGE-M3 pre-treinado ja oferece qualidade suficiente para as fases
+      iniciais (Fase 1 MVP e Fase 2 Metadados)
+    - Fine-tuning pode ser considerado na Fase 3/4 se os thresholds de
+      qualidade nao forem atingidos com o modelo base
+
+================================================================================
+⚖️ 8. CONSEQUENCIAS
+================================================================================
+
+8.1. Consequencias positivas
+---------------------------------------------------------------------------
+
+  a) SOBERANIA TOTAL DOS DADOS
+     Nenhum texto de chunk, query ou documento sai da infraestrutura local
+     durante o processo de embedding. Conformidade total com BACEN, CVM,
+     LGPD e politicas internas de seguranca da informacao.
+
+  b) CUSTO ZERO POR TOKEN
+     Apos a aquisicao do hardware (ja disponivel), o custo marginal de
+     gerar embeddings e ZERO. Nao ha cobranca por token, por request ou
+     por volume. Isso viabiliza:
+     - Re-embedding completo sem preocupacao com custo
+     - Experimentacao livre com diferentes estrategias de chunking
+     - Pipeline de CI/CD que re-processa toda a base em cada release
+
+  c) CONTROLE TOTAL DO MODELO
+     A organizacao decide quando atualizar o modelo, qual versao usar,
+     e pode reverter para versao anterior a qualquer momento. Nao ha
+     risco de:
+     - Fornecedor descontinuar o modelo (como Google fez com PaLM)
+     - Mudanca unilateral de precos (como OpenAI fez varias vezes)
+     - Degradacao silenciosa de qualidade (como reportado com GPT-4)
+
+  d) LATENCIA PREVISIVEL
+     A latencia de embedding depende apenas do hardware local, nao de
+     congestionamento de API, rate limits ou internet. Para um pipeline
+     offline (batch), isso nao e critico — mas para futuras evolucoes
+     com embedding em tempo real (queries), a latencia local e vantajosa.
+
+  e) ECOSSISTEMA UNIFICADO
+     BGE-M3 + BGE-Reranker-v2-m3 sao do mesmo grupo de pesquisa (BAAI),
+     foram treinados com objetivos complementares e tem compatibilidade
+     testada. Usar modelos da mesma familia reduz fricção de integracao.
+
+8.2. Consequencias negativas
+---------------------------------------------------------------------------
+
+  a) TETO DE QUALIDADE INFERIOR AO CLOUD
+     Modelos proprietarios (OpenAI, Cohere, Anthropic) tem acesso a dados
+     de treinamento superiores e recursos computacionais ilimitados. O
+     BGE-M3 e 2-5 pontos percentuais abaixo do text-embedding-3-large da
+     OpenAI em benchmarks multilingues. Essa diferenca e aceitavel mas
+     real.
+
+  b) MANUTENCAO DE GPU E INFRAESTRUTURA
+     A GTX 1070 precisa de:
+     - Drivers CUDA atualizados (compatibilidade com PyTorch)
+     - Monitoramento de temperatura (GPU consumer nao tem cooling
+       enterprise-grade)
+     - Backup em caso de falha de hardware (sem GPU, fallback para CPU
+       e mais lento)
+     - Eventual substituicao (GPU consumer tem vida util limitada sob
+       carga continua)
+
+  c) ATUALIZACOES DE MODELO SAO MANUAIS
+     Quando a BAAI lancar o BGE-M4 (ou equivalente), a atualizacao requer:
+     - Download manual dos novos pesos
+     - Benchmark com golden set
+     - Re-embedding de toda a base
+     - Validacao de qualidade
+     - Deploy coordenado
+     Isso contrasta com APIs cloud onde a atualizacao e transparente
+     (embora com o risco de breaking changes).
+
+  d) CAPACIDADE DE PROCESSAMENTO LIMITADA
+     A GTX 1070 processa ~60 chunks/segundo. Se a base crescer para
+     500.000+ chunks, o re-embedding levaria ~2.3 horas. Para bases
+     maiores (1M+ chunks), seria necessario upgrade de GPU ou
+     paralelismo com multiplas GPUs.
+
+8.3. Riscos e mitigacoes
+---------------------------------------------------------------------------
+
+  +-------------------------------+--------------------------------------------+
+  | RISCO                         | MITIGACAO                                  |
+  +-------------------------------+--------------------------------------------+
+  | GTX 1070 falha (hardware)     | Fallback para CPU (E5 ou BGE-M3 em CPU).  |
+  |                               | Throughput 5x menor mas funcional.         |
+  |                               | Planejar substituicao por GPU moderna.     |
+  +-------------------------------+--------------------------------------------+
+  | BGE-M3 descontinuado pelo     | Modelo e open-source (MIT). Pesos ja      |
+  | BAAI                          | baixados localmente. Comunidade pode       |
+  |                               | manter forks. Alternativa E5 disponivel.  |
+  +-------------------------------+--------------------------------------------+
+  | Qualidade insuficiente para   | Benchmark com golden set ANTES de ir para |
+  | dominio financeiro especifico | producao. Se thresholds nao forem          |
+  |                               | atingidos, considerar fine-tuning ou       |
+  |                               | modelo alternativo.                        |
+  +-------------------------------+--------------------------------------------+
+  | VRAM insuficiente para batch  | Reduzir batch_size (16->8->4). Em ultimo   |
+  | grande                        | caso, usar CPU. Monitorar VRAM em          |
+  |                               | producao com alertas.                      |
+  +-------------------------------+--------------------------------------------+
+  | Incompatibilidade de vetores  | NUNCA misturar vetores de modelos          |
+  | entre modelos                 | diferentes no mesmo indice. Manter         |
+  |                               | registro do modelo usado por chunk.        |
+  |                               | Re-embedding completo ao trocar modelo.    |
+  +-------------------------------+--------------------------------------------+
+  | Driver CUDA incompativel com  | Fixar versao do CUDA no Dockerfile.        |
+  | nova versao do PyTorch        | Testar atualizacoes em ambiente de staging |
+  |                               | antes de producao.                         |
+  +-------------------------------+--------------------------------------------+
+
+================================================================================
+🚀 9. IMPLEMENTACAO — FASES
+================================================================================
+
+9.1. Fase 1 — Instalacao e benchmark inicial (Semana 1-2)
+---------------------------------------------------------------------------
+
+  Objetivo: validar que BGE-M3 roda no hardware-alvo e atinge os thresholds
+  minimos de qualidade.
+
+  Tarefas:
+
+  1. PREPARAR AMBIENTE
+     - Instalar CUDA toolkit e drivers NVIDIA na maquina-alvo
+     - Verificar CUDA com: nvidia-smi (deve mostrar GTX 1070, 8 GB)
+     - Instalar Python 3.10+ com pip
+     - Instalar dependencias:
+         pip install sentence-transformers==3.4.0 torch==2.6.0 \
+                     numpy pandas scikit-learn
+
+  2. BAIXAR MODELOS
+     - BGE-M3: huggingface-cli download BAAI/bge-m3 --local-dir /opt/models/bge-m3
+     - BGE-Reranker: huggingface-cli download BAAI/bge-reranker-v2-m3 --local-dir /opt/models/bge-reranker
+     - E5 (alternativo): huggingface-cli download intfloat/multilingual-e5-large-instruct --local-dir /opt/models/e5-large
+     - Verificar tamanho total: ~5.4 GB
+
+  3. VALIDAR CARREGAMENTO
+     - Executar script de teste que carrega BGE-M3 na GPU
+     - Verificar VRAM alocada (~2-2.5 GB)
+     - Gerar embedding de 10 chunks de teste
+     - Confirmar dimensao: 1024
+
+  4. MONTAR GOLDEN SET INICIAL
+     - Selecionar 50 queries representativas do dominio
+     - Para cada query, identificar 2-5 documentos/chunks relevantes
+     - Incluir queries de diferentes dominios e dificuldades
+     - Documentar em formato JSON (conforme secao 6.1)
+
+  5. EXECUTAR BENCHMARK COMPARATIVO
+     - Rodar processo descrito na secao 6.4 (4 modelos candidatos)
+     - Gerar tabela comparativa com Recall@10, Precision@10, MRR
+     - Documentar resultados e confirmar (ou revisar) escolha do BGE-M3
+
+  Entregavel: Relatorio de benchmark com tabela comparativa e recomendacao
+  final de modelo.
+
+9.2. Fase 2 — Pipeline de batch processing (Semana 3-4)
+---------------------------------------------------------------------------
+
+  Objetivo: implementar o pipeline de embedding como componente integravel
+  ao pipeline de ingestao (ADR-006, etapa 4).
+
+  Tarefas:
+
+  1. IMPLEMENTAR MODULO DE EMBEDDING
+     - Classe EmbeddingService com interface:
+         embed_chunks(chunks: List[str]) -> np.ndarray
+         embed_query(query: str) -> np.ndarray
+     - Configuravel: modelo, device, batch_size, max_seq_length
+     - Fallback automatico para CPU se GPU indisponivel
+     - Logging de metricas (tempo, throughput, VRAM)
+
+  2. IMPLEMENTAR PROCESSAMENTO EM BATCH
+     - Ler chunks do output da etapa 3 (Chunking)
+     - Processar em batches de 16 (configuravel)
+     - Salvar embeddings com metadados (chunk_id, modelo, versao, timestamp)
+     - Progress bar para acompanhamento visual
+
+  3. IMPLEMENTAR OBSERVABILIDADE
+     - Metricas por batch: tempo, VRAM, throughput
+     - Metricas por execucao: total de chunks, tempo total, falhas
+     - Log estruturado (JSON) para integracao com stack de observabilidade
+
+  4. TESTES AUTOMATIZADOS
+     - Teste unitario: EmbeddingService gera vetores de dimensao correta
+     - Teste de integracao: pipeline processa 100 chunks end-to-end
+     - Teste de fallback: pipeline funciona quando GPU nao esta disponivel
+     - Teste de idempotencia: re-processar mesmos chunks gera mesmos vetores
+
+  Entregavel: Modulo embedding_service.py integrado ao pipeline, com testes
+  e documentacao de uso.
+
+9.3. Fase 3 — Integracao com Base Vetorial (Semana 5-6)
+---------------------------------------------------------------------------
+
+  Objetivo: conectar o modulo de embedding ao pipeline de persistencia
+  na Base Vetorial (ADR-006, etapas 5 e 6).
+
+  Tarefas:
+
+  1. FORMATO DE PERSISTENCIA
+     - Definir como embeddings sao enviados para a Base Vetorial
+     - Cada chunk recebe: chunk_id, embedding (1024d), texto, metadados
+     - Upsert: se chunk ja existe, atualizar embedding (idempotencia)
+
+  2. INDICE VETORIAL
+     - Criar indice vetorial na Base Vetorial com parametros:
+       * Dimensao: 1024
+       * Metrica: cosine (similaridade coseno)
+       * Tipo: HNSW (Hierarchical Navigable Small World)
+     - Parametros do HNSW recomendados:
+       * M: 16 (numero de conexoes por no)
+       * ef_construction: 200 (qualidade de construcao do indice)
+       * ef_search: 100 (qualidade de busca — pode ser ajustado em runtime)
+
+  3. REGISTRO DE MODELO (POR CHUNK E POR EXECUCAO)
+     - Cada CHUNK persistido na Base Vetorial registra:
+       * embedding_model: "BAAI/bge-m3" (ou modelo alternativo usado)
+       * embedding_model_version: hash do commit ou tag no HuggingFace
+       * embedding_timestamp: data/hora da geracao do embedding
+     - Cada EXECUCAO do pipeline registra (log de execucao):
+       * Nome do modelo principal usado
+       * Dimensao: 1024
+       * Total de chunks processados
+       * Chunks processados por modelo alternativo (fallback)
+       * Data e duracao da execucao
+     - O registro POR CHUNK e essencial para identificar chunks que
+       foram processados por modelos diferentes (ex: fallback para E5
+       durante indisponibilidade de GPU) e que precisam ser re-embeddados
+       com o modelo principal (conforme Secao 2.2)
+
+  4. VALIDACAO POS-INGESTAO
+     - Apos ingestao, rodar queries do golden set contra a Base Vetorial
+     - Comparar resultados com benchmark da Fase 1
+     - Confirmar que as metricas sao consistentes (mesma qualidade)
+
+  Entregavel: Pipeline integrado que persiste embeddings na Base Vetorial
+  com indice vetorial funcional.
+
+9.4. Fase 4 — Reranker no pipeline de retrieval (Semana 7-8)
+---------------------------------------------------------------------------
+
+  Objetivo: integrar o BGE-Reranker-v2-m3 ao pipeline de retrieval hibrido
+  (ADR-007).
+
+  Tarefas:
+
+  1. IMPLEMENTAR MODULO DE RERANKING
+     - Classe RerankerService com interface:
+         rerank(query: str, passages: List[str], top_k: int) -> List[RankedResult]
+     - Usar CrossEncoder do sentence-transformers
+     - Configuravel: modelo, device, max_length
+
+  2. INTEGRAR AO PIPELINE DE RETRIEVAL
+     - Posicao: APOS busca vetorial, ANTES de enviar contexto ao LLM
+     - Fluxo:
+       Query -> Embedding -> Busca vetorial (top-50) -> Filtros de metadados
+       -> Reranking (top-50 -> top-10) -> LLM
+     - O reranker recebe os top-50 candidatos e reordena, retornando top-10
+
+  3. BENCHMARK DO RERANKER
+     - Medir impacto do reranker nas metricas do golden set:
+       * Recall@10 ANTES do reranking (apenas busca vetorial)
+       * Recall@10 APOS o reranking
+       * Ganho esperado: 5-10 pontos em nDCG@10
+     - Se o ganho for < 3 pontos, investigar se o golden set e adequado
+
+  4. OTIMIZACAO DE LATENCIA
+     - Reranker em GPU: ~50ms para 50 passagens
+     - Reranker em CPU: ~500ms para 50 passagens
+     - Se latencia for critica, considerar reranquear apenas top-20 (vs top-50)
+     - Medir impacto de reduzir candidatos na qualidade final
+
+  Entregavel: Pipeline de retrieval completo com reranking integrado,
+  metricas de latencia e qualidade documentadas.
+
+================================================================================
+📚 10. REFERENCIAS
+================================================================================
+
+10.1. ADRs relacionadas
+---------------------------------------------------------------------------
+
+  - ADR-001: Pipeline de geracao de conhecimento em 4 fases
+    (define o contexto macro onde o embedding se insere — Fase 4)
+
+  - ADR-002: Soberania de dados — Trilha Cloud vs. On-Premises
+    (define a obrigatoriedade de processamento local para dados restricted/
+    confidential — fundamenta a escolha de modelos on-premises)
+
+  - ADR-006: Pipeline de ingestao — Da fonte a Base Vetorial
+    (define as 7 etapas do pipeline onde a etapa 4 — Embeddings — e
+    detalhada por este ADR)
+
+  - ADR-007: Retrieval hibrido e agentes especializados
+    (define a estrategia de busca que consome os embeddings gerados por
+    este pipeline e onde o reranker se encaixa)
+
+  - ADR-008: Governanca — Papeis, ciclo de vida e rollback
+    (define thresholds de qualidade progressivos que o modelo de embedding
+    deve atingir em cada fase)
+
+10.2. Modelos e frameworks
+---------------------------------------------------------------------------
+
+  - BAAI/bge-m3 (HuggingFace):
+    https://huggingface.co/BAAI/bge-m3
+
+  - BAAI/bge-reranker-v2-m3 (HuggingFace):
+    https://huggingface.co/BAAI/bge-reranker-v2-m3
+
+  - intfloat/multilingual-e5-large-instruct (HuggingFace):
+    https://huggingface.co/intfloat/multilingual-e5-large-instruct
+
+  - sentence-transformers (documentacao):
+    https://sbert.net/docs/
+
+  - Ollama (embeddings):
+    https://ollama.ai/blog/embedding-models
+
+10.3. Benchmarks e leaderboards
+---------------------------------------------------------------------------
+
+  - MTEB (Massive Text Embedding Benchmark):
+    https://huggingface.co/spaces/mteb/leaderboard
+
+  - MIRACL (Multilingual Information Retrieval Across a Continuum of Languages):
+    https://project-miracl.github.io/
+
+  - Mr-TyDi (Multi-lingual Retrieval from Typologically Diverse languages):
+    https://github.com/castorini/mr.tydi
+
+10.4. Infraestrutura
+---------------------------------------------------------------------------
+
+  - NVIDIA Container Toolkit (Docker + GPU):
+    https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/
+
+  - PyTorch CUDA Compatibility:
+    https://pytorch.org/get-started/locally/
+
+  - GTX 1070 Specifications:
+    https://www.nvidia.com/en-us/geforce/10-series/
+
+================================================================================
+FIM DO DOCUMENTO — ADR-009 v1.1
+================================================================================
+
+
+================================================================================
+REVISAO DE QUALIDADE — ADR-009 (Revisao 2)
+================================================================================
+
+Data da revisao: 22/03/2026
+Revisao anterior: 22/03/2026 (score 8.92/10 = 89.2%)
+Tipo: Revisao corretiva com aplicacao de fixes
+
+================================================================================
+CORRECOES APLICADAS NESTA REVISAO
+================================================================================
+
+  [x] V1-FIX: Adicionada secao RASTREABILIDADE POR CHUNK na Secao 2.2 com
+      campos obrigatorios embedding_model, embedding_model_version e
+      embedding_timestamp por chunk. Secao 9.3 atualizada para registrar
+      metadados POR CHUNK e POR EXECUCAO, com explicacao de por que o
+      registro por chunk e essencial para detectar fallback de modelo.
+
+  [x] V2-FIX: Adicionada ACAO DE VALIDACAO na Secao 2.3 recomendando
+      benchmark de prefixo pt-BR vs en no golden set, com indicacao de
+      que essa validacao ocorra na Fase 1 da implementacao (Secao 9.1).
+
+  [x] V3-FIX: Adicionada referencia explicita a ADR-002 na nota da Secao
+      5.3, citando-a como fonte da decisao de separacao de indices por
+      trilha e criterio de roteamento por confidentiality.
+
+  [x] V4-FIX: Atualizada versao do PyTorch no Dockerfile (Secao 4.5) de
+      2.2.0-cuda11.8 para 2.6.0-cuda12.6. Adicionada nota para verificar
+      versao estavel mais recente no momento do deploy. Versao do
+      sentence-transformers atualizada para 3.4.0. Versoes tambem
+      atualizadas na Secao 9.1 (Fase 1 - instalacao).
+
+  [x] HEADER-FIX: Adicionada secao IDENTIFICACAO formal com todos os
+      campos padronizados conforme modelo ADR-008 (ID, Tipo, Sistema,
+      Modulo, Dominio, Owner, Time, Status, Confidencialidade, Tags).
+      Adicionada secao REFERENCIAS CRUZADAS com Depende de / Relaciona-se.
+      Adicionada ADR-008 as referencias cruzadas.
+
+  [x] INDICE-FIX: Adicionado INDICE DE SECOES completo apos o header,
+      listando todas as secoes e subsecoes do documento para navegacao
+      rapida.
+
+================================================================================
+VIOLACOES E INCONSISTENCIAS (pos-correcao)
+================================================================================
+
+  Nenhuma violacao bloqueante remanescente.
+
+  V-RESIDUAL-1. SECAO 2.1b — Modo esparso do BGE-M3 e suporte na Base Vetorial
+    O ADR documenta o modo esparso como capacidade futura, mas nao verifica
+    se a Base Vetorial suporta armazenamento e busca de vetores esparsos
+    nativamente. Impacto: BAIXO (modo esparso e recomendado apenas para
+    fases futuras, nao para a fase inicial).
+    Classificacao: INFORMATIVO — nao bloqueia aprovacao.
+
+  V-RESIDUAL-2. SECAO 4.3 — fp16 na GTX 1070 (Pascal) sem Tensor Cores
+    O ADR recomenda fp16 afirmando "qualidade identica", o que e correto
+    para a qualidade dos embeddings. Porem, o ganho de THROUGHPUT em fp16
+    na Pascal e menor do que em GPUs com Tensor Cores. Impacto: BAIXO
+    (afeta apenas performance, nao qualidade).
+    Classificacao: INFORMATIVO — validar em benchmark real (Fase 1).
+
+================================================================================
+INFERENCIAS PENDENTES (pos-correcao)
+================================================================================
+
+  I1. Throughput real na GTX 1070
+    Os valores de throughput (50-100 chunks/segundo) sao estimativas.
+    Throughput real depende do tamanho medio dos chunks, concorrencia e
+    batch size. Precisa de benchmark no hardware real.
+    Status: ENDEREÇADO — a Secao 9.1 (Fase 1) inclui benchmark como
+    tarefa explicita. Sera resolvido na implementacao.
+
+  I2. Suporte a modo esparso na Base Vetorial
+    Status: DOCUMENTADO como V-RESIDUAL-1. Nao impacta fase inicial.
+
+  I3. Impacto de fp16 na Pascal
+    Status: DOCUMENTADO como V-RESIDUAL-2. Benchmark previsto na Fase 1.
+
+  I4. Ciclo de vida do golden set
+    O ADR nao define responsavel nem cadencia de atualizacao do golden set.
+    Status: PENDENTE — requer decisao humana (ver Acoes Pendentes).
+
+================================================================================
+ACOES PENDENTES (pos-correcao)
+================================================================================
+
+  [x] Adicionar campo "embedding_model" por chunk na Base Vetorial
+      Resolucao: Campos embedding_model, embedding_model_version e
+      embedding_timestamp adicionados como metadados obrigatorios por
+      chunk (Secao 2.2) e detalhados na Secao 9.3.
+
+  [x] Realizar benchmark do prefixo pt-BR vs en
+      Resolucao: Acao de validacao adicionada na Secao 2.3, planejada
+      para Fase 1 da implementacao.
+
+  [x] Adicionar referencia a ADR-002 na Secao 5.3
+      Resolucao: Referencia explicita adicionada.
+
+  [x] Atualizar versao do PyTorch no Dockerfile
+      Resolucao: Atualizado para PyTorch 2.6.0 + nota de verificacao.
+
+  [x] Adicionar secao de IDENTIFICACAO formal
+      Resolucao: Header completo adicionado conforme modelo ADR-008.
+
+  [x] Adicionar indice de secoes
+      Resolucao: Indice completo adicionado apos header.
+
+  [ ] Verificar suporte a vetores esparsos na Base Vetorial
+      Secao afetada: 2.1 (item b, Modo Esparso)
+      Prioridade: BAIXA (modo esparso e para fases futuras)
+      Requer: teste pratico na Base Vetorial escolhida
+
+  [ ] Realizar benchmark de throughput no hardware real (GTX 1070)
+      Secao afetada: 3.2. Avaliacao do ambiente-alvo
+      Prioridade: ALTA (validacao de viabilidade)
+      Requer: acesso ao hardware fisico
+
+  [ ] Definir responsavel e cadencia de atualizacao do golden set
+      Secao afetada: 6.1. Golden set para validacao do modelo
+      Prioridade: MEDIA
+      Sugestao: Curador de Conhecimento (R), Arquiteto (A), cadencia
+      trimestral (alinhada com ADR-008)
+      Requer: decisao humana — nao pode ser inferido
+
+  [ ] Avaliar impacto de fp16 vs fp32 na GTX 1070 (Pascal)
+      Secao afetada: 4.3. Otimizacao de batch
+      Prioridade: BAIXA (otimizacao, nao bloqueante)
+      Requer: benchmark no hardware real
+
+================================================================================
+QUALITY ASSURANCE — AVALIACAO DO ADR (9 dimensoes)
+================================================================================
+
+--- DIMENSAO 1 — CONFORMIDADE COM ADR-001 (peso incluido em Conformidade) ---
+
+  [9/10] Referencia explicita as 4 fases do ADR-001 (Secao 1.3), com
+         diagrama do fluxo Fase 1->2->3->4 e posicionamento correto
+         deste ADR na Fase 4 (Base Vetorial).
+  [10/10] Usa "Base Vetorial" consistentemente (nao usa "Neo4j").
+  [10/10] Referencia .beta.md corretamente como artefato da Fase 2,
+          e .md final como artefato da Fase 3 — sem confusao de papeis.
+  [9/10] Menciona dois repositorios indiretamente (via ADR-001 e ADR-006)
+         mas nao detalha separacao — aceitavel pois esta ADR foca na
+         Fase 4, que opera sobre documentos ja promovidos.
+  [10/10] Nao contradiz nenhuma premissa do ADR-001 (pipeline 4 fases,
+          blocos LOCKED, re-ingestao, temporalidade).
+  [10/10] Respeita ADR-002 (soberania de dados) como fundamento.
+  Subtotal ADR-001: 9.7/10
+
+--- DIMENSAO 2 — COERENCIA ENTRE ADRs ---
+
+  [10/10] ADR-002: Trilha B corretamente usada como premissa para execucao
+          on-premises. Niveis restricted/confidential corretamente citados.
+  [9/10]  ADR-006: 7 etapas do pipeline referenciadas. Etapa 4 (Embeddings)
+          detalhada. Premissas de idempotencia e re-indexacao respeitadas.
+          Metadados por chunk agora alinhados com premissa de rastreabilidade.
+  [9/10]  ADR-007: Reranker posicionado no fluxo de retrieval hibrido.
+          Fluxo query->embedding->busca->filtro->rerank->LLM documentado.
+  [9/10]  ADR-008: Thresholds progressivos (Secao 6.3) alinhados com gates
+          de qualidade. Referencia cruzada adicionada.
+  Subtotal coerencia: 9.3/10
+
+--- QUALITY ASSURANCE — AVALIACAO PONDERADA (4 criterios) ---
+
+CRITERIO 1 — CONFORMIDADE (peso 0.30)
+
+  [9.5/10] Estrutura: secao IDENTIFICACAO formal adicionada com todos os
+           campos padronizados (ID, Tipo, Sistema, Modulo, Dominio, Owner,
+           Time, Status, Confidencialidade, Tags). Indice de secoes
+           adicionado. Referencias cruzadas formalizadas com "Depende de"
+           e "Relaciona-se". Numeracao de secoes expandida (Secoes 3-6
+           detalham aspectos tecnicos entre Decisao e Alternativas) e
+           justificada pela profundidade tecnica necessaria.
+  [10/10]  Rastreabilidade: referencia ADRs 001, 002, 006, 007, 008 com
+           descricao clara das interfaces e impactos. Referencia a ADR-002
+           na comparacao de trilhas (Secao 5.3) adicionada.
+  [9/10]   Conformidade com ADR-001: posicionamento correto na Fase 4,
+           uso consistente de "Base Vetorial", sem contradicoes.
+  Subtotal: 9.5/10
+
+CRITERIO 2 — COMPLETUDE (peso 0.30)
+
+  [10/10] Contexto: excepcional — explica POR QUE a selecao do modelo e
+          critica com 5 dimensoes de impacto, detalha hardware, requisitos
+          de idioma e posicao no pipeline.
+  [10/10] Decisao: modelo primario (BGE-M3), alternativo (E5), query model
+          e reranker bem justificados. 3 modos de embedding documentados.
+          Parametros de configuracao e exemplos de codigo incluidos.
+          Rastreabilidade por chunk adicionada (embedding_model por chunk).
+  [9/10]  Alternativas: 6 alternativas descartadas com detalhamento tecnico
+          exemplar. Inclui modelos, licencas e benchmarks comparativos.
+  [10/10] Consequencias: 5 positivas e 4 negativas bem articuladas. Tabela
+          de riscos com 6 riscos e mitigacoes especificas.
+  [10/10] Implementacao: 4 fases com tarefas especificas, entregaveis claros
+          e cronograma em semanas. Validacao de prefixo pt-BR incluida.
+  [9/10]  Observabilidade: metricas por batch e por execucao definidas
+          (Secao 9.2). Registro de modelo por chunk e por execucao (Secao
+          9.3). Falta apenas responsavel do golden set (decisao humana).
+  Subtotal: 9.7/10
+
+CRITERIO 3 — QUALIDADE DA DECISAO (peso 0.25)
+
+  [10/10] Clareza da decisao: box com decisao inequivoca (BGE-M3 + Reranker
+          + E5 como fallback). Sem ambiguidade.
+  [10/10] Justificativa tecnica: fundamentada em benchmarks (MTEB, MIRACL),
+          especificacoes de hardware, calculo de VRAM, throughput e storage.
+          Nivel de detalhe tecnico exemplar.
+  [9/10]  Viabilidade: demonstra que o modelo cabe no hardware disponivel
+          com calculos concretos. Fallback para CPU documentado. Docker com
+          CUDA previsto. Versoes atualizadas.
+  [10/10] Pragmatismo: recomenda modo denso para fase inicial, com modos
+          esparso e ColBERT como evolucao futura. Evita over-engineering.
+  Subtotal: 9.75/10
+
+CRITERIO 4 — CLAREZA E COMUNICACAO (peso 0.15)
+
+  [9/10]  Linguagem: didatica e tecnica na medida certa. Explica conceitos
+          (bi-encoder vs cross-encoder, modo denso vs esparso) sem ser
+          condescendente. Texto em pt-BR (com termos tecnicos em ingles
+          quando necessario).
+  [10/10] Estrutura visual: tabelas comparativas, boxes de hardware, exemplos
+          de codigo funcional. Excelente.
+  [9/10]  Navegabilidade: indice de secoes adicionado. Documento longo
+          (~1450 linhas) mas bem organizado. Sumario no inicio contextualiza.
+  Subtotal: 9.3/10
+
+================================================================================
+CALCULO DO SCORE FINAL
+================================================================================
+
+  FORMULA: (Conformidade x 0.30) + (Completude x 0.30) + (Decisao x 0.25) +
+           (Clareza x 0.15)
+
+  SCORE FINAL: (9.5 x 0.30) + (9.7 x 0.30) + (9.75 x 0.25) + (9.3 x 0.15)
+             = 2.850 + 2.910 + 2.4375 + 1.395
+             = 9.5925 / 10.0
+
+  ARREDONDADO: 95.9%
+
+  CLASSIFICACAO: EXCELENTE
+
+================================================================================
+CONTADORES
+================================================================================
+
+  Violacoes bloqueantes corrigidas ............: 4 (V1, V2, V3, V4)
+  Violacoes residuais (nao bloqueantes) .......: 2 (informativas)
+  Inferencias pendentes .......................: 4 (3 endereçadas, 1 pendente)
+  Acoes corrigidas nesta revisao ..............: 6
+  Acoes pendentes (requerem execucao/decisao) .: 4
+  ADRs referenciadas ..........................: 5 (001, 002, 006, 007, 008)
+
+================================================================================
+PONTOS FORTES
+================================================================================
+
+  1. DETALHAMENTO TECNICO EXEMPLAR — Calculos de VRAM, throughput, storage,
+     batch size, dimensao vetorial e comparativos com numeros concretos. Este
+     e o ADR mais detalhado tecnicamente de toda a serie.
+
+  2. ALTERNATIVAS RIGOROSAS — 6 alternativas descartadas com justificativa
+     especifica por alternativa. Nenhuma descartada de forma superficial.
+
+  3. RISCOS COM MITIGACOES CONCRETAS — Tabela de 6 riscos com mitigacoes
+     acionaveis (nao genericas). Inclui fallback para CPU, modelo open-source
+     como hedge contra descontinuacao, e procedimento de re-embedding.
+
+  4. IMPLEMENTACAO FASEADA — 4 fases com cronograma, tarefas, entregaveis
+     e dependencias. Exemplos de codigo funcional incluidos.
+
+  5. COERENCIA COM ECOSISTEMA ADR — Posicionamento correto na Fase 4 do
+     ADR-001, respeito a soberania do ADR-002, alinhamento com pipeline
+     da ADR-006 e retrieval da ADR-007.
+
+================================================================================
+PONTOS DE MELHORIA
+================================================================================
+
+  1. GOLDEN SET SEM GOVERNANCA — Falta definicao de responsavel e cadencia
+     de atualizacao do golden set. Instrumento critico sem dono.
+
+  2. MODO ESPARSO SEM VALIDACAO — Capacidade do BGE-M3 documentada mas
+     compatibilidade com Base Vetorial nao verificada.
+
+  3. THROUGHPUT ESTIMADO — Valores baseados em benchmarks genericos, nao
+     validados no hardware real.
+
+  4. DOCUMENTO LONGO — ~1450 linhas. Embora bem organizado com indice,
+     poderia ser mais conciso em algumas secoes (ex: Secao 4 poderia ser
+     mais enxuta).
+
+================================================================================
+POR QUE NAO E 100%
+================================================================================
+
+  Gap total: 4.1 pontos percentuais (95.9% vs 100%)
+
+  1. CONFORMIDADE (-0.5 ponto = ~1.5% do total)
+     - Numeracao de secoes expandida (3-6 entre Decisao e Alternativas) e
+       nao-padrao para ADRs classicos. Justificavel pela profundidade
+       tecnica, mas diverge da estrutura canonica.
+     - Posicionamento no pipeline de 4 fases e correto mas indireto —
+       referencia ADR-001 sem replicar o contexto completo das fases
+       anteriores (Fases 1-3). Aceitavel pois o ADR foca na Fase 4.
+
+  2. COMPLETUDE (-0.3 ponto = ~0.9% do total)
+     - Golden set sem definicao de governanca (responsavel, cadencia,
+       criterios de atualizacao). Requer decisao humana.
+     - Suporte a vetores esparsos na Base Vetorial nao verificado (impacta
+       fases futuras, nao a fase inicial).
+
+  3. DECISAO (-0.25 ponto = ~0.75% do total)
+     - Viabilidade baseada em estimativas de throughput, nao em benchmark
+       real no hardware-alvo. O ADR reconhece isso e planeja benchmark na
+       Fase 1, mas a decisao e tomada ANTES da validacao.
+
+  4. CLAREZA (-0.7 ponto = ~1.05% do total)
+     - Documento longo (~1450 linhas). Indice adicionado mitiga, mas a
+       extensao ainda e um fator de atrito para leitura rapida.
+     - Algumas secoes (4.2 Ollama, 4.4 Fallback) poderiam ser mais concisas.
+
+  TOTAL NAO ATINGIDO: ~4.1% distribuidos em aspectos que requerem validacao
+  pratica (benchmark real), decisao humana (governanca do golden set) ou sao
+  caracteristicas intrinsecas do documento (extensao justificada pela
+  profundidade tecnica).
+
+================================================================================
+VEREDITO
+================================================================================
+
+  SCORE ANTERIOR: 89.2% (8.92/10) — revisao de 22/03/2026
+  SCORE ATUAL:    95.9% (9.59/10) — revisao corretiva de 22/03/2026
+
+  STATUS: APROVADO PARA PROMOCAO (score >= 90%)
+
+  ADR de EXCELENTE qualidade tecnica. As correcoes aplicadas resolveram todas
+  as violacoes bloqueantes identificadas na revisao anterior:
+    - Rastreabilidade por chunk (embedding_model obrigatorio)
+    - Referencia a ADR-002 na comparacao de trilhas
+    - Validacao de prefixo pt-BR documentada como acao
+    - Versoes de dependencias atualizadas
+    - Header formal com IDENTIFICACAO completa
+    - Indice de secoes para navegabilidade
+
+  As acoes pendentes remanescentes requerem EXECUCAO PRATICA (benchmark no
+  hardware real, verificacao de suporte a vetores esparsos) ou DECISAO HUMANA
+  (governanca do golden set) — nao podem ser resolvidas por revisao textual.
+
+  Conforme ADR-001 (Fase 3, gate de qualidade): score >= 90% permite
+  promocao. Os motivos para nao atingir 100% estao documentados acima.
+
+================================================================================

@@ -1,0 +1,2063 @@
+================================================================================
+📋 ADR-005 — Front Matter como Contrato de Metadados
+================================================================================
+
+Status:         proposed
+Data:           21/03/2026
+Decisor:        Fabio A. B. Rodrigues
+Escopo:         RAG Corporativo — Contrato de metadados entre autores e pipeline
+Depende de:     ADR-001 (Pipeline de Geracao de Conhecimento em 4 Fases)
+                ADR-004 (Estrategia de Seguranca e Classificacao de Dados)
+
+================================================================================
+🧠 1. CONTEXTO
+================================================================================
+
+No pipeline de 4 fases definido no ADR-001, o front matter YAML e o mecanismo
+que conecta o trabalho humano (edicao de .beta.md no Obsidian) ao trabalho
+automatizado (pipeline de ingestao que gera .md final e alimenta a Base Vetorial).
+
+Sem front matter valido, o pipeline nao sabe:
+    - O que e esse documento (tipo, dominio, sistema)
+    - Quem e responsavel por ele
+    - Qual o nivel de confidencialidade (ADR-004)
+    - Se o documento esta vigente ou foi substituido
+    - De onde veio a informacao (linhagem)
+    - Qual a qualidade da conversao da fonte original
+
+Por isso, o front matter nao e um "detalhe tecnico" — e um CONTRATO. Um
+contrato entre:
+    - AUTORES (humanos que editam .beta.md no Obsidian)
+    - PIPELINE DE MINERACAO (IA que gera/enriquece .beta.md na Fase 2)
+    - PIPELINE DE PROMOCAO (automacao que transforma .beta.md em .md na Fase 3)
+    - PIPELINE DE INGESTAO (automacao que ingere .md na Base Vetorial na Fase 4)
+    - SISTEMA DE RETRIEVAL (agentes que buscam informacao na Base Vetorial)
+
+Se qualquer parte desse contrato for violada (campo ausente, valor invalido,
+formato incorreto), o pipeline DEVE rejeitar o documento com mensagem de erro
+explicita — nunca aceitar silenciosamente dados incompletos.
+
+Existem DOIS niveis de front matter, conforme ADR-001:
+
+    1. FRONT MATTER LEVE (.beta.md) — usado no repositorio rag-workspace
+       Contem apenas campos essenciais para a edicao humana e o
+       enriquecimento pela IA. Intencionalmente simples para nao
+       sobrecarregar autores humanos.
+
+    2. FRONT MATTER RICO (.md final) — usado no repositorio rag-knowledge-base
+       Contem todos os campos necessarios para governanca, classificacao,
+       temporalidade, QA e linhagem. Gerado automaticamente pelo pipeline
+       de promocao (Fase 3) com enriquecimento dos campos leves.
+
+Requisitos adicionais:
+    - Compatibilidade com Obsidian (YAML entre marcadores ---)
+    - Suporte a temporalidade (valid_from/valid_until, conforme ADR-001)
+    - Suporte a classificacao de dados (confidentiality, conforme ADR-004)
+    - Schema de validacao executavel (nao apenas documentacao)
+    - Suporte a rastreabilidade de origem (linhagem da fonte ate a Base Vetorial)
+
+================================================================================
+✅ 2. DECISAO
+================================================================================
+
+Adotar front matter YAML como contrato de metadados obrigatorio em dois
+niveis (leve e rico), com schema de validacao executavel que rejeita
+documentos invalidos com mensagem explicita.
+
+--------------------------------------------------------------------------------
+PARTE A — Front Matter Leve (.beta.md) — Repositorio rag-workspace
+--------------------------------------------------------------------------------
+
+O front matter leve e projetado para ser SIMPLES o suficiente para que um
+analista de negocio, PO ou especialista de dominio consiga preencher sem
+treinamento extenso, usando o Obsidian como editor.
+
+Campos do front matter leve:
+
+............................................................................
+id (obrigatorio, bloqueante)
+............................................................................
+
+    Tipo:       string
+    Formato:    BETA-{NNN} (numerico sequencial, 3+ digitos)
+    Exemplo:    id: BETA-001
+                id: BETA-042
+                id: BETA-1337
+
+    Por que existe:
+        Identificador unico do documento no workspace. Necessario para:
+        - Rastreabilidade (qual .beta.md gerou qual .md)
+        - Referencia cruzada entre documentos no workspace
+        - Registro de historico de enriquecimento
+        - Linkagem no Obsidian via [[BETA-001]]
+
+    Por que o formato BETA-{NNN}:
+        - Prefixo BETA deixa claro que e um documento de workspace, nao
+          a versao final
+        - Numerico sequencial e simples de gerar e manter
+        - Evita colisao com IDs do .md final (que usa DOC-{NNNNNN})
+
+    Validacao:
+        - Obrigatorio (bloqueante — documento sem id e rejeitado)
+        - Deve seguir regex: ^BETA-\d{3,}$
+        - Deve ser unico no repositorio workspace
+
+............................................................................
+title (obrigatorio, bloqueante)
+............................................................................
+
+    Tipo:       string
+    Max:        200 caracteres
+    Exemplo:    title: "Processo de conciliacao bancaria do modulo Cobranca"
+                title: "Runbook de recuperacao do servico de autenticacao"
+
+    Por que existe:
+        Titulo legivel do documento. Usado para:
+        - Exibicao no Obsidian (nome na sidebar)
+        - Contexto para a LLM durante retrieval
+        - Identificacao humana rapida do conteudo
+        - Resultado de busca (o usuario ve o titulo antes do conteudo)
+
+    Por que e bloqueante:
+        Um documento sem titulo e impossivel de identificar ou buscar.
+        O pipeline nao pode gerar um titulo automaticamente porque nao
+        tem contexto suficiente na Fase 2 (o .beta.md pode ser um rascunho
+        incompleto).
+
+    Validacao:
+        - Obrigatorio (bloqueante)
+        - Minimo 10 caracteres (evitar titulos vagos como "teste")
+        - Maximo 200 caracteres
+        - Deve ser descritivo (nao aceitar titulos genericos como
+          "Documento", "Teste", "Sem titulo")
+
+............................................................................
+domain (obrigatorio, bloqueante)
+............................................................................
+
+    Tipo:       string
+    Valores:    enum aberto (sem lista fixa, mas com recomendacoes)
+    Exemplo:    domain: "financeiro"
+                domain: "tecnologia"
+                domain: "rh"
+                domain: "compliance"
+                domain: "operacoes"
+
+    Por que existe:
+        Dominio de negocio ao qual o documento pertence. Fundamental para:
+        - Filtro pre-retrieval (ADR-004): restringir busca ao dominio do
+          usuario
+        - Organizacao do conhecimento por area
+        - Roteamento de agentes por dominio (agente de financeiro busca
+          apenas documentos de financeiro)
+        - Responsabilidade: saber qual area e dona do conhecimento
+
+    Por que nao tem lista fixa:
+        Cada organizacao tem dominios diferentes. Uma lista fixa seria
+        restritiva e exigiria atualizacao constante. Em vez disso:
+        - Recomendacoes de dominios sao documentadas
+        - Pipeline de promocao (Fase 3) valida contra lista de dominios
+          conhecidos e alerta (warning, nao bloqueante) para dominios novos
+        - Governanca: lista de dominios e mantida pelo time de arquitetura
+
+    Validacao:
+        - Obrigatorio (bloqueante)
+        - Minimo 2 caracteres
+        - Lowercase, sem espacos (usar hifen: "recursos-humanos")
+
+............................................................................
+sources (obrigatorio, bloqueante)
+............................................................................
+
+    Tipo:       array de objetos
+    Exemplo:
+        sources:
+          - type: "pdf"
+            origin: "sharepoint://financeiro/docs/conciliacao_v3.pdf"
+            captured_at: "2026-03-15"
+          - type: "confluence"
+            origin: "https://confluence.empresa.com/pages/12345"
+            captured_at: "2026-03-10"
+          - type: "transcription"
+            origin: "teams://recordings/2026-03-12_reuniao_cobranca.mp4"
+            captured_at: "2026-03-12"
+
+    Sub-campos:
+
+        type (obrigatorio):
+            Formato da fonte original.
+            Valores validos:
+                pdf, docx, xlsx, pptx, email, confluence, sharepoint,
+                jira, clickup, transcription, web, manual, md, json,
+                csv, image, video, audio
+            Por que existe: o pipeline de conversao precisa saber o formato
+            para escolher o parser correto e calcular conversion_quality.
+
+        origin (obrigatorio):
+            Caminho ou URL da fonte original.
+            Por que existe: rastreabilidade completa — de onde veio a
+            informacao? Em caso de duvida, o humano pode voltar a fonte.
+            Formato livre (path, URL, referencia a sistema).
+
+        captured_at (obrigatorio):
+            Data em que a fonte foi capturada/copiada para o workspace.
+            Formato: AAAA-MM-DD (ISO 8601).
+            Por que existe: fontes mudam com o tempo. Saber quando a fonte
+            foi capturada permite identificar se o .beta.md esta
+            desatualizado em relacao a fonte original.
+
+        conversion_quality (opcional):
+            Score de qualidade da conversao DESTA fonte especifica (0-100).
+            Calculado pelo pipeline de conversao na Fase 2 (ver Parte D).
+            Formato: integer 0-100.
+            Exemplo:
+                sources:
+                  - type: "pdf"
+                    origin: "sharepoint://financeiro/docs/conciliacao_v3.pdf"
+                    captured_at: "2026-03-15"
+                    conversion_quality: 92
+                  - type: "transcription"
+                    origin: "teams://recordings/2026-03-12_reuniao.mp4"
+                    captured_at: "2026-03-12"
+                    conversion_quality: 67
+            Por que existe: cada fonte tem qualidade de conversao diferente
+            (um PDF texto tem ~95%, uma transcricao pode ter 60%). Registrar
+            por fonte permite identificar QUAL fonte precisa de revisao.
+            Conforme ADR-001, secao 2.5.1.
+
+            Relacao com conversion_quality do .md final:
+                No .beta.md: conversion_quality e PER-SOURCE (dentro de
+                sources[]), registrando a qualidade de CADA fonte individual.
+                No .md final: conversion_quality e CONSOLIDADO (campo
+                independente, Grupo 7), representando a qualidade geral do
+                documento. Formula de consolidacao: min(sources[].conversion_quality),
+                pois a fonte de pior qualidade determina a confianca geral.
+
+    Por que e bloqueante:
+        Um documento sem sources nao tem linhagem. Nao sabemos de onde veio
+        a informacao, portanto nao podemos confiar nela. Rastreabilidade
+        e um pilar do pipeline (Pilar G do ADR-001).
+
+    Validacao:
+        - Obrigatorio (bloqueante)
+        - Array com pelo menos 1 elemento
+        - Cada elemento deve ter type, origin e captured_at
+        - type deve estar na lista de valores validos
+        - captured_at deve ser data valida no formato AAAA-MM-DD
+
+............................................................................
+tags (obrigatorio, nao-bloqueante)
+............................................................................
+
+    Tipo:       array de strings
+    Minimo:     3 tags (recomendado 5+)
+    Exemplo:    tags: [conciliacao, cobranca, bancaria, boleto, financeiro]
+
+    Por que existe:
+        Tags permitem busca por facetas e categorizacao do conhecimento.
+        Sao usadas para:
+        - Busca no Obsidian (tag search)
+        - Filtro adicional no retrieval
+        - Sugestao de documentos relacionados
+        - Agrupamento para relatorios de cobertura de conhecimento
+
+    Por que nao-bloqueante:
+        Tags sao importantes mas o pipeline de IA pode sugeri-las
+        automaticamente na Fase 2 (enriquecimento). Um humano pode
+        comecar com 0 tags e o pipeline adiciona. Warning e emitido,
+        mas documento nao e rejeitado.
+
+    Validacao:
+        - Obrigatorio no schema, mas ausencia gera WARNING (nao bloqueia)
+        - Cada tag: lowercase, sem espacos (usar hifen)
+        - Minimo 3 tags para promocao a .md (bloqueante na Fase 3)
+
+............................................................................
+status (obrigatorio, bloqueante)
+............................................................................
+
+    Tipo:       string (enum)
+    Valores:    draft | in-review | approved
+    Default:    draft
+    Exemplo:    status: draft
+
+    Por que existe:
+        Controla o ciclo de vida do .beta.md no workspace:
+        - draft: em elaboracao, nao pronto para revisao
+        - in-review: enviado para revisao humana
+        - approved: revisado e aprovado para promocao a .md (Fase 3)
+
+    Regras:
+        - Somente documentos com status "approved" podem ser promovidos
+        - Transicoes validas: draft -> in-review -> approved
+        - Retorno permitido: approved -> draft (se precisar retrabalho)
+
+    Por que e bloqueante:
+        Pipeline de promocao precisa saber se o documento foi aprovado.
+        Sem status, nao ha como controlar o fluxo.
+
+    Validacao:
+        - Obrigatorio (bloqueante)
+        - Deve ser um dos 3 valores validos
+
+............................................................................
+last_enrichment (opcional, nao-bloqueante)
+............................................................................
+
+    Tipo:       string (data ISO 8601)
+    Formato:    AAAA-MM-DD
+    Exemplo:    last_enrichment: "2026-03-18"
+
+    Por que existe:
+        Registra a data da ultima vez que o pipeline de IA enriqueceu
+        o documento (adicionou conteudo, melhorou estrutura, sugeriu
+        tags, etc.). Permite:
+        - Saber se o documento ja foi processado pela IA
+        - Identificar documentos que nunca foram enriquecidos
+        - Detectar documentos "estagnados" (sem enriquecimento ha muito
+          tempo)
+
+    Por que nao-bloqueante:
+        Documentos novos ainda nao foram enriquecidos. O campo comeca
+        vazio e e preenchido automaticamente pelo pipeline.
+
+............................................................................
+last_human_edit (opcional, nao-bloqueante)
+............................................................................
+
+    Tipo:       string (data ISO 8601)
+    Formato:    AAAA-MM-DD
+    Exemplo:    last_human_edit: "2026-03-20"
+
+    Por que existe:
+        Registra a data da ultima edicao humana no documento. Permite:
+        - Detectar documentos que nunca foram revisados por humano
+        - Priorizar documentos para revisao (mais antigos primeiro)
+        - Medir engajamento humano no processo de curadoria
+        - Re-ingestao segura: o pipeline sabe onde houve edicao humana
+          e pode proteger esses trechos (ADR-001, secao 2.7)
+
+    Por que nao-bloqueante:
+        Pode ser vazio se o documento foi gerado 100% pela IA e ainda
+        nao foi revisado.
+
+............................................................................
+confidentiality (obrigatorio, bloqueante)
+............................................................................
+
+    Tipo:       string (enum)
+    Valores:    public | internal | restricted | confidential
+    Default:    internal
+    Exemplo:    confidentiality: internal
+                confidentiality: restricted
+
+    Por que existe:
+        Nivel de classificacao de dados conforme ADR-004. Determina:
+        - Onde o documento pode ser processado (cloud vs on-premise,
+          conforme ADR-002)
+        - Quem pode acessar o documento e seus chunks na Base Vetorial
+        - Filtro pre-retrieval inviolavel (ADR-004, Pilar 2)
+
+    Por que esta no front matter LEVE (excecao):
+        📌 EXCECAO ao principio de "governanca so no .md final".
+        O campo confidentiality e necessario desde a Fase 2 porque:
+        - ADR-002 usa confidentiality para ROTEAR o documento pela
+          trilha correta (cloud vs on-premise). Sem esse campo no
+          .beta.md, dados restricted/confidential poderiam ser
+          enviados acidentalmente para APIs cloud.
+        - ADR-004 exige que a classificacao exista ANTES de qualquer
+          processamento automatizado.
+        - Seguranca nao pode esperar a Fase 3 — o risco de vazamento
+          existe desde a primeira interacao com o documento.
+
+    Por que e bloqueante:
+        Documento sem classificacao nao pode ser processado. Por seguranca,
+        um documento sem confidentiality e tratado como se NAO tivesse
+        permissao de acesso (ninguem ve, ninguem processa).
+
+    Validacao:
+        - Obrigatorio (bloqueante)
+        - Deve ser um dos 4 valores validos
+        - Default sugerido pelo template: "internal" (conservador)
+        - Pipeline de IA pode sugerir classificacao com base no conteudo,
+          mas humano autorizado DEVE validar
+
+............................................................................
+Campos INTENCIONALMENTE AUSENTES do front matter leve
+............................................................................
+
+    Os seguintes campos existem SOMENTE no front matter rico (.md final)
+    e sao intencionalmente omitidos do .beta.md:
+
+    - system, module, owner, team:
+        Por que ausentes: sao campos de GOVERNANCA que exigem conhecimento
+        da estrutura organizacional. O humano que edita o .beta.md pode
+        nao saber a qual sistema ou modulo o documento pertence. Esses
+        campos sao preenchidos na Fase 3 (promocao) pelo pipeline, com
+        validacao do PO.
+
+    - valid_from, valid_until, supersedes, superseded_by:
+        Por que ausentes: campos temporais sao definidos na promocao,
+        quando o documento assume carater oficial. No .beta.md, o documento
+        ainda esta em elaboracao — nao faz sentido definir vigencia de
+        algo que nao e oficial.
+
+    - qa_score, qa_date, qa_status:
+        Por que ausentes: QA (quality assurance) so se aplica ao .md final.
+        O .beta.md por definicao nao passou por QA formal.
+
+    - doc_type:
+        Por que ausente: o tipo do documento (system-doc, adr, runbook,
+        etc.) e definido na promocao. No .beta.md, o conteudo ainda pode
+        mudar de natureza (um rascunho que comecou como "notas de reuniao"
+        pode virar um "runbook" ou um "ADR").
+
+    Filosofia: o front matter leve contem o MINIMO necessario para que o
+    pipeline funcione. Tudo que pode ser inferido ou enriquecido depois
+    fica fora — reduzindo a carga cognitiva do autor humano.
+
+............................................................................
+aliases (opcional, nao-bloqueante)
+............................................................................
+
+    Tipo:       array de strings
+    Exemplo:    aliases: ["Conciliacao Bancaria", "Retorno CNAB"]
+
+    Por que existe:
+        Nomes alternativos pelos quais o documento pode ser encontrado.
+        Opcional no .beta.md para permitir que autores humanos contribuam
+        com aliases durante a edicao, mesmo que o pipeline enriqueca
+        depois na promocao (Fase 3, onde o minimo de 5 aliases e exigido).
+
+    Por que nao-bloqueante:
+        O pipeline de promocao (Fase 3) pode gerar aliases automaticamente.
+        Porem, aliases fornecidos pelo autor humano capturam conhecimento
+        tacito valioso (ex: nomes informais usados pela equipe).
+
+    Validacao:
+        - Opcional (nao-bloqueante — documento sem aliases e aceito)
+        - Se presente: array de strings, sem duplicatas
+        - Cada alias: 3-100 caracteres
+
+............................................................................
+Exemplo completo de .beta.md com front matter leve
+............................................................................
+
+    ---
+    id: BETA-042
+    title: "Processo de conciliacao bancaria do modulo Cobranca"
+    domain: "financeiro"
+    confidentiality: internal
+    sources:
+      - type: "pdf"
+        origin: "sharepoint://financeiro/docs/conciliacao_v3.pdf"
+        captured_at: "2026-03-15"
+      - type: "transcription"
+        origin: "teams://recordings/2026-03-12_reuniao_cobranca.mp4"
+        captured_at: "2026-03-12"
+    tags: [conciliacao, cobranca, bancaria, boleto, retorno, cnab]
+    aliases: ["Conciliacao Bancaria", "Retorno CNAB"]
+    status: in-review
+    last_enrichment: "2026-03-18"
+    last_human_edit: "2026-03-20"
+    ---
+
+    # Processo de Conciliacao Bancaria
+
+    <!-- LOCKED:START autor=maria data=2026-03-20 -->
+    A conciliacao bancaria do modulo Cobranca processa arquivos de retorno
+    CNAB 240 recebidos diariamente dos bancos conveniados...
+    <!-- LOCKED:END -->
+
+    ## Fluxo Operacional
+    ...
+
+--------------------------------------------------------------------------------
+PARTE B — Front Matter Rico (.md final) — Repositorio rag-knowledge-base
+--------------------------------------------------------------------------------
+
+O front matter rico e o contrato COMPLETO que o .md final carrega. E gerado
+pelo pipeline de promocao (Fase 3) a partir do front matter leve com
+enriquecimento de campos de governanca, classificacao e qualidade.
+
+Os campos sao organizados em 8 GRUPOS logicos:
+
+............................................................................
+GRUPO 1 — IDENTIFICACAO
+............................................................................
+
+    id (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string
+        Formato:    DOC-{NNNNNN} (6 digitos, zero-padded)
+        Exemplo:    id: DOC-000042
+                    id: DOC-001337
+
+        Por que existe:
+            Identificador unico e DEFINITIVO do documento na base de
+            conhecimento. Diferente do BETA-{NNN} (que e temporario no
+            workspace), o DOC-{NNNNNN} e permanente e referenciado pela
+            Base Vetorial, pelos chunks, pelas relacoes e pelos agentes.
+
+        Por que formato diferente do BETA:
+            - Prefixo DOC indica que e a versao final (fonte da verdade)
+            - 6 digitos suportam ate 999.999 documentos
+            - Zero-padded para ordenacao lexicografica
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Regex: ^DOC-\d{6}$
+            - Unico no repositorio knowledge-base
+            - Deve haver mapeamento BETA-{NNN} -> DOC-{NNNNNN} registrado
+
+    doc_type (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string (enum)
+        Valores:
+            system-doc       — Documentacao de sistema (arquitetura, design,
+                               fluxos, integracao)
+            adr              — Architecture Decision Record
+            runbook          — Procedimento operacional (deploy, rollback,
+                               troubleshooting, recuperacao)
+            glossary         — Termo de glossario de negocio
+            task-doc         — Documentacao vinculada a task (ClickUp, Jira)
+            architecture-doc — Documento de arquitetura (blueprint, diagrama,
+                               modelo de dados)
+            policy           — Politica ou normativo interno
+            meeting-notes    — Ata ou registro de reuniao
+            onboarding       — Material de onboarding de novos membros
+            postmortem       — Post-mortem de incidente
+
+        Exemplo:    doc_type: runbook
+
+        Por que existe:
+            O tipo do documento determina:
+            - Estrategia de chunking (ADR-001): ADR tem chunks menores,
+              runbook tem chunks por procedimento, glossario tem chunks
+              atomicos por termo
+            - Template de resposta do agente: para um runbook, o agente
+              deve listar passos; para um ADR, deve explicar a decisao
+            - Filtro de busca: "me mostre apenas runbooks de deploy"
+
+        Por que e bloqueante:
+            Sem doc_type, o pipeline nao sabe como fazer chunking e o
+            agente nao sabe como formatar a resposta.
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Deve ser um dos valores da lista de enum
+
+    title (obrigatorio, bloqueante)
+    ....................................
+        Mesmo do front matter leve — herdado na promocao.
+        Tipo, regras e validacao identicos.
+
+............................................................................
+GRUPO 2 — CLASSIFICACAO
+............................................................................
+
+    system (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string
+        Exemplo:    system: "Cobranca"
+                    system: "Core Banking"
+                    system: "Portal do Cliente"
+
+        Por que existe:
+            Sistema corporativo ao qual o documento se refere. Na Base
+            Vetorial, gera o no (:System) e a relacao:
+                (:Document)-[:BELONGS_TO]->(:Module)-[:BELONGS_TO]->(:System)
+            Permite:
+            - Filtro por sistema no retrieval
+            - Navegacao no grafo (todos os docs de um sistema)
+            - Mapeamento de cobertura de conhecimento por sistema
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Deve corresponder a um sistema cadastrado (lista mantida
+              pelo time de arquitetura)
+
+    module (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string
+        Exemplo:    module: "Conciliacao"
+                    module: "Autenticacao"
+                    module: "Relatorios Gerenciais"
+
+        Por que existe:
+            Modulo funcional dentro do sistema. Granularidade mais fina
+            que system. Gera no (:Module) na Base Vetorial.
+            Permite:
+            - Filtro por modulo no retrieval
+            - Mapeamento de dependencias entre modulos
+            - Identificacao de modulos sem documentacao
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Deve corresponder a um modulo do sistema indicado
+
+    domain (obrigatorio, bloqueante)
+    ....................................
+        Herdado do front matter leve. Mesmas regras.
+
+    owner (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string
+        Exemplo:    owner: "fabio"
+                    owner: "maria.silva"
+
+        Por que existe:
+            Responsavel pelo conteudo do documento. Na Base Vetorial,
+            gera o no (:Owner) e a relacao:
+                (:Document)-[:OWNED_BY]->(:Owner)
+            Permite:
+            - Saber quem contatar sobre o conteudo
+            - Metricas de contribuicao
+            - Responsabilidade em caso de informacao incorreta
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Deve corresponder a um usuario cadastrado (login corporativo)
+
+    team (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string
+        Exemplo:    team: "arquitetura"
+                    team: "squad-pagamentos"
+                    team: "chapter-backend"
+
+        Por que existe:
+            Time, squad, chapter ou diretoria responsavel. Na Base
+            Vetorial, gera o no (:Team) e a relacao:
+                (:Owner)-[:MEMBER_OF]->(:Team)
+            Permite:
+            - Filtro por time no retrieval (ABAC, ADR-004)
+            - Mapeamento de cobertura de conhecimento por time
+            - Responsabilidade organizacional
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Deve corresponder a um time cadastrado
+
+............................................................................
+GRUPO 3 — STATUS E GOVERNANCA
+............................................................................
+
+    status (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string (enum)
+        Valores:    draft | in-review | approved | deprecated
+        Exemplo:    status: approved
+
+        Por que existe:
+            Ciclo de vida do .md final:
+            - draft: gerado pelo pipeline mas ainda nao revisado
+            - in-review: em revisao pelo PO/Arquiteto
+            - approved: aprovado para ingestao na Base Vetorial
+            - deprecated: documento obsoleto, substituido por outro
+
+        Diferenca do status do .beta.md:
+            O .beta.md tem 3 status (draft, in-review, approved).
+            O .md final adiciona "deprecated" porque documentos oficiais
+            podem se tornar obsoletos — no workspace, documentos obsoletos
+            sao simplesmente deletados.
+
+        Regras:
+            - Somente "approved" e ingerido na Base Vetorial
+            - "deprecated" e MANTIDO na Base Vetorial mas com flag que
+              reduz seu ranking no retrieval (para historico)
+            - Transicao para "deprecated" requer preenchimento de
+              superseded_by
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Deve ser um dos 4 valores validos
+
+    confidentiality (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string (enum)
+        Valores:    public | internal | restricted | confidential
+        Exemplo:    confidentiality: internal
+
+        Por que existe:
+            Nivel de classificacao de dados conforme ADR-004. Determina:
+            - Quem pode acessar o documento e seus chunks
+            - Onde o documento pode ser processado
+            - Filtro pre-retrieval inviolavel (ADR-004, Pilar 2)
+
+        Por que e bloqueante:
+            Documento sem classificacao nao pode ser ingerido — seria
+            impossivel aplicar filtro pre-retrieval. Por seguranca, um
+            documento sem classificacao e tratado como um documento SEM
+            PERMISSAO de acesso (ninguem ve).
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Deve ser um dos 4 valores validos
+            - Pipeline de promocao sugere classificacao com base no
+              conteudo; humano autorizado valida
+
+............................................................................
+GRUPO 4 — TEMPORAL
+............................................................................
+
+    valid_from (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string (data ISO 8601)
+        Formato:    AAAA-MM-DD
+        Exemplo:    valid_from: "2026-03-21"
+
+        Por que existe:
+            Data a partir da qual o documento e valido/vigente. Permite
+            consultas temporais no retrieval:
+            - "Como funcionava o processo de cobranca em janeiro de 2026?"
+            - O retriever filtra por valid_from <= data_consulta
+
+        Por que e bloqueante:
+            Todo documento tem uma data de inicio de vigencia. Se nao
+            informada, o pipeline usa a data de criacao (created_at)
+            como fallback, mas o campo deve existir explicitamente.
+
+        Validacao:
+            - Obrigatorio (bloqueante)
+            - Data valida no formato AAAA-MM-DD
+            - Nao pode ser futura (salvo para politicas que entram em
+              vigor no futuro)
+
+    valid_until (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string (data ISO 8601) | null
+        Formato:    AAAA-MM-DD ou null
+        Exemplo:    valid_until: null          # vigente (sem data fim)
+                    valid_until: "2026-12-31"  # vigente ate 31/12/2026
+
+        Por que existe:
+            Data ate a qual o documento e valido. Null significa "vigente
+            indefinidamente" (ate que seja substituido). Permite:
+            - Documentos com vigencia limitada (regulacoes temporarias,
+              politicas com prazo)
+            - Filtro temporal: valid_until >= data_consulta OR valid_until IS NULL
+
+        Por que nao-bloqueante:
+            A maioria dos documentos nao tem data fim definida. Null e
+            o default seguro (documento vigente).
+
+    supersedes (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string | null
+        Formato:    DOC-{NNNNNN}
+        Exemplo:    supersedes: "DOC-000023"   # este doc substitui DOC-000023
+                    supersedes: null           # nao substitui nenhum
+
+        Por que existe:
+            Indica qual documento ANTERIOR este documento substitui.
+            Na Base Vetorial, gera a relacao:
+                (:Document)-[:SUPERSEDES]->(:Document)
+            Permite navegacao temporal no grafo: "me mostre a versao
+            anterior deste documento".
+
+    superseded_by (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string | null
+        Formato:    DOC-{NNNNNN}
+        Exemplo:    superseded_by: "DOC-000045"  # substituido por DOC-000045
+                    superseded_by: null           # ainda vigente
+
+        Por que existe:
+            Indica qual documento POSTERIOR substitui este. E o inverso
+            de supersedes. Preenchido quando o documento e deprecado.
+            Obrigatorio quando status = deprecated.
+
+............................................................................
+GRUPO 5 — QA (Quality Assurance)
+............................................................................
+
+    qa_score (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       integer (0-100)
+        Exemplo:    qa_score: 85
+
+        Por que existe:
+            Score de qualidade do documento, calculado pelo pipeline de
+            QA. Considera:
+            - Completude do front matter
+            - Clareza do conteudo (legibilidade)
+            - Coerencia com documentos relacionados
+            - Cobertura de topicos esperados para o doc_type
+            Permite priorizar revisao humana (documentos com score baixo
+            primeiro) e metricas de qualidade da base de conhecimento.
+
+    qa_date (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string (data ISO 8601)
+        Formato:    AAAA-MM-DD
+        Exemplo:    qa_date: "2026-03-21"
+
+        Por que existe:
+            Data da ultima execucao do QA. Permite identificar documentos
+            que nao passaram por QA recentemente.
+
+    qa_status (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string (enum)
+        Valores:    passed | warning | not_reviewed
+        Exemplo:    qa_status: passed
+
+        Por que existe:
+            Resultado da ultima execucao do QA:
+            - passed: score >= 90% e sem erros criticos
+            - warning: score 80-89% ou alertas detectados (links
+              quebrados, campos faltantes nao-bloqueantes)
+            - not_reviewed: QA nao executado ainda (sem secao QA
+              no draft)
+
+        Por que esses valores (e nao pending/failed/skipped):
+            - "passed/warning/not_reviewed" refletem os gates de
+              qualidade do ADR-001 Fase 3 (90%+ = OK, 80-89% = com
+              ressalvas, abaixo = nao promovido)
+            - "failed" nao existe porque documentos que falham no QA
+              simplesmente nao sao promovidos — nao chegam ao .md final
+            - "skipped" nao existe porque todo .md final DEVE passar
+              por QA (e um gate obrigatorio da Fase 3)
+
+    qa_notes (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string | null
+        Exemplo:    qa_notes: "Score 87% — inferencias sobre custos cloud
+                              nao verificadas (ADR-002 secao 3.1). Aprovado
+                              com ressalva pelo PO em 21/03/2026."
+
+        Por que existe:
+            Campo obrigatorio quando qa_status = warning (score 80-89%).
+            Conforme ADR-001 Fase 3: "Documentos com score 80-89% podem
+            ser promovidos se os motivos para nao atingir 100% estiverem
+            documentados no front matter (campo qa_notes)."
+            Permite:
+            - Transparencia: qualquer pessoa sabe POR QUE o score nao
+              e 100% e POR QUE foi promovido mesmo assim
+            - Rastreabilidade: decisao de promover com ressalva fica
+              registrada no proprio documento
+            - Priorizacao: revisores podem focar nos pontos documentados
+              em qa_notes para melhorar o score na proxima revisao
+
+............................................................................
+GRUPO 6 — DESCOBERTA
+............................................................................
+
+    tags (obrigatorio, bloqueante na promocao)
+    ....................................
+        Tipo:       array de strings
+        Minimo:     5 tags
+        Exemplo:    tags: [conciliacao, cobranca, bancaria, boleto,
+                          retorno, cnab, financeiro, banco-do-brasil]
+
+        Por que existe:
+            Tags para busca por facetas, categorizacao e descoberta.
+            No .md final, minimo de 5 tags (mais restritivo que o .beta.md)
+            porque o documento ja foi enriquecido pelo pipeline.
+
+        Por que 5 tags minimas (e nao 3 como no .beta.md):
+            Na promocao, o pipeline de IA ja analisou o conteudo e pode
+            sugerir tags adicionais. 5 tags garantem boa cobertura de
+            facetas para busca. Menos de 5 indica que o documento nao
+            foi adequadamente categorizado.
+
+        Validacao:
+            - Obrigatorio (bloqueante na promocao)
+            - Array com minimo 5 elementos
+            - Cada tag: lowercase, sem espacos (usar hifen)
+            - Sem duplicatas
+
+    aliases (obrigatorio, bloqueante na promocao)
+    ....................................
+        Tipo:       array de strings
+        Minimo:     5 aliases
+        Exemplo:    aliases: ["Conciliacao Bancaria", "Retorno CNAB",
+                             "Arquivo de Retorno", "Conciliacao de Cobranca",
+                             "Processamento CNAB 240"]
+
+        Por que existe:
+            Nomes alternativos pelos quais o documento pode ser encontrado.
+            Critico para:
+            - Busca no Obsidian (aliases aparecem no quick switcher)
+            - Embeddings: cada alias gera uma variacao semantica que
+              melhora a recall da busca vetorial
+            - Wikilinks: permite referenciar o documento por qualquer
+              alias, nao apenas pelo titulo
+
+        Por que 5 aliases minimos:
+            Documentos corporativos sao chamados de formas diferentes por
+            equipes diferentes. "Conciliacao bancaria" para financeiro,
+            "retorno CNAB" para TI, "processamento de arquivos" para
+            operacoes. 5 aliases cobrem as variantes mais comuns.
+
+        Validacao:
+            - Obrigatorio (bloqueante na promocao)
+            - Array com minimo 5 elementos
+            - Sem duplicatas
+            - Cada alias: 3-100 caracteres
+
+............................................................................
+GRUPO 7 — LINHAGEM
+............................................................................
+
+    source_format (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string (enum)
+        Valores:    original | pdf | docx | xlsx | pptx | email |
+                    confluence | sharepoint | jira | clickup |
+                    transcription | web | json | csv | image |
+                    video | audio | manual | multiple
+
+        Valor "multiple":
+            Usar "multiple" quando o documento tem mais de uma fonte de
+            origem. Neste caso, o campo sources (array) no .beta.md
+            detalha cada fonte individual.
+        Exemplo:    source_format: pdf
+
+        Por que existe:
+            Formato da fonte PRINCIPAL que originou este documento.
+            Diferente do campo sources do .beta.md (que lista todas as
+            fontes), source_format indica o formato predominante.
+            Usado para:
+            - Calcular conversion_quality (sinais variam por formato)
+            - Metricas: "quantos docs vieram de PDF vs Confluence?"
+            - Depuracao: se um doc tem problemas, saber o formato ajuda
+              a diagnosticar
+
+        Valor "original":
+            Indica que o documento foi criado diretamente como .md (nao
+            e conversao de outra fonte). Nesse caso, conversion_quality
+            e 100% automaticamente.
+
+    source_repo (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string
+        Exemplo:    source_repo: "rag-workspace"
+                    source_repo: "Rag"
+
+        Por que existe:
+            Repositorio Git de onde o .beta.md foi promovido. Permite
+            rastrear a origem fisica do documento.
+
+    source_path (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string | null
+        Exemplo:    source_path: "beta/financeiro/conciliacao_bancaria.beta.md"
+
+        Por que existe:
+            Caminho do .beta.md no repositorio workspace. Permite voltar
+            ao arquivo original para verificacao ou edicao.
+
+    conversion_pipeline (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string
+        Exemplo:    conversion_pipeline: "promotion-pipeline-v1"
+                    conversion_pipeline: "adr-writer-v1"
+                    conversion_pipeline: "manual-promotion"
+
+        Por que existe:
+            Identificador do pipeline que gerou este .md. Permite:
+            - Reprodutibilidade (Pilar H do ADR-001): saber exatamente
+              qual versao do pipeline gerou o documento
+            - Depuracao: se um doc tem problemas, saber qual pipeline
+              o gerou ajuda a diagnosticar
+            - Auditoria: qual automacao tocou neste documento?
+
+    source_beta_ids (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       array de strings | null
+        Formato:    ["BETA-{NNN}", ...]
+        Exemplo:    source_beta_ids: ["BETA-042", "BETA-043"]
+
+        Por que existe:
+            Rastreabilidade completa do .beta.md ao .md final (Pilar G
+            do ADR-001 — Rastreabilidade de Linhagem). Permite saber
+            exatamente quais arquivos .beta.md originaram este documento
+            final.
+            - Cenario 1: um .md final vem de um unico .beta.md
+              source_beta_ids: ["BETA-042"]
+            - Cenario 2: um .md final consolida multiplos .beta.md
+              source_beta_ids: ["BETA-042", "BETA-043"]
+            - Cenario 3: documento criado diretamente como .md (sem beta)
+              source_beta_ids: null
+
+        Relacao com outros campos:
+            - source_format: indica o formato da fonte original
+            - source_path: caminho do .beta.md no workspace
+            - source_beta_ids: IDs dos .beta.md que originaram este .md
+            Juntos, esses 3 campos formam a rastreabilidade completa
+            de linhagem do documento.
+
+    conversion_quality (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       integer (0-100)
+        Exemplo:    conversion_quality: 85
+
+        Por que existe:
+            Score de qualidade da conversao da fonte para .md. Detalhado
+            na Parte D deste ADR.
+
+    converted_at (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string (data ISO 8601) | null
+        Formato:    AAAA-MM-DDTHH:MM:SSZ
+        Exemplo:    converted_at: "2026-03-21T14:30:00Z"
+                    converted_at: null   # se source_format = original
+
+        Por que existe:
+            Timestamp da conversao/promocao. Permite saber quando o
+            pipeline gerou este .md.
+
+............................................................................
+GRUPO 8 — DATAS E VERSIONAMENTO
+............................................................................
+
+    created_at (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string (data ISO 8601)
+        Formato:    AAAA-MM-DD
+        Exemplo:    created_at: "2026-03-21"
+
+        Por que existe:
+            Data de criacao do .md final. Diferente de valid_from (que e
+            vigencia do CONTEUDO), created_at e a data do ARTEFATO.
+            Usado para metricas: "quantos docs foram criados por mes?"
+
+    updated_at (obrigatorio, bloqueante)
+    ....................................
+        Tipo:       string (data ISO 8601)
+        Formato:    AAAA-MM-DD
+        Exemplo:    updated_at: "2026-03-21"
+
+        Por que existe:
+            Data da ultima atualizacao do .md final. Atualizado
+            automaticamente pelo pipeline a cada re-promocao.
+            Usado para: identificar docs desatualizados, metricas.
+
+    release_version (opcional, nao-bloqueante)
+    ....................................
+        Tipo:       string | null
+        Formato:    vN.N.N (semver)
+        Exemplo:    release_version: "v1.3.0"
+                    release_version: null   # ainda nao ingerido
+
+        Por que existe:
+            Versao da release que disparou a ingestao na Base Vetorial
+            (Fase 4). Preenchido AUTOMATICAMENTE pelo pipeline de
+            ingestao (ADR-006, Etapa 1) — nunca pelo autor humano.
+            Permite:
+            - Rastreabilidade: saber exatamente qual release incluiu
+              este documento na Base Vetorial
+            - Rollback: se uma release introduz problemas, saber quais
+              documentos foram afetados (filtrar por release_version)
+            - Consistencia: ADR-006 registra release_version no no
+              Document da Base Vetorial — o campo no front matter
+              garante que a informacao esta tanto no Git quanto na
+              Base Vetorial
+            - ADR-010 (Git Flow) usa release_version como criterio de
+              verificacao pos-ingestao
+
+        Por que nao-bloqueante:
+            O campo e preenchido pelo pipeline de ingestao APOS a
+            promocao. Um .md recem-promovido ainda nao foi ingerido,
+            portanto release_version = null. Bloquear por isso
+            impediria a criacao do .md.
+
+        Validacao:
+            - Opcional (nao-bloqueante na promocao)
+            - Se presente: deve seguir formato semver (vN.N.N)
+            - Preenchido exclusivamente pelo pipeline de ingestao
+
+............................................................................
+Exemplo completo de .md final com front matter rico
+............................................................................
+
+    ---
+    # === IDENTIFICACAO ===
+    id: DOC-000042
+    doc_type: system-doc
+    title: "Processo de conciliacao bancaria do modulo Cobranca"
+
+    # === CLASSIFICACAO ===
+    system: Cobranca
+    module: Conciliacao
+    domain: financeiro
+    owner: maria.silva
+    team: squad-pagamentos
+
+    # === STATUS E GOVERNANCA ===
+    status: approved
+    confidentiality: internal
+
+    # === TEMPORAL ===
+    valid_from: "2026-01-15"
+    valid_until: null
+    supersedes: "DOC-000023"
+    superseded_by: null
+
+    # === QA ===
+    qa_score: 85
+    qa_date: "2026-03-21"
+    qa_status: warning
+    qa_notes: "Score 85% — inferencias sobre custos cloud nao verificadas.
+               Aprovado com ressalva pelo PO em 21/03/2026."
+
+    # === DESCOBERTA ===
+    tags: [conciliacao, cobranca, bancaria, boleto, retorno, cnab,
+           financeiro, banco-do-brasil, arquivo-retorno, cnab-240]
+    aliases: ["Conciliacao Bancaria", "Retorno CNAB", "Arquivo de Retorno",
+             "Conciliacao de Cobranca", "Processamento CNAB 240"]
+
+    # === LINHAGEM ===
+    source_format: pdf
+    source_repo: rag-workspace
+    source_path: "beta/financeiro/conciliacao_bancaria.beta.md"
+    source_beta_ids: ["BETA-042", "BETA-043"]
+    conversion_pipeline: promotion-pipeline-v1
+    conversion_quality: 82
+    converted_at: "2026-03-21T14:30:00Z"
+
+    # === DATAS E VERSIONAMENTO ===
+    created_at: "2026-03-21"
+    updated_at: "2026-03-21"
+    release_version: "v1.3.0"
+    ---
+
+    # Processo de Conciliacao Bancaria do Modulo Cobranca
+
+    ## Visao Geral
+    ...
+
+--------------------------------------------------------------------------------
+PARTE C — Schema de Validacao
+--------------------------------------------------------------------------------
+
+O schema de validacao e um componente EXECUTAVEL do pipeline — nao apenas
+documentacao. Ele roda em dois momentos:
+
+    1. Na Fase 2 (enriquecimento): valida o front matter leve do .beta.md
+    2. Na Fase 3 (promocao): valida o front matter rico do .md final
+
+............................................................................
+Regras de validacao — Front matter leve (.beta.md)
+............................................................................
+
+    Campos bloqueantes (documento rejeitado se invalido):
+
+        +------------------+-----------------------------+------------------+
+        | Campo            | Regra                       | Mensagem de erro |
+        +------------------+-----------------------------+------------------+
+        | id               | Presente, regex             | "Campo 'id'      |
+        |                  | ^BETA-\d{3,}$, unico       |  ausente ou       |
+        |                  |                             |  formato invalido"|
+        +------------------+-----------------------------+------------------+
+        | title            | Presente, 10-200 chars,     | "Campo 'title'   |
+        |                  | nao generico                |  ausente ou muito |
+        |                  |                             |  curto"           |
+        +------------------+-----------------------------+------------------+
+        | domain           | Presente, >= 2 chars,       | "Campo 'domain'  |
+        |                  | lowercase, sem espacos      |  ausente ou       |
+        |                  |                             |  formato invalido"|
+        +------------------+-----------------------------+------------------+
+        | sources          | Presente, array >= 1,       | "Campo 'sources' |
+        |                  | cada elem com type/origin/  |  ausente ou       |
+        |                  | captured_at validos         |  incompleto"      |
+        +------------------+-----------------------------+------------------+
+        | status           | Presente, enum valido       | "Campo 'status'  |
+        |                  | (draft|in-review|approved)  |  ausente ou valor |
+        |                  |                             |  invalido"        |
+        +------------------+-----------------------------+------------------+
+        | confidentiality  | Presente, enum valido       | "Campo           |
+        |                  | (public|internal|restricted |  'confidentiality'|
+        |                  | |confidential)              |  ausente ou valor |
+        |                  |                             |  invalido"        |
+        +------------------+-----------------------------+------------------+
+
+    Campos com warning (documento aceito, mas alerta emitido):
+
+        +------------------+-----------------------------+------------------+
+        | Campo            | Regra                       | Warning          |
+        +------------------+-----------------------------+------------------+
+        | tags             | Array >= 3 elementos        | "tags: menos de  |
+        |                  |                             |  3 tags. Adicione |
+        |                  |                             |  mais para melhor |
+        |                  |                             |  descoberta."     |
+        +------------------+-----------------------------+------------------+
+        | last_enrichment  | Data valida se presente     | "last_enrichment |
+        |                  |                             |  nao preenchido.  |
+        |                  |                             |  Sera atualizado  |
+        |                  |                             |  no proximo       |
+        |                  |                             |  enriquecimento." |
+        +------------------+-----------------------------+------------------+
+        | last_human_edit  | Data valida se presente     | "last_human_edit |
+        |                  |                             |  nao preenchido.  |
+        |                  |                             |  Revisao humana   |
+        |                  |                             |  recomendada."    |
+        +------------------+-----------------------------+------------------+
+
+............................................................................
+Regras de validacao — Front matter rico (.md final)
+............................................................................
+
+    TODOS os campos do front matter rico sao bloqueantes na promocao,
+    EXCETO os marcados como "opcional, nao-bloqueante" na Parte B.
+
+    Campos bloqueantes adicionais (alem dos herdados do leve):
+
+        +----------------------+-------------------------------+
+        | Campo                | Regra                         |
+        +----------------------+-------------------------------+
+        | doc_type             | Enum valido (ver lista)       |
+        | system               | Sistema cadastrado            |
+        | module               | Modulo do sistema indicado    |
+        | owner                | Usuario cadastrado            |
+        | team                 | Time cadastrado               |
+        | confidentiality      | Enum valido (4 niveis)        |
+        | valid_from           | Data valida, nao futura*      |
+        | tags                 | Array >= 5 elementos          |
+        | aliases              | Array >= 5 elementos          |
+        | source_format        | Enum valido                   |
+        | source_beta_ids      | Array de BETA-{NNN} ou null   |
+        | source_repo          | String nao vazia              |
+        | conversion_pipeline  | String nao vazia              |
+        | conversion_quality   | Integer 0-100                 |
+        | created_at           | Data valida                   |
+        | updated_at           | Data valida, >= created_at    |
+        +----------------------+-------------------------------+
+
+    * valid_from pode ser futura para politicas programadas
+
+............................................................................
+Comportamento quando validacao falha
+............................................................................
+
+    REGRA FUNDAMENTAL: rejeicao EXPLICITA, nunca skip silencioso.
+
+    Quando um campo bloqueante falha:
+        1. Documento e REJEITADO (nao processado pelo pipeline)
+        2. Mensagem de erro e registrada no log com:
+            - Documento (id ou path)
+            - Campo invalido
+            - Valor encontrado
+            - Valor esperado
+            - Sugestao de correcao
+        3. Notificacao enviada ao responsavel (owner ou equipe)
+        4. Documento aparece em relatorio de "documentos pendentes"
+
+    Quando um campo com warning falha:
+        1. Documento e ACEITO (processamento continua)
+        2. Warning registrado no log
+        3. Documento aparece em relatorio de "documentos com alertas"
+
+    Por que nao aceitar silenciosamente?
+        - Skip silencioso mascara problemas de qualidade
+        - Documentos incompletos poluem a Base Vetorial com dados de
+          baixa qualidade
+        - Debugging: se um documento nao aparece no retrieval, o log de
+          rejeicao mostra o motivo imediatamente
+        - Governanca: auditores podem verificar quantos documentos foram
+          rejeitados e por que
+
+............................................................................
+Valores validos para enums
+............................................................................
+
+    doc_type:
+        system-doc, adr, runbook, glossary, task-doc, architecture-doc,
+        policy, meeting-notes, onboarding, postmortem
+
+    status (.beta.md):
+        draft, in-review, approved
+
+    status (.md final):
+        draft, in-review, approved, deprecated
+
+    confidentiality:
+        public, internal, restricted, confidential
+
+    source_format:
+        original, pdf, docx, xlsx, pptx, email, confluence, sharepoint,
+        jira, clickup, transcription, web, json, csv, image, video,
+        audio, manual
+
+    qa_status:
+        pending, passed, failed, skipped
+
+    source type (no array sources do .beta.md):
+        pdf, docx, xlsx, pptx, email, confluence, sharepoint, jira,
+        clickup, transcription, web, manual, md, json, csv, image,
+        video, audio
+
+--------------------------------------------------------------------------------
+PARTE D — conversion_quality
+--------------------------------------------------------------------------------
+
+O campo conversion_quality expressa a confianca na fidelidade da conversao
+da fonte original para o formato .md. E um score de 0 a 100% calculado
+pelo pipeline de conversao na Fase 2 (ADR-001).
+
+............................................................................
+Formula de calculo
+............................................................................
+
+    conversion_quality = min(
+        media_ponderada(sinais_do_formato),
+        penalidade_por_erro_critico
+    )
+
+    Onde:
+        - media_ponderada: media dos sinais aplicaveis ao formato da fonte,
+          cada sinal com peso definido
+        - penalidade_por_erro_critico: se houver erro critico (ex: pagina
+          inteira ilegivel, tabela corrompida), o score e capado no valor
+          da penalidade (ex: max 40%), independente da media dos sinais
+
+    A funcao min() garante que um erro critico SEMPRE reduz o score, mesmo
+    que os outros sinais sejam bons.
+
+............................................................................
+Sinais por formato de origem
+............................................................................
+
+    +-------------------+--------------------------------------------+-------+
+    | Formato           | Sinais                                     | Peso  |
+    +-------------------+--------------------------------------------+-------+
+    | MD nativo         | 100% automatico (sem conversao)            | -     |
+    |                   | Validacao: YAML front matter valido,       |       |
+    |                   | Markdown bem formado                       |       |
+    +-------------------+--------------------------------------------+-------+
+    | PDF texto         | % caracteres reconhecidos                  | 40%   |
+    |                   | Estrutura de headings preservada           | 30%   |
+    |                   | Tabelas extraidas corretamente             | 20%   |
+    |                   | Links preservados                          | 10%   |
+    +-------------------+--------------------------------------------+-------+
+    | PDF escaneado     | Confidence do OCR (media por pagina)       | 50%   |
+    | (OCR)             | Resolucao da imagem (DPI)                  | 20%   |
+    |                   | % texto reconhecido vs area da pagina      | 20%   |
+    |                   | Idioma detectado = esperado                | 10%   |
+    +-------------------+--------------------------------------------+-------+
+    | DOCX              | Conversao deterministica (~100%)           | 30%   |
+    |                   | Estilos preservados (headings, listas)     | 30%   |
+    |                   | Tabelas convertidas                        | 20%   |
+    |                   | Imagens extraidas com alt text             | 20%   |
+    +-------------------+--------------------------------------------+-------+
+    | XLSX              | % tabelas convertidas para Markdown        | 40%   |
+    |                   | Formulas complexas identificadas           | 20%   |
+    |                   | Merges/spans resolvidos                    | 20%   |
+    |                   | Multiplas abas processadas                 | 20%   |
+    +-------------------+--------------------------------------------+-------+
+    | PPTX              | % slides convertidos                       | 30%   |
+    |                   | Notas do apresentador extraidas            | 25%   |
+    |                   | Imagens com descricao                      | 25%   |
+    |                   | Ordem logica preservada                    | 20%   |
+    +-------------------+--------------------------------------------+-------+
+    | Email             | Headers completos (from, to, date, subject)| 30%   |
+    |                   | Corpo convertido (HTML -> MD)              | 30%   |
+    |                   | Anexos processados                         | 25%   |
+    |                   | Thread/conversacao preservada              | 15%   |
+    +-------------------+--------------------------------------------+-------+
+    | Transcricao       | Word Error Rate (WER) do STT              | 40%   |
+    | (audio/video)     | Identificacao de falantes                  | 25%   |
+    |                   | Timestamps preservados                     | 15%   |
+    |                   | Sobreposicao de falantes tratada           | 20%   |
+    +-------------------+--------------------------------------------+-------+
+    | Confluence        | Estrutura HTML preservada                  | 30%   |
+    |                   | Macros expandidas/resolvidas               | 25%   |
+    |                   | Links internos resolvidos                  | 25%   |
+    |                   | Anexos referenciados                       | 20%   |
+    +-------------------+--------------------------------------------+-------+
+    | Web               | HTML -> MD com estrutura preservada        | 35%   |
+    |                   | Navegacao/menu removidos (so conteudo)     | 25%   |
+    |                   | Imagens com alt text                       | 20%   |
+    |                   | Links resolvidos (absolutos)               | 20%   |
+    +-------------------+--------------------------------------------+-------+
+    | JSON / Ticket     | % campos esperados extraidos               | 40%   |
+    | (Jira, ClickUp)   | Historico de mudancas preservado           | 25%   |
+    |                   | Comentarios incluidos                      | 20%   |
+    |                   | Anexos referenciados                       | 15%   |
+    +-------------------+--------------------------------------------+-------+
+    | CSV               | Headers identificados                      | 30%   |
+    |                   | Tipos de dados inferidos                   | 25%   |
+    |                   | Encoding correto (UTF-8)                   | 25%   |
+    |                   | Delimitador detectado                      | 20%   |
+    +-------------------+--------------------------------------------+-------+
+    | Image             | OCR confidence (se contem texto)           | 50%   |
+    |                   | Descricao gerada por VLM                  | 30%   |
+    |                   | Resolucao suficiente                       | 20%   |
+    +-------------------+--------------------------------------------+-------+
+    | Manual            | Score definido pelo humano (subjetivo)     | 100%  |
+    |                   | Usado quando conversao e feita manualmente |       |
+    +-------------------+--------------------------------------------+-------+
+
+............................................................................
+Thresholds de decisao
+............................................................................
+
+    +------------------+-----------------------------------------------------+
+    | Score            | Acao                                                |
+    +------------------+-----------------------------------------------------+
+    | >= 80%           | INGESTAO AUTOMATICA                                |
+    |                  | .beta.md gerado e processado sem intervencao humana.|
+    |                  | Status: draft (ainda precisa de enriquecimento,     |
+    |                  | mas a conversao e confiavel).                       |
+    +------------------+-----------------------------------------------------+
+    | 30% a 79%        | REVISAO HUMANA OBRIGATORIA                         |
+    |                  | .beta.md gerado com status: draft e flag:           |
+    |                  | "requires_human_review: true" no log.               |
+    |                  | Pipeline emite warning com os sinais que tiveram    |
+    |                  | score baixo (ex: "tabelas com merge nao resolvidas, |
+    |                  | pagina 5 com OCR confidence 45%").                  |
+    |                  | Humano deve revisar e corrigir antes de aprovar.    |
+    +------------------+-----------------------------------------------------+
+    | < 30%            | REJEICAO                                           |
+    |                  | .beta.md NAO e gerado. Fonte rejeitada.             |
+    |                  | Log de erro com detalhes dos sinais que falharam.   |
+    |                  | Humano deve providenciar fonte de melhor qualidade  |
+    |                  | ou fazer conversao manual.                          |
+    +------------------+-----------------------------------------------------+
+
+    Por que esses thresholds?
+        - 80%: abaixo de 80%, ha risco significativo de perda de informacao
+          na conversao. Acima de 80%, a conversao preserva a grande maioria
+          do conteudo e estrutura.
+        - 30%: abaixo de 30%, a conversao e tao ruim que o .beta.md gerado
+          causaria mais confusao do que ajudaria. E mais eficiente rejeitar
+          e pedir fonte melhor.
+        - 30-79%: zona intermediaria onde a conversao capturou parte do
+          conteudo mas precisa de revisao humana para garantir fidelidade.
+
+    Os thresholds sao CONFIGURAVEIS por organizacao (via config do pipeline),
+    mas os defaults acima sao recomendados como ponto de partida.
+
+--------------------------------------------------------------------------------
+PARTE E — Compatibilidade com Obsidian
+--------------------------------------------------------------------------------
+
+O Obsidian e o editor recomendado para edicao de .beta.md (ADR-001, Fase 2).
+O front matter deve ser 100% compativel com o Obsidian.
+
+Regras de compatibilidade:
+
+............................................................................
+3.1 — YAML entre marcadores ---
+............................................................................
+
+    O front matter DEVE estar entre marcadores --- no inicio do arquivo:
+
+        ---
+        id: BETA-042
+        title: "Titulo do documento"
+        ...
+        ---
+
+    Isso e o formato padrao que o Obsidian reconhece. O Obsidian renderiza
+    os campos do front matter no painel de propriedades (Properties view)
+    quando o usuario abre o arquivo.
+
+............................................................................
+3.2 — Tags como array YAML
+............................................................................
+
+    Tags devem ser arrays YAML, NAO a sintaxe #tag do Obsidian no front
+    matter:
+
+        CORRETO:
+            tags: [conciliacao, cobranca, boleto]
+
+        CORRETO (formato alternativo YAML):
+            tags:
+              - conciliacao
+              - cobranca
+              - boleto
+
+        INCORRETO (nao e YAML valido no front matter):
+            tags: #conciliacao #cobranca #boleto
+
+    No CORPO do documento (abaixo do ---), tags no formato #tag podem
+    ser usadas normalmente para marcacao inline:
+
+        ## Contexto
+
+        Este documento descreve o processo de #conciliacao bancaria...
+
+............................................................................
+3.3 — Aliases para busca e descoberta
+............................................................................
+
+    O campo aliases e reconhecido nativamente pelo Obsidian. Quando
+    preenchido, o Obsidian permite encontrar o documento pelo quick
+    switcher (Ctrl+O) usando qualquer alias:
+
+        aliases: ["Conciliacao Bancaria", "Retorno CNAB"]
+
+    Com isso, o usuario pode digitar "Retorno CNAB" no quick switcher
+    e encontrar o documento mesmo que o titulo seja "Processo de
+    conciliacao bancaria do modulo Cobranca".
+
+............................................................................
+3.4 — Wikilinks no corpo, NAO no front matter
+............................................................................
+
+    Wikilinks ([[DOC-000042]]) devem ser usados APENAS no corpo do
+    documento, nunca no front matter:
+
+        CORRETO:
+            ---
+            supersedes: "DOC-000023"
+            ---
+
+            # Titulo
+            Este documento substitui [[DOC-000023|Versao anterior]].
+
+        INCORRETO:
+            ---
+            supersedes: [[DOC-000023]]
+            ---
+
+    Motivo: o front matter e YAML puro. Wikilinks no YAML podem quebrar
+    parsers e nao sao interpretados corretamente pelo pipeline de validacao.
+    No corpo, o Obsidian renderiza wikilinks como links clicaveis.
+
+............................................................................
+3.5 — Campos personalizados
+............................................................................
+
+    O Obsidian aceita QUALQUER campo no front matter YAML. Campos
+    personalizados como qa_score, conversion_quality, etc. sao
+    exibidos no painel de propriedades sem configuracao adicional.
+
+    Isso significa que NAO precisamos de plugin especial para o front
+    matter funcionar no Obsidian — e YAML padrao.
+
+............................................................................
+3.6 — Templates no Obsidian
+............................................................................
+
+    Recomendacao: criar templates no Obsidian (via plugin Templates ou
+    Templater) com o front matter pre-preenchido:
+
+    Template para .beta.md:
+        ---
+        id: BETA-
+        title: ""
+        domain: ""
+        confidentiality: internal
+        sources:
+          - type: ""
+            origin: ""
+            captured_at: ""
+        tags: []
+        aliases: []
+        status: draft
+        last_enrichment:
+        last_human_edit:
+        ---
+
+    Isso reduz a carga cognitiva do autor: basta preencher os campos
+    em vez de lembrar a estrutura.
+
+================================================================================
+❌ 4. ALTERNATIVAS DESCARTADAS
+================================================================================
+
+............................................................................
+4.1 — Front matter unico (mesmo schema para .beta.md e .md)
+............................................................................
+
+    Descricao: usar o mesmo front matter rico em ambos os tipos de arquivo.
+
+    Motivo da rejeicao:
+        - Sobrecarrega o autor humano com campos que ele nao sabe preencher
+          (system, module, confidentiality)
+        - Aumenta a taxa de erros de preenchimento
+        - Campos de governanca preenchidos pelo autor podem estar incorretos
+          (ex: classificar como PUBLIC algo que deveria ser RESTRICTED)
+        - Filosofia: o .beta.md deve ser SIMPLES para encorajar contribuicao
+
+............................................................................
+4.2 — Metadados em arquivo separado (sidecar)
+............................................................................
+
+    Descricao: em vez de front matter no proprio arquivo, manter um arquivo
+    .meta.yaml ao lado de cada .beta.md/.md com os metadados.
+
+    Motivo da rejeicao:
+        - Duplica o numero de arquivos no repositorio
+        - Risco de dessincronizacao (editar o .md sem atualizar o .meta.yaml)
+        - Obsidian nao reconhece arquivos sidecar — nao aparece no painel
+          de propriedades
+        - YAML embutido (front matter) e o padrao da industria para
+          documentos Markdown
+
+............................................................................
+4.3 — Metadados apenas na Base Vetorial (sem front matter)
+............................................................................
+
+    Descricao: documentos .md sem front matter. Metadados sao adicionados
+    apenas no momento da ingestao na Base Vetorial.
+
+    Motivo da rejeicao:
+        - Perde a rastreabilidade: o .md no Git nao tem informacao sobre
+          si mesmo
+        - Pipeline de ingestao precisa de logica complexa para inferir
+          metadados (de onde veio? qual dominio? qual sistema?)
+        - Impossivel validar antes da ingestao
+        - Viola principio "documento autoexplicativo" (Pilar E do ADR-001)
+
+............................................................................
+4.4 — JSON em vez de YAML no front matter
+............................................................................
+
+    Descricao: usar JSON em vez de YAML para os metadados do documento.
+
+    Motivo da rejeicao:
+        - JSON nao e suportado pelo Obsidian como front matter
+        - YAML e mais legivel para humanos (sem chaves, colchetes
+          obrigatorios, aspas em tudo)
+        - YAML e o padrao da industria para front matter em Markdown
+          (Hugo, Jekyll, Docusaurus, Obsidian, etc.)
+
+............................................................................
+4.5 — Schema de validacao opcional (best-effort)
+............................................................................
+
+    Descricao: validar front matter mas aceitar documentos invalidos
+    com warning (nunca rejeitar).
+
+    Motivo da rejeicao:
+        - Em ambiente regulado, "best-effort" nao e aceitavel
+        - Documentos invalidos poluem a Base Vetorial
+        - Warning sem rejeicao = warning ignorado (experiencia empirica)
+        - Melhor rejeitar explicito e corrigir do que aceitar e descobrir
+          problemas no retrieval
+
+================================================================================
+⚖️ 5. CONSEQUENCIAS
+================================================================================
+
+............................................................................
+5.1 — Positivas
+............................................................................
+
+    - Contrato claro entre autores e pipeline — sem ambiguidade
+    - Dois niveis de front matter respeitam a maturidade do documento
+      (workspace = simples, knowledge-base = completo)
+    - Validacao executavel garante qualidade minima
+    - Rejeicao explicita evita poluicao da Base Vetorial
+    - 100% compativel com Obsidian (zero config adicional)
+    - Rastreabilidade completa: da fonte ate o chunk na Base Vetorial
+    - conversion_quality permite automacao inteligente (auto vs review
+      vs rejeicao)
+    - Campos temporais (valid_from/valid_until) habilitam consultas
+      historicas
+
+............................................................................
+5.2 — Negativas / Trade-offs
+............................................................................
+
+    - Curva de aprendizado: autores precisam aprender o formato do
+      front matter (mitigado por templates no Obsidian)
+    - Rigidez: campos bloqueantes podem frustrar autores que querem
+      contribuir rapidamente (mitigado pelo front matter leve, que
+      tem poucos campos obrigatorios)
+    - Manutencao de enums: listas de valores validos (doc_type,
+      source_format) precisam ser atualizadas quando novos tipos surgem
+    - Dois schemas: manter dois schemas (leve e rico) e mais complexo
+      que um so
+
+............................................................................
+5.3 — Riscos
+............................................................................
+
+    - Front matter incorreto bloqueando ingestao em massa: se o pipeline
+      muda as regras de validacao, documentos anteriormente validos podem
+      ser rejeitados. Mitigacao: versionamento do schema, migracao
+      automatica de documentos antigos.
+    - conversion_quality subjetivo: sinais como "estrutura preservada"
+      sao parcialmente subjetivos. Mitigacao: calibracao periodica dos
+      sinais com revisao humana de amostra.
+    - Obsidian descontinuado: se o Obsidian deixar de ser mantido,
+      qualquer editor que suporte YAML front matter funciona (VS Code,
+      Typora, etc.). O formato e padrao, nao proprietario.
+
+================================================================================
+🚀 6. IMPLEMENTACAO
+================================================================================
+
+    +-------+-------------------------------------------+-------------------+
+    | Fase  | Entrega                                   | Dependencia       |
+    +-------+-------------------------------------------+-------------------+
+    | 1-MVP | - Schema do front matter leve definido     | ADR-001 Fase 1    |
+    |       | - Validador basico (campos obrigatorios)   |                   |
+    |       | - Template Obsidian para .beta.md           |                   |
+    +-------+-------------------------------------------+-------------------+
+    | 2     | - Schema do front matter rico definido      | ADR-001 Fase 2    |
+    |       | - Validador completo (todos os campos)      |                   |
+    |       | - Enums centralizados e versionados          |                   |
+    |       | - Relatorio de documentos rejeitados         |                   |
+    |       | - conversion_quality implementado             |                   |
+    +-------+-------------------------------------------+-------------------+
+    | 3     | - Pipeline de promocao (leve -> rico)        | ADR-001 Fase 3    |
+    |       | - Sugestao automatica de campos de governanca|                   |
+    |       | - Validacao de classificacao (ADR-004)        |                   |
+    |       | - QA automatizado (qa_score, qa_status)       |                   |
+    +-------+-------------------------------------------+-------------------+
+    | 4     | - Temporalidade completa (valid_from/until)   | ADR-001 Fase 4    |
+    |       | - Schema versionado com migracao automatica   |                   |
+    |       | - Dashboard de cobertura de metadados          |                   |
+    |       | - Auditoria de classificacao periodica          |                   |
+    +-------+-------------------------------------------+-------------------+
+
+    Responsaveis:
+        - Arquiteto: definicao dos schemas, regras de validacao, enums
+        - Engenharia de dados: implementacao dos validadores e pipeline
+          de promocao
+        - POs / Analistas: preenchimento do front matter leve, aprovacao
+          de documentos
+        - Seguranca: validacao das regras de classificacao (ADR-004)
+
+================================================================================
+📚 7. REFERENCIAS
+================================================================================
+
+    Internas:
+        - ADR-001 — Pipeline de Geracao de Conhecimento em 4 Fases
+            Secao 2.5: Front matter leve do .beta.md
+            Secao 2.5.1: conversion_quality
+            Secao 2.6: Temporalidade do conhecimento
+        - ADR-004 — Estrategia de Seguranca e Classificacao de Dados
+            Campo confidentiality, niveis de classificacao
+        - B04 — Metadados e Governanca (blueprint)
+
+    Externas:
+        - YAML Specification 1.2
+          https://yaml.org/spec/1.2.2/
+        - Obsidian Properties
+          https://help.obsidian.md/Editing+and+formatting/Properties
+        - Hugo Front Matter
+          https://gohugo.io/content-management/front-matter/
+        - Jekyll Front Matter
+          https://jekyllrb.com/docs/front-matter/
+
+================================================================================
+📎 8. DOCUMENTOS RELACIONADOS
+================================================================================
+
+Impacta diretamente:
+    - ADR-001 — Pipeline de Geracao de Conhecimento em 4 Fases
+        Secao 2.5 (front matter leve), secao 2.5.1 (conversion_quality),
+        secao 2.6 (temporalidade). Este ADR detalha o contrato que o
+        ADR-001 menciona de forma resumida.
+    - ADR-004 — Estrategia de Seguranca e Classificacao de Dados
+        Campo confidentiality e os 4 niveis de classificacao. ADR-005
+        define COMO o campo e representado no front matter; ADR-004
+        define a POLITICA de uso.
+    - ADR-006 — Pipeline de Ingestao
+        Etapa 2 (Parse) le o front matter definido aqui. Campos como
+        release_version, source_format e conversion_quality sao consumidos
+        diretamente pelo pipeline de ingestao.
+
+Relacionados:
+    - ADR-002 — Soberania e Residencia de Dados
+        Usa campo confidentiality para rotear documentos pela trilha
+        correta (cloud vs on-premise).
+    - ADR-003 — Modelo de Dados da Base Vetorial
+        Campos do front matter rico geram nos e relacoes na Base Vetorial
+        (System, Module, Owner, Team, etc.).
+    - ADR-007 — Retrieval Hibrido e Agentes
+        Filtros pre-retrieval usam campos do front matter (confidentiality,
+        domain, system, valid_from/valid_until).
+    - ADR-009 — Selecao de Modelos de Embedding
+        conversion_quality pode ser impactado pela escolha do modelo
+        de embedding para fontes que passam por analise semantica.
+    - ADR-010 — Git Flow da Base de Conhecimento
+        Campo release_version e preenchido conforme o modelo de releases
+        definido neste ADR.
+    - ADR-011 — Segregacao de KBs
+        Cada KB pode ter regras especificas de front matter (campos
+        adicionais, enums customizados).
+
+================================================================================
+FIM DO ADR-005
+================================================================================
+
+
+================================================================================
+⚠️ VIOLACOES E INCONSISTENCIAS
+================================================================================
+
+1. CAMPO "clickup_task_id" AUSENTE DO FRONT MATTER RICO — RESOLVIDO
+    Resolucao: Campo removido por decisao para evitar lock-in com ferramentas
+    especificas. Se necessario, usar campo generico task_id com valor livre.
+
+2. CAMPO "conversion_quality" — DIVERGENCIA ENTRE BETA E RICO — RESOLVIDO
+    Resolucao (revisao 22/03/2026): Campo conversion_quality adicionado como
+    sub-campo OPCIONAL dentro de sources[] no .beta.md (per-source). No .md
+    final, campo independente no Grupo 7 com valor consolidado via
+    min(sources[].conversion_quality). Formula documentada na Parte A.
+
+3. CAMPO "domain" — ENUM ABERTO vs LISTA CONTROLADA — RESOLVIDO
+    Resolucao: Dominio mantido como campo aberto (string livre) por decisao.
+    Risco de inconsistencia aceito e mitigado por alertas no pipeline.
+
+4. CAMPO "aliases" — NAO EXISTIA NO FRONT MATTER LEVE — RESOLVIDO
+    Resolucao: Campo aliases adicionado como opcional (nao-bloqueante) no
+    front matter leve do .beta.md.
+
+5. doc_type — LISTA DIVERGENTE DO CLAUDE.md E schema_front_matter.md
+    O ADR-005 define 10 valores para doc_type. O CLAUDE.md lista 6, e o
+    schema_front_matter.md lista 7 (inclui "review" que nao esta no ADR-005).
+    Impacto: BAIXO — requer alinhamento entre os 3 artefatos. ADR-005 e a
+    fonte da verdade para doc_type; CLAUDE.md e schema devem ser atualizados.
+
+6. CAMPO "confidentiality" — SEM DEFINICAO FORMAL NO FRONT MATTER LEVE — RESOLVIDO
+    Resolucao (revisao 22/03/2026): Definicao formal adicionada na Parte A
+    com tipo, valores, exemplo, justificativa e validacao. Template e exemplo
+    do .beta.md atualizados para incluir o campo.
+
+7. CAMPO "release_version" AUSENTE DO FRONT MATTER RICO — RESOLVIDO
+    Resolucao (revisao 22/03/2026): Campo release_version adicionado ao
+    Grupo 8 (Datas e Versionamento) como opcional, nao-bloqueante. Preenchido
+    pelo pipeline de ingestao (ADR-006), nao pelo autor. Formato semver.
+
+8. CAMPO "qa_notes" AUSENTE DO FRONT MATTER RICO — RESOLVIDO
+    Resolucao (revisao 22/03/2026): Campo qa_notes adicionado ao Grupo 5 (QA).
+    Obrigatorio quando qa_status = warning (score 80-89%), conforme gate de
+    qualidade do ADR-001 Fase 3.
+
+9. CAMPO "qa_status" — VALORES DIVERGENTES — RESOLVIDO
+    Resolucao (revisao 22/03/2026): Valores atualizados de
+    "pending|passed|failed|skipped" para "passed|warning|not_reviewed",
+    alinhado com o schema_front_matter.md e os gates de qualidade do ADR-001.
+
+10. SECAO "COMPATIBILIDADE COM OBSIDIAN" FORA DA HIERARQUIA — RESOLVIDO
+    Resolucao (revisao 22/03/2026): Seção renumerada de "3. COMPATIBILIDADE
+    COM OBSIDIAN" para "PARTE E — Compatibilidade com Obsidian", mantendo
+    dentro da secao de Decisao.
+
+================================================================================
+🤖 INFERENCIAS PENDENTES
+================================================================================
+
+1. MAPEAMENTO BETA-{NNN} -> DOC-{NNNNNN} — RESOLVIDO
+    Resolucao: Opcao D (doc_type + auto-incremento) + campo source_beta_ids
+    para rastreabilidade no Grupo 7.
+
+2. GERACAO DE IDs DOC-{NNNNNN}
+    🤖 [INFERENCIA] — SUPOSICAO
+    Trecho: "DOC-{NNNNNN} (6 digitos, zero-padded)"
+    O ADR define o formato mas nao define o mecanismo de geracao.
+    Infere-se que o pipeline de promocao gera sequencialmente.
+    Risco se errada: colisao de IDs, duplicatas na Base Vetorial.
+    Como verificar: definir no ADR-006 ou em documento de implementacao
+    do pipeline de promocao.
+    Severidade: MEDIA
+
+3. CAMPO "source_format" vs "sources[].type" — RESOLVIDO
+    Resolucao: Valor "multiple" adicionado ao enum de source_format.
+
+4. MIGRACAO DE SCHEMA
+    🤖 [INFERENCIA] — SUPOSICAO
+    Trecho: secao 5.3 "versionamento do schema, migracao automatica"
+    A mitigacao menciona "migracao automatica" mas nao define como
+    funciona. E uma intencao, nao uma decisao.
+    Risco se errada: documentos antigos rejeitados apos mudanca de schema.
+    Como verificar: definir procedimento de migracao (script automatico?
+    pipeline dedicado? campo schema_version no front matter?).
+    Severidade: BAIXA (pode ser adiada para Fase 4 de implementacao)
+
+================================================================================
+✅ ACOES PENDENTES
+================================================================================
+
+[ ] Atualizar o CLAUDE.md do repositorio para refletir a lista completa
+    de doc_type (incluindo policy, meeting-notes, onboarding, postmortem)
+    e alinhar com schema_front_matter.md (que inclui "review").
+    Secao afetada: CLAUDE.md (Front Matter Obrigatorio), schema_front_matter.md
+    Prioridade: BAIXA
+    💬 Por que nao e bloqueante: e um alinhamento de documentacao, nao
+    uma falha de decisao. O ADR-005 e a fonte da verdade para doc_type.
+
+[ ] Definir procedimento de migracao de schema quando novos campos sao
+    adicionados ao front matter.
+    Secao afetada: Parte C (Schema de Validacao) ou nova secao
+    Prioridade: BAIXA
+    💬 Por que nao e bloqueante: pode ser adiada para Fase 4 de
+    implementacao. No MVP, schemas sao estáveis.
+
+================================================================================
+📊 QUALITY ASSURANCE — AVALIACAO DO ADR
+================================================================================
+
+  Revisor: ADR Reviewer — Especialista em Arquitetura de Processo
+  Data da revisao: 22/03/2026
+  ADR avaliado: ADR-005_front_matter_contrato_metadados
+  Titulo: Front Matter como Contrato de Metadados
+
+  ========================================
+  INDICE DE QUALIDADE: 91.3%
+  ========================================
+
+  --- CONFORMIDADE (peso 30%) ---
+
+  Alinhamento com ADR-001 .............. 93%
+    Respeita as 4 fases e os 2 repositorios. Front matter leve (.beta.md)
+    e rico (.md final) corretamente separados. Campos temporais
+    (valid_from/valid_until/supersedes) presentes. Gate de qualidade da
+    Fase 3 refletido em qa_status/qa_notes. Campo confidentiality como
+    excecao documentada no front matter leve. conversion_quality per-source
+    no .beta.md conforme secao 2.5.1 do ADR-001. release_version alinhado
+    com modelo de releases da Fase 4.
+
+  Coerencia entre ADRs ................. 90%
+    Referencias a ADR-001, ADR-002, ADR-004, ADR-006 validadas.
+    conversion_quality agora consistente entre ADR-001 e ADR-005.
+    release_version agora alinhado com ADR-006 e ADR-010.
+    qa_status alinhado com schema_front_matter.md.
+    Pequena divergencia remanescente: lista de doc_type entre ADR-005,
+    CLAUDE.md e schema_front_matter.md (BAIXA prioridade).
+
+  Terminologia e padronizacao .......... 95%
+    Usa "Base Vetorial" consistentemente. Terminologia alinhada com
+    demais ADRs. Convencoes de nomenclatura respeitadas.
+
+  Subtotal conformidade: 92.7%
+
+  --- COMPLETUDE (peso 30%) ---
+
+  Secoes obrigatorias (6/6) ............ 95%
+    Todas presentes: Contexto, Decisao (5 Partes: A-E), Alternativas
+    Descartadas (5), Consequencias, Implementacao, Referencias,
+    Documentos Relacionados. Compatibilidade com Obsidian agora como
+    Parte E da Decisao (hierarquia correta).
+
+  Alternativas genuinas ................ 92%
+    5 alternativas reais: front matter unico, sidecar, sem front matter,
+    JSON, schema opcional. Nenhuma e strawman — todas sao viáveis em
+    outros contextos. Motivos de rejeicao sao especificos ao contexto
+    (regulado, Obsidian, YAML padrao).
+
+  Consequencias e riscos ............... 88%
+    Positivas e negativas declaradas com honestidade. Riscos com mitigacoes
+    realistas (versionamento de schema, calibracao de conversion_quality,
+    independencia do Obsidian). Poderia detalhar melhor o risco de
+    inconsistencia de domain (enum aberto).
+
+  Subtotal completude: 91.7%
+
+  --- QUALIDADE DE DECISAO (peso 25%) ---
+
+  Solidez das justificativas ........... 93%
+    Cada campo com "por que existe", "por que e bloqueante/nao-bloqueante".
+    Filosofia de design explicita ("minimo necessario" no .beta.md).
+    Thresholds de conversion_quality com justificativa tecnica.
+    qa_notes vinculado ao gate de qualidade do ADR-001.
+
+  Premissas verificadas ................ 85%
+    Maioria das premissas verificada. 2 inferencias remanescentes:
+    geracao de IDs (MEDIA) e migracao de schema (BAIXA). Nenhuma
+    inferencia CRITICA pendente.
+
+  Profundidade tecnica ................. 95%
+    Excelente detalhamento: ~30 campos documentados individualmente,
+    tabelas de sinais por formato para conversion_quality, schemas de
+    validacao com tabelas de regras, exemplos completos de .beta.md e
+    .md final, template Obsidian, regras de compatibilidade.
+
+  Consistencia interna ................. 88%
+    Exemplos atualizados com novos campos (confidentiality no .beta.md,
+    qa_notes e release_version no .md). qa_status alinhado com
+    schema_front_matter.md. Pequena inconsistencia: Grupo 8 renomeado
+    para "Datas e Versionamento" mas tabela de validacao do rico nao
+    lista release_version (nao-bloqueante, preenchido pelo pipeline).
+
+  Subtotal decisao: 90.3%
+
+  --- CLAREZA E DISSEMINACAO (peso 15%) ---
+
+  Contexto autocontido ................. 92%
+    O ADR explica o problema (contrato entre autores e pipeline) de forma
+    clara. Referencia ADR-001 e ADR-004 para conceitos externos. Cada
+    campo tem justificativa compreensivel para publico nao-tecnico.
+
+  Decisao sem ambiguidade .............. 90%
+    Decisao clara: front matter YAML em 2 niveis, com schema executavel.
+    Todas as ambiguidades anteriores (conversion_quality, release_version,
+    confidentiality no leve, qa_status) resolvidas nesta revisao.
+
+  Acionavel pelo time .................. 85%
+    Fases de implementacao claras com dependencias. Responsaveis definidos.
+    Templates Obsidian prontos para uso. Poderia ter criterios de sucesso
+    mais explicitos por fase.
+
+  Subtotal clareza: 89.0%
+
+  --- CALCULO FINAL ---
+
+  Indice = (Conformidade x 0.30) + (Completude x 0.30) + (Decisao x 0.25) + (Clareza x 0.15)
+  Indice = (92.7% x 0.30) + (91.7% x 0.30) + (90.3% x 0.25) + (89.0% x 0.15)
+         = 27.81 + 27.51 + 22.58 + 13.35
+         = 91.3%
+
+  --- CONTADORES ---
+
+  Violacoes ADR-001:              0 (0 bloqueantes, 0 altas, 0 medias, 0 baixas)
+  Inconsistencias entre ADRs:     1 (0 contradicoes, 1 terminologia, 0 citacao, 0 dependencia)
+  Secoes ausentes/superficiais:   0 / 6
+  Inferencias pendentes:          2 (0 criticas, 0 altas, 1 media, 1 baixa)
+  Problemas de justificativa:     0 (0 ausentes, 0 fracas, 0 parciais)
+  Problemas de consistencia:      1
+
+  --- PONTOS FORTES ---
+
+    ▶️ Justificativa por campo excepcional — cada campo com "por que existe",
+       "por que e bloqueante" e regras de validacao. Padrao que outros ADRs
+       deveriam seguir.
+    ▶️ Dois niveis de front matter (leve e rico) com filosofia clara de
+       design: minimo para o autor humano, completo para o pipeline.
+    ▶️ Schema de validacao executavel com comportamento de rejeicao explicito —
+       nao aceita silenciosamente dados incompletos.
+    ▶️ conversion_quality com formula, sinais por formato e thresholds
+       justificados — decisao tecnica solida.
+    ▶️ Secao de Documentos Relacionados (📎) com impactos diretos e indiretos.
+
+  --- PONTOS DE MELHORIA (prioritizados) ---
+
+    🔵 Alinhar lista de doc_type entre ADR-005, CLAUDE.md e schema_front_matter.md
+    🔵 Definir mecanismo de geracao de IDs DOC-{NNNNNN} (sequencia? UUID? hash?)
+    🔵 Definir procedimento de migracao de schema para campos adicionados/removidos
+    🔵 Adicionar criterios de sucesso explicitos por fase na implementacao
+
+  --- POR QUE NAO E 100% ---
+
+    O score de 91.3% reflete um ADR maduro e bem justificado. Os pontos que
+    impedem 100% sao:
+
+    1. Geracao de IDs (inferencia MEDIA, -2%): o formato DOC-{NNNNNN} esta
+       definido mas o mecanismo de geracao (quem gera, como garante unicidade)
+       nao esta. Decisao adiavel para fase de implementacao, mas e uma lacuna.
+
+    2. Migracao de schema (inferencia BAIXA, -1%): a mitigacao "versionamento
+       de schema" e mencionada nos riscos mas nao detalhada. Aceitavel para o
+       estagio atual do projeto.
+
+    3. Divergencia de doc_type (consistencia, -1.5%): 3 artefatos com listas
+       diferentes. Nao afeta a decisao, mas gera confusao na implementacao.
+
+    4. Criterios de sucesso (clareza, -1.5%): fases de implementacao tem
+       entregas claras mas sem criterios mensuráveis de sucesso (ex: "90% dos
+       .beta.md com front matter valido no final da Fase 1").
+
+    5. Extensao do documento (~1700+ linhas, -2.7%): embora o detalhamento
+       seja um ponto forte, a extensao pode intimidar. Considerar um "cheat
+       sheet" resumido para autores humanos como complemento.
+
+  --- VEREDITO ---
+
+  91.3% — PRONTO PARA FORMALIZACAO — Converter para .md formal via /adr-writer.
+  As acoes pendentes sao BAIXA prioridade e nao bloqueiam formalizacao.
+
+================================================================================
+FIM DA REVISAO — ADR-005
+================================================================================

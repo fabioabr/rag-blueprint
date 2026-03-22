@@ -1,0 +1,36 @@
+# JointJS: Dynamic Font Size (JavaScript)
+
+Do you need font-size to be dynamic, and adjust according to another factor such as element height? The following demo shows you how to achieve that. Taking advantage of the calc() function, users can easily adjust font-size of an element according to its height.
+
+<a href="https://stackblitz.com/github/clientio/joint-demos/tree/main/dynamic-font-size/js" target="_blank">
+  <img
+    alt="Open in StackBlitz"
+    src="https://developer.stackblitz.com/img/open_in_stackblitz.svg"
+  />
+</a>
+
+This demo is also available online at [jointjs.com](https://jointjs.com/demos/dynamic-font-size).
+
+## How to download this demo
+
+You can download this demo using our [`@joint/cli` tool](https://www.npmjs.com/package/@joint/cli):
+
+```bash
+npx @joint/cli download dynamic-font-size/js
+```
+
+Alternatively, you can get the [copy of the repository](https://github.com/clientIO/joint-demos/archive/refs/heads/main.zip) from GitHub as usual.
+
+## Running the application
+
+Install the dependencies by running:
+
+```bash
+npm install
+```
+
+And then start the application with:
+
+```bash
+npm run dev
+```

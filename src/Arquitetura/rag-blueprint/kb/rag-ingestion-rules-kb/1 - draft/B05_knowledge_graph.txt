@@ -1,0 +1,248 @@
+
+================================================================================
+🕸️ KNOWLEDGE GRAPH — Relações + Fontes Expandidas
+================================================================================
+    📂 Série: RAG Blueprint Series
+    📌 Documento: B5 — Knowledge Graph
+    📅 Data: 17/03/2026
+    📋 Versão: 1.1
+
+
+================================================================================
+🎯 OBJETIVO DA FASE 3
+================================================================================
+
+Transformar o índice vetorial em um Knowledge Graph real. Adicionar
+entidades, relações e expandir para fontes além de Git/Markdown.
+
+  ✅ Nós: System, Module, Task, Owner, Team, GlossaryTerm, ADR
+  ✅ Relações explícitas entre entidades
+  ✅ Expansão de contexto via grafo (graph traversal)
+  ✅ Fontes expandidas via modelo Bronze/Prata/Ouro
+  ✅ Enriquecimento semântico para novas fontes
+  ✅ RBAC + ABAC implementados
+
+
+================================================================================
+📌 3.1 — MODELO DE DADOS EXPANDIDO
+================================================================================
+
+  Nós adicionados:
+
+  ┌────────────────────────────────────────────────────────┐
+  │  :System                                               │
+  │  system_id, name, description, status                  │
+  ├────────────────────────────────────────────────────────┤
+  │  Representa um sistema corporativo (Sistema Exemplo, etc.)│
+  └────────────────────────────────────────────────────────┘
+
+  ┌────────────────────────────────────────────────────────┐
+  │  :Module                                               │
+  │  module_id, name, description, system_id               │
+  ├────────────────────────────────────────────────────────┤
+  │  Módulo funcional de um sistema (Cobrança, Cadastro)   │
+  └────────────────────────────────────────────────────────┘
+
+  ┌────────────────────────────────────────────────────────┐
+  │  :Owner                                                │
+  │  owner_id, name, email, role                           │
+  ├────────────────────────────────────────────────────────┤
+  │  Responsável por conteúdo, sistema ou módulo           │
+  └────────────────────────────────────────────────────────┘
+
+  ┌────────────────────────────────────────────────────────┐
+  │  :Team                                                 │
+  │  team_id, name, type (squad, chapter, diretoria)       │
+  ├────────────────────────────────────────────────────────┤
+  │  Time, squad, chapter ou diretoria                     │
+  └────────────────────────────────────────────────────────┘
+
+  ┌────────────────────────────────────────────────────────┐
+  │  :Task                                                 │
+  │  task_id, title, external_id, source (ClickUp, Jira)   │
+  ├────────────────────────────────────────────────────────┤
+  │  Tarefa de ferramentas externas                        │
+  └────────────────────────────────────────────────────────┘
+
+  ┌────────────────────────────────────────────────────────┐
+  │  :ADR                                                  │
+  │  adr_id, title, status, decision_date                  │
+  ├────────────────────────────────────────────────────────┤
+  │  Registro de decisão arquitetural                      │
+  └────────────────────────────────────────────────────────┘
+
+  ┌────────────────────────────────────────────────────────┐
+  │  :GlossaryTerm                                         │
+  │  term_id, term, definition, domain                     │
+  ├────────────────────────────────────────────────────────┤
+  │  Termo de negócio controlado                           │
+  └────────────────────────────────────────────────────────┘
+
+
+================================================================================
+📌 3.2 — RELAÇÕES DO GRAFO
+================================================================================
+
+  Relações entre entidades:
+
+  (:Chunk)-[:PART_OF]->(:Document)
+  (:Document)-[:BELONGS_TO]->(:Module)
+  (:Module)-[:BELONGS_TO]->(:System)
+  (:Document)-[:OWNED_BY]->(:Owner)
+  (:Owner)-[:MEMBER_OF]->(:Team)
+  (:Document)-[:RELATES_TO_TASK]->(:Task)
+  (:Document)-[:REFERENCES]->(:Document)
+  (:Document)-[:USES_TERM]->(:GlossaryTerm)
+  (:ADR)-[:DECIDES]->(:System)
+  (:Module)-[:DEPENDS_ON]->(:Module)
+  (:Task)-[:IMPLEMENTS]->(:Module)
+
+  Essas relações habilitam perguntas como:
+
+    ❓ Quais ADRs impactam o módulo de Cobrança?
+    ❓ Quais documentos referenciam o Sistema Exemplo?
+    ❓ Quem é responsável pelos runbooks do módulo X?
+    ❓ Quais módulos dependem do módulo Y?
+    ❓ Qual tarefa originou esta documentação?
+
+
+================================================================================
+📌 3.3 — FONTES EXPANDIDAS (via modelo Bronze/Prata/Ouro)
+================================================================================
+
+  Todas as fontes seguem o fluxo Bronze→Prata→Ouro (ADR-001):
+    1. Arquivo original entra no repositório bronze
+    2. Pipeline de conversão gera .md na prata com campos de linhagem
+    3. Pipeline de ingestão existente processa o .md para Neo4j (ouro)
+
+  Prioridade de expansão (alto valor + fácil ingestão):
+
+  🥇 Primeira onda:
+    🔸 PDFs de documentação técnica existente
+    🔸 Tickets de suporte resolvidos (com resolução documentada)
+    🔸 Documentação de APIs (Swagger/OpenAPI)
+
+  🥈 Segunda onda:
+    🔸 Políticas internas (Word/PDF)
+    🔸 Runbooks e playbooks fora do Git
+    🔸 ADRs em outros formatos
+
+  🥉 Terceira onda (avaliar após estabilização):
+    🔸 E-mails — valor alto mas complexidade enorme (ruído, LGPD)
+    🔸 Transcrições de reuniões — depende de qualidade do STT
+    🔸 Mensagens de Slack — muito ruído, requer curadoria pesada
+
+  Para cada nova fonte:
+    🔸 Conector de captura para o repositório bronze
+    🔸 Parser dedicado no pipeline de conversão Bronze→Prata
+    🔸 Cálculo de conversion_quality específico para o formato
+    🔸 Enriquecimento semântico (classificação, NER, resumos)
+    🔸 Chunking adequado ao tipo de documento
+
+
+================================================================================
+📌 3.4 — ENRIQUECIMENTO SEMÂNTICO
+================================================================================
+
+  Para fontes que NÃO possuem front matter (PDFs, tickets, etc.):
+
+  🔹 Classificação automática
+     🔸 doc_type (inferido pelo conteúdo)
+     🔸 system / module (quando identificável)
+     🔸 confidentiality (por regras ou classificação por LLM)
+     🔸 domain / área de negócio
+
+  🔹 Extração de entidades (NER)
+     🔸 Pessoas, sistemas, módulos, termos de glossário
+
+  🔹 Resumos automáticos
+     🔸 Resumo curto (1-2 frases)
+
+  🔹 Detecção de qualidade
+     🔸 Documentos com pouco conteúdo
+     🔸 Possíveis duplicatas
+     🔸 Documentos potencialmente desatualizados
+
+
+================================================================================
+📌 3.5 — GOVERNANÇA (RBAC + ABAC)
+================================================================================
+
+  Implementação de controle de acesso real:
+
+  🔹 ABAC (Attribute-Based Access Control)
+     → Baseado nos 4 níveis de confidentiality do documento:
+       public, internal, restricted, confidential
+     → Filtro obrigatório pré-retrieval em toda busca
+
+  🔹 RBAC (Role-Based Access Control)
+     → Perfis de acesso por cargo/função:
+       🔸 Analista → public + internal
+       🔸 Gestor → public + internal + restricted
+       🔸 Diretoria → todos os níveis
+       🔸 Agente de IA → nível configurável por agente
+
+  🔹 Auditoria básica
+     → Registro de buscas realizadas (quem, quando, o quê)
+     → Registro de chunks retornados
+
+
+================================================================================
+📌 3.6 — BUSCA COM EXPANSÃO POR GRAFO
+================================================================================
+
+  Evolução da busca: vetorial + filtros + grafo
+
+  Pergunta do usuário
+        ↓
+  Aplicar filtros de acesso (RBAC + ABAC)
+        ↓
+  Vector search com filtros de metadados
+        ↓
+  Para cada chunk retornado, expandir via grafo:
+     → Chunk → Document → Module → System
+     → Document → referências a outros Documents
+     → Document → ADRs relacionados
+     → Document → Tasks vinculadas
+        ↓
+  Montar contexto expandido
+        ↓
+  Enviar para LLM
+
+
+================================================================================
+📌 3.7 — CRITÉRIOS DE CONCLUSÃO DA FASE 3
+================================================================================
+
+  ✅ Pelo menos 5 das 7 entidades do Knowledge Graph populadas
+  ✅ Relações explícitas criadas e navegáveis
+  ✅ Pelo menos 1 fonte não-.md integrada ao pipeline via Bronze→Prata→Ouro
+  ✅ Enriquecimento semântico operando para novas fontes
+  ✅ RBAC + ABAC implementados e aplicados nas buscas
+  ✅ Auditoria básica de acessos operando
+  ✅ Busca com expansão por grafo funcional
+
+================================================================================
+
+
+================================================================================
+📎 DOCUMENTOS RELACIONADOS
+================================================================================
+
+  Depende de:
+    → B04 — Metadados e Governança (front matter e filtros são pré-requisito para o grafo)
+
+  Evolui:
+    → B04 — Metadados e Governança (adiciona entidades e relações ao modelo de metadados)
+
+  Habilita:
+    → B06 — GraphRAG e Maturidade (grafo completo habilita retrieval híbrido com agentes)
+
+  Relacionados:
+    → B01 — Camada Bronze (fontes expandidas seguem o modelo bronze)
+    → B02 — Camada Prata (conversão de novas fontes para .md)
+    → B03 — Camada Ouro (ingestão e indexação vetorial)
+    → B07 — Visão Consolidada (tabela mestre de evolução)
+    → B08 — Pendências (P7: fontes prioritárias, P2: backend Neo4j)
+    → B10 — API e Interface (grafo consumido pela camada de acesso)
+    → B14 — Segurança (RBAC + ABAC implementados nesta fase)

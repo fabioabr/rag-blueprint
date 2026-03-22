@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glossário — Termos do Pipeline RAG</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        /* ====== DESIGN TOKENS (DARK — default) ====== */
+        :root {
+            --primary: #5BA4D9;
+            --primary-dark: #3182B1;
+            --primary-light: rgba(91, 164, 217, 0.12);
+            --secondary: #5BB8C4;
+            --success: #6ABF3B;
+            --success-light: rgba(106, 191, 59, 0.12);
+            --success-border: rgba(106, 191, 59, 0.3);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.12);
+            --warning-border: rgba(244, 172, 0, 0.3);
+            --danger: #E85D54;
+            --danger-light: rgba(232, 93, 84, 0.12);
+            --danger-border: rgba(232, 93, 84, 0.3);
+            --info: #38BDF8;
+            --info-light: rgba(56, 189, 248, 0.12);
+            --info-border: rgba(56, 189, 248, 0.3);
+            --bg: #0f1319;
+            --card-bg: #1a1f2e;
+            --text: #e2e8f0;
+            --text-muted: #8b9ab5;
+            --border: #2a3244;
+            --purple: #9B96FF;
+            --purple-light: rgba(155, 150, 255, 0.12);
+            --orange: #FF9473;
+            --teal: #2DD4BF;
+            --header-bg: linear-gradient(135deg, #1a2332 0%, #15202e 50%, #1a2838 100%);
+            --progress-track: #2a3244;
+            --milestone-future: #4a5568;
+            --alert-warning-text: #f0c040;
+            --alert-danger-text: #f08a84;
+            --alert-info-text: #6ecbf5;
+            --alert-success-text: #8ad45a;
+            --pill-success-text: #8ad45a;
+            --pill-info-text: #6ecbf5;
+            --pill-warning-text: #f0c040;
+            --area-warning-text: #f0c040;
+        }
+
+        /* ====== LIGHT THEME ====== */
+        [data-theme="light"] {
+            --primary: #3182B1;
+            --primary-dark: #256a94;
+            --primary-light: rgba(49, 130, 177, 0.1);
+            --secondary: #418F9D;
+            --success: #4C7E1B;
+            --success-light: rgba(76, 126, 27, 0.08);
+            --success-border: rgba(76, 126, 27, 0.25);
+            --warning: #F4AC00;
+            --warning-light: rgba(244, 172, 0, 0.08);
+            --warning-border: rgba(244, 172, 0, 0.25);
+            --danger: #C72F25;
+            --danger-light: rgba(199, 47, 37, 0.08);
+            --danger-border: rgba(199, 47, 37, 0.25);
+            --info: #0EA5E8;
+            --info-light: rgba(14, 165, 232, 0.08);
+            --info-border: rgba(14, 165, 232, 0.25);
+            --bg: #f4f6f9;
+            --card-bg: #ffffff;
+            --text: #212B37;
+            --text-muted: #6E829F;
+            --border: #e2e8f0;
+            --purple: #7B76FE;
+            --purple-light: rgba(123, 118, 254, 0.08);
+            --orange: #FE7C58;
+            --teal: #00D8D8;
+            --header-bg: linear-gradient(135deg, #3182B1 0%, #256a94 50%, #418F9D 100%);
+            --progress-track: #e9ecef;
+            --milestone-future: #adb5bd;
+            --alert-warning-text: #8a6600;
+            --alert-danger-text: #a52820;
+            --alert-info-text: #0878a8;
+            --alert-success-text: #3a6112;
+            --pill-success-text: #3a6112;
+            --pill-info-text: #0878a8;
+            --pill-warning-text: #9a6d00;
+            --area-warning-text: #8a6600;
+        }
+
+        /* ====== RESET ====== */
+        html, body, div, span, h1, h2, h3, h4, h5, h6, p, a, img, ul, ol, li,
+        header, footer, nav, section, article, aside, button, input, select, textarea,
+        table, tr, td, th, form, label, fieldset, legend { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+        /* ====== HEADER ====== */
+        .header {
+            background: var(--header-bg);
+            color: white;
+            padding: 36px 0 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 50%;
+            z-index: 0;
+        }
+        .header-content { position: relative; z-index: 1; }
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-icon {
+            width: 52px;
+            height: 52px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            backdrop-filter: blur(10px);
+        }
+        .header-logo {
+            height: 36px;
+            width: auto;
+            opacity: 0.95;
+            flex-shrink: 0;
+            filter: brightness(0) invert(1);
+        }
+        [data-theme="light"] .header-logo {
+            filter: brightness(0) invert(1);
+        }
+        .header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+        .header .subtitle { font-size: 0.95rem; opacity: 0.85; font-weight: 300; margin-top: 2px; }
+        .header-right { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+        .header-badge {
+            background: rgba(255,255,255,0.15);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(10px);
+            color: white;
+        }
+
+        /* ====== TABS ====== */
+        .tabs-nav {
+            display: flex;
+            gap: 4px;
+            margin-top: 20px;
+            padding: 0 24px;
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .tab-btn {
+            padding: 10px 24px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 10px 10px 0 0;
+            color: rgba(255,255,255,0.7);
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.18); color: white; }
+        .tab-btn.active { background: var(--bg); color: var(--primary); font-weight: 600; }
+        .tab-btn i { font-size: 1.1rem; }
+        .tab-content { display: none; padding-top: 24px; padding-bottom: 32px; }
+        .tab-content.active { display: block; }
+
+        /* ====== STAT CARDS ====== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .stat-card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .stat-card-info { flex: 1; }
+        .stat-card-number { font-size: 1.12rem; font-weight: 700; line-height: 1.1; }
+        .stat-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+
+        /* ====== CARDS ====== */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+        .card-header-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+        .card-badge {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .card-body { padding: 18px; }
+
+        /* ====== ALERTS ====== */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            border: 1px solid;
+        }
+        .alert i { font-size: 1.1rem; flex-shrink: 0; }
+        .alert-warning { background: var(--warning-light); border-color: var(--warning-border); color: var(--alert-warning-text); }
+        .alert-danger { background: var(--danger-light); border-color: var(--danger-border); color: var(--alert-danger-text); }
+        .alert-info { background: var(--info-light); border-color: var(--info-border); color: var(--alert-info-text); }
+        .alert-success { background: var(--success-light); border-color: var(--success-border); color: var(--alert-success-text); }
+
+        /* ====== AREA CARDS ====== */
+        .areas-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .area-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            padding: 16px;
+        }
+        .area-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .area-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            color: white;
+        }
+        .area-name { font-weight: 600; font-size: 0.82rem; }
+        .area-item { font-size: 0.75rem; color: var(--text-muted); padding: 3px 0; display: flex; align-items: center; gap: 6px; }
+        .area-item i { font-size: 0.65rem; }
+
+        /* ====== SECTION HEADERS ====== */
+        .section { margin-top: 32px; }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .section-title { font-size: 1.15rem; font-weight: 600; }
+        .section-count {
+            background: var(--bg);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        /* ====== TERM CARD (glossary-specific) ====== */
+        .term-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            overflow: hidden;
+            margin-bottom: 20px;
+            transition: border-left-color 0.2s;
+        }
+        .term-card:hover {
+            border-left-color: var(--secondary);
+        }
+        .term-card .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+        .term-card .card-body { padding: 18px; }
+        .term-card .term-name {
+            font-weight: 700;
+            font-size: 1rem;
+            flex: 1;
+        }
+        .term-card .term-definition {
+            font-size: 0.88rem;
+            line-height: 1.7;
+            margin-bottom: 14px;
+        }
+        .term-card .term-context {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+            padding-left: 12px;
+            border-left: 3px solid var(--border);
+        }
+        .term-card .term-context strong {
+            color: var(--text);
+            display: block;
+            margin-bottom: 4px;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .term-related { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .term-related-label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-right: 4px;
+            align-self: center;
+        }
+        .term-pill {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            background: var(--primary-light);
+            color: var(--primary);
+            border: 1px solid rgba(91, 164, 217, 0.25);
+            white-space: nowrap;
+        }
+        .category-badge {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        /* ====== FOOTER (badge-footer) ====== */
+        .badge {
+            display: inline-flex;
+            align-items: stretch;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.30);
+            font-family: 'Poppins', sans-serif;
+            margin-bottom: 10px;
+        }
+        .badge-bar { width: 5px; flex-shrink: 0; }
+        .badge-body {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 14px 7px 10px;
+            background: var(--card-bg);
+        }
+        .badge-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--bg);
+            flex-shrink: 0;
+        }
+        .badge-text { display: flex; flex-direction: column; gap: 1px; }
+        .badge-name { font-weight: 700; font-size: 13px; color: var(--text); }
+        .badge-role { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+        .badge-date { font-size: 10.5px; color: var(--text-muted); }
+        .badge-seal {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 7px 10px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            color: var(--bg);
+        }
+        .badge-footer {
+            margin-top: 40px;
+            margin-bottom: 32px;
+            display: flex;
+            width: 100%;
+        }
+        .badge-footer .badge-bar,
+        .badge-footer .badge-icon,
+        .badge-footer .badge-seal { background: var(--primary); }
+        .badge-footer .badge { display: flex; width: 100%; }
+        .badge-footer .badge-body { flex: 1; justify-content: space-between; }
+
+        /* ====== HELPERS ====== */
+        .bg-primary { background: var(--primary); }
+        .bg-success { background: var(--success); }
+        .bg-info { background: var(--info); }
+        .bg-warning { background: var(--warning); }
+        .bg-danger { background: var(--danger); }
+        .bg-secondary { background: var(--secondary); }
+        .bg-purple { background: var(--purple); }
+        .bg-orange { background: var(--orange); }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .text-success { color: var(--success); }
+        .text-warning { color: var(--warning); }
+        .text-danger { color: var(--danger); }
+        .text-info { color: var(--info); }
+        .text-muted { color: var(--text-muted); }
+        .fw-600 { font-weight: 600; }
+        .fs-12 { font-size: 0.75rem; }
+        .mt-16 { margin-top: 16px; }
+        .mb-8 { margin-bottom: 8px; }
+
+        /* ====== RESPONSIVE ====== */
+        @media (max-width: 1024px) {
+            .areas-grid, .grid-3 { grid-template-columns: 1fr 1fr; }
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .areas-grid { grid-template-columns: 1fr; }
+            .tabs-nav { flex-wrap: wrap; }
+            .tab-btn { font-size: 0.78rem; padding: 8px 16px; }
+        }
+
+        /* ====== PRINT ====== */
+        @media print {
+            body { background: #1a1f2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .header { padding: 16px 0 0; }
+            .card, .stat-card, .term-card, .area-card { box-shadow: none; break-inside: avoid; }
+            .tab-content { display: block !important; page-break-before: always; }
+            .tabs-nav { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+    <div class="container">
+        <div class="header-content">
+            <div class="header-top">
+                <div class="header-left">
+                    <img class="header-logo" src="data:image/png;base64,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" alt="Logo">
+                    <div>
+                        <h1>Glossário — Termos do Pipeline RAG</h1>
+                        <div class="subtitle">Glossário de Negócio — Termos e definições padronizados</div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="header-badge"><i class="ri-calendar-check-line"></i> 20/03/2026</div>
+                    <div class="header-badge"><i class="ri-book-mark-line"></i> 8 termos</div>
+                    <div class="header-badge"><i class="ri-folder-3-line"></i> 3 categorias</div>
+                    <button onclick="toggleTheme()" class="header-badge" style="border:none;cursor:pointer;" title="Alternar tema claro/escuro">
+                        <i id="theme-icon" class="ri-sun-line"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- TABS -->
+    <div class="tabs-nav container" style="padding-bottom: 0;">
+        <button class="tab-btn active" onclick="switchTab('visao-macro')">
+            <i class="ri-eye-line"></i> Visão Macro
+        </button>
+        <button class="tab-btn" onclick="switchTab('visao-tecnica')">
+            <i class="ri-book-open-line"></i> Visão Técnica
+        </button>
+    </div>
+</header>
+
+<div class="container">
+
+<!-- ================================================================== -->
+<!-- ABA 1: VISÃO MACRO                                                 -->
+<!-- ================================================================== -->
+<div id="tab-visao-macro" class="tab-content active">
+
+    <!-- STATS GRID -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-card-icon bg-primary"><i class="ri-book-mark-line"></i></div>
+            <div class="stat-card-info">
+                <div class="stat-card-number">8</div>
+                <div class="stat-card-label">Total de Termos</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-icon bg-secondary"><i class="ri-folder-3-line"></i></div>
+            <div class="stat-card-info">
+                <div class="stat-card-number">3</div>
+                <div class="stat-card-label">Categorias</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-icon bg-purple"><i class="ri-global-line"></i></div>
+            <div class="stat-card-info">
+                <div class="stat-card-number">5</div>
+                <div class="stat-card-label">Termos em Inglês</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-card-icon bg-success"><i class="ri-translate-2"></i></div>
+            <div class="stat-card-info">
+                <div class="stat-card-number">3</div>
+                <div class="stat-card-label">Termos em Português</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TERMOS AGRUPADOS POR CATEGORIA -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-header-icon bg-primary"><i class="ri-mind-map"></i></div>
+            <span class="card-title">Termos por Categoria</span>
+            <span class="card-badge" style="background:var(--primary-light);color:var(--primary);">3 categorias</span>
+        </div>
+        <div class="card-body">
+            <div class="areas-grid">
+
+                <!-- Categoria: Pipeline -->
+                <div class="area-card">
+                    <div class="area-header">
+                        <div class="area-icon bg-info"><i class="ri-flow-chart"></i></div>
+                        <span class="area-name">Pipeline</span>
+                        <span style="margin-left:auto;font-size:0.7rem;color:var(--text-muted);">3 termos</span>
+                    </div>
+                    <div class="area-item"><i class="ri-bookmark-line"></i> Ingestão</div>
+                    <div class="area-item"><i class="ri-bookmark-line"></i> Chunking</div>
+                    <div class="area-item"><i class="ri-bookmark-line"></i> Reranking</div>
+                </div>
+
+                <!-- Categoria: Dados -->
+                <div class="area-card">
+                    <div class="area-header">
+                        <div class="area-icon bg-success"><i class="ri-database-2-line"></i></div>
+                        <span class="area-name">Dados</span>
+                        <span style="margin-left:auto;font-size:0.7rem;color:var(--text-muted);">3 termos</span>
+                    </div>
+                    <div class="area-item"><i class="ri-bookmark-line"></i> Chunk</div>
+                    <div class="area-item"><i class="ri-bookmark-line"></i> Embedding</div>
+                    <div class="area-item"><i class="ri-bookmark-line"></i> Front Matter</div>
+                </div>
+
+                <!-- Categoria: Arquitetura -->
+                <div class="area-card">
+                    <div class="area-header">
+                        <div class="area-icon bg-purple"><i class="ri-building-line"></i></div>
+                        <span class="area-name">Arquitetura</span>
+                        <span style="margin-left:auto;font-size:0.7rem;color:var(--text-muted);">2 termos</span>
+                    </div>
+                    <div class="area-item"><i class="ri-bookmark-line"></i> GraphRAG</div>
+                    <div class="area-item"><i class="ri-bookmark-line"></i> Hybrid Search</div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ALERTA INFORMATIVO -->
+    <div class="alert alert-info">
+        <i class="ri-information-line"></i>
+        <span>Este glossário padroniza a terminologia utilizada nos documentos corporativos do pipeline RAG. Todos os termos listados devem ser referenciados de forma consistente em ADRs, runbooks e documentação técnica da Empresa XPTO.</span>
+    </div>
+
+</div>
+
+<!-- ================================================================== -->
+<!-- ABA 2: VISÃO TÉCNICA                                               -->
+<!-- ================================================================== -->
+<div id="tab-visao-tecnica" class="tab-content">
+
+    <!-- SECTION HEADER -->
+    <div class="section-header">
+        <div class="section-icon bg-primary"><i class="ri-book-open-line"></i></div>
+        <span class="section-title">Detalhamento dos Termos</span>
+        <span class="section-count">8 termos</span>
+    </div>
+
+    <!-- ===== CATEGORIA: PIPELINE ===== -->
+
+    <!-- Termo: Ingestão -->
+    <div class="term-card">
+        <div class="card-header">
+            <div class="card-header-icon bg-info"><i class="ri-bookmark-line"></i></div>
+            <span class="term-name">Ingestão</span>
+            <span class="category-badge" style="background:var(--info-light);color:var(--info);">Pipeline</span>
+        </div>
+        <div class="card-body">
+            <div class="term-definition">
+                Processo de captura, conversão e persistência de documentos no grafo Neo4j. Envolve as etapas de descoberta, parsing, chunking, geração de embeddings e upsert no banco de dados.
+            </div>
+            <div class="term-context">
+                <strong>No projeto</strong>
+                No pipeline RAG corporativo, a ingestão é o processo que transforma arquivos Markdown dos repositórios Git em nós Document e Chunk no Neo4j, preservando metadados do front matter e relações entre documentos.
+            </div>
+            <div class="alert alert-info" style="margin-top:12px;">
+                <i class="ri-lightbulb-line"></i>
+                <span><strong>Exemplo:</strong> Um arquivo <code>ADR-001.md</code> é ingerido e gera 1 nó Document + 12 nós Chunk com embeddings calculados pelo modelo text-embedding-3-small.</span>
+            </div>
+            <div class="term-related" style="margin-top:14px;">
+                <span class="term-related-label">Relacionados:</span>
+                <span class="term-pill">Chunking</span>
+                <span class="term-pill">Embedding</span>
+                <span class="term-pill">Front Matter</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Termo: Chunking -->
+    <div class="term-card">
+        <div class="card-header">
+            <div class="card-header-icon bg-info"><i class="ri-bookmark-line"></i></div>
+            <span class="term-name">Chunking</span>
+            <span class="category-badge" style="background:var(--info-light);color:var(--info);">Pipeline</span>
+        </div>
+        <div class="card-body">
+            <div class="term-definition">
+                Processo de dividir um documento em fragmentos semânticos menores (chunks), respeitando limites de 300-800 tokens. Cada chunk herda os metadados do documento pai e recebe um identificador único.
+            </div>
+            <div class="term-context">
+                <strong>No projeto</strong>
+                O chunking é realizado por headings do Markdown, garantindo que cada fragmento mantenha coerência semântica. A estratégia varia conforme o tipo de documento: ADRs usam chunks menores e precisos, enquanto runbooks são divididos por procedimento.
+            </div>
+            <div class="alert alert-info" style="margin-top:12px;">
+                <i class="ri-lightbulb-line"></i>
+                <span><strong>Exemplo:</strong> Um documento de arquitetura com 5 seções H2 gera 5 chunks, cada um com tamanho entre 300 e 800 tokens, herdando sistema, módulo e tags do front matter.</span>
+            </div>
+            <div class="term-related" style="margin-top:14px;">
+                <span class="term-related-label">Relacionados:</span>
+                <span class="term-pill">Chunk</span>
+                <span class="term-pill">Ingestão</span>
+                <span class="term-pill">Embedding</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Termo: Reranking -->
+    <div class="term-card">
+        <div class="card-header">
+            <div class="card-header-icon bg-info"><i class="ri-bookmark-line"></i></div>
+            <span class="term-name">Reranking</span>
+            <span class="category-badge" style="background:var(--info-light);color:var(--info);">Pipeline</span>
+        </div>
+        <div class="card-body">
+            <div class="term-definition">
+                Etapa de reordenação dos resultados de busca vetorial com base em relevância contextual. Utiliza um modelo cross-encoder para recalcular a pontuação de cada resultado considerando a pergunta original.
+            </div>
+            <div class="term-context">
+                <strong>No projeto</strong>
+                O reranking ocorre após a busca vetorial e a expansão de contexto via grafo, garantindo que os chunks mais relevantes para a pergunta do usuário sejam priorizados no prompt enviado ao LLM.
+            </div>
+            <div class="alert alert-info" style="margin-top:12px;">
+                <i class="ri-lightbulb-line"></i>
+                <span><strong>Exemplo:</strong> A busca vetorial retorna 20 chunks candidatos. O reranker reclassifica e seleciona os 5 mais relevantes para compor o contexto da resposta.</span>
+            </div>
+            <div class="term-related" style="margin-top:14px;">
+                <span class="term-related-label">Relacionados:</span>
+                <span class="term-pill">Hybrid Search</span>
+                <span class="term-pill">Embedding</span>
+                <span class="term-pill">GraphRAG</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== CATEGORIA: DADOS ===== -->
+
+    <!-- Termo: Chunk -->
+    <div class="term-card">
+        <div class="card-header">
+            <div class="card-header-icon bg-success"><i class="ri-bookmark-line"></i></div>
+            <span class="term-name">Chunk</span>
+            <span class="category-badge" style="background:var(--success-light);color:var(--success);">Dados</span>
+        </div>
+        <div class="card-body">
+            <div class="term-definition">
+                Fragmento semântico de um documento, unidade mínima de busca vetorial. Herda metadados do documento pai. Representado como nó no grafo Neo4j com relação <code>(:Chunk)-[:PART_OF]-&gt;(:Document)</code>.
+            </div>
+            <div class="term-context">
+                <strong>No projeto</strong>
+                Cada chunk armazena o texto do fragmento, seu embedding vetorial, e metadados herdados (sistema, módulo, confidencialidade). É a unidade atômica consultada durante a busca semântica.
+            </div>
+            <div class="alert alert-info" style="margin-top:12px;">
+                <i class="ri-lightbulb-line"></i>
+                <span><strong>Exemplo:</strong> O chunk <code>CHK-000123-003</code> contém o texto da seção "Fluxo de Cobrança" do documento DOC-000123, com 520 tokens e embedding de 1536 dimensões.</span>
+            </div>
+            <div class="term-related" style="margin-top:14px;">
+                <span class="term-related-label">Relacionados:</span>
+                <span class="term-pill">Chunking</span>
+                <span class="term-pill">Embedding</span>
+                <span class="term-pill">Ingestão</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Termo: Embedding -->
+    <div class="term-card">
+        <div class="card-header">
+            <div class="card-header-icon bg-success"><i class="ri-bookmark-line"></i></div>
+            <span class="term-name">Embedding</span>
+            <span class="category-badge" style="background:var(--success-light);color:var(--success);">Dados</span>
+        </div>
+        <div class="card-body">
+            <div class="term-definition">
+                Representação vetorial de um chunk, gerada por modelo de linguagem. Permite busca por similaridade semântica. Armazenado como propriedade do nó Chunk no Neo4j com índice vetorial dedicado.
+            </div>
+            <div class="term-context">
+                <strong>No projeto</strong>
+                Os embeddings são gerados na etapa 4 do pipeline de ingestão, utilizando modelos como text-embedding-3-small da OpenAI. O vector index do Neo4j permite busca por similaridade cosseno sobre esses vetores.
+            </div>
+            <div class="alert alert-info" style="margin-top:12px;">
+                <i class="ri-lightbulb-line"></i>
+                <span><strong>Exemplo:</strong> Um chunk de 450 tokens gera um vetor de 1536 dimensões. A busca "como funciona a cobrança?" retorna os chunks cujos embeddings têm maior similaridade cosseno com o embedding da pergunta.</span>
+            </div>
+            <div class="term-related" style="margin-top:14px;">
+                <span class="term-related-label">Relacionados:</span>
+                <span class="term-pill">Chunk</span>
+                <span class="term-pill">Hybrid Search</span>
+                <span class="term-pill">Reranking</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Termo: Front Matter -->
+    <div class="term-card">
+        <div class="card-header">
+            <div class="card-header-icon bg-success"><i class="ri-bookmark-line"></i></div>
+            <span class="term-name">Front Matter</span>
+            <span class="category-badge" style="background:var(--success-light);color:var(--success);">Dados</span>
+        </div>
+        <div class="card-body">
+            <div class="term-definition">
+                Bloco YAML no início de um arquivo Markdown contendo metadados estruturados (id, tipo, sistema, módulo, tags, etc.). Define a identidade e classificação do documento na base de conhecimento.
+            </div>
+            <div class="term-context">
+                <strong>No projeto</strong>
+                Todo documento Markdown corporativo deve conter front matter com campos obrigatórios: id, doc_type, title, system, module, domain, owner, team, status, confidentiality, tags. Esses metadados são extraídos na etapa de parsing e persistidos como propriedades do nó Document.
+            </div>
+            <div class="alert alert-info" style="margin-top:12px;">
+                <i class="ri-lightbulb-line"></i>
+                <span><strong>Exemplo:</strong> <code>---\nid: DOC-000123\ndoc_type: system-doc\ntitle: Módulo de Cobrança\nsystem: Sistema Exemplo\n---</code></span>
+            </div>
+            <div class="term-related" style="margin-top:14px;">
+                <span class="term-related-label">Relacionados:</span>
+                <span class="term-pill">Ingestão</span>
+                <span class="term-pill">Chunk</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== CATEGORIA: ARQUITETURA ===== -->
+
+    <!-- Termo: GraphRAG -->
+    <div class="term-card">
+        <div class="card-header">
+            <div class="card-header-icon bg-purple"><i class="ri-bookmark-line"></i></div>
+            <span class="term-name">GraphRAG</span>
+            <span class="category-badge" style="background:var(--purple-light);color:var(--purple);">Arquitetura</span>
+        </div>
+        <div class="card-body">
+            <div class="term-definition">
+                Padrão arquitetural que combina Knowledge Graph com Retrieval-Augmented Generation para respostas contextualizadas. Vai além do RAG tradicional ao utilizar relações explícitas entre entidades para enriquecer o contexto recuperado.
+            </div>
+            <div class="term-context">
+                <strong>No projeto</strong>
+                O GraphRAG é implementado sobre Neo4j, combinando busca vetorial em chunks com travessia de grafo para expandir o contexto. Um agente pode, por exemplo, encontrar um chunk sobre cobrança e navegar até o sistema, módulo e ADRs relacionados.
+            </div>
+            <div class="alert alert-info" style="margin-top:12px;">
+                <i class="ri-lightbulb-line"></i>
+                <span><strong>Exemplo:</strong> Pergunta: "Quem é responsável pelo módulo de cobrança?". O GraphRAG encontra chunks relevantes via vetor, depois navega <code>(:Document)-[:OWNED_BY]-&gt;(:Owner)-[:MEMBER_OF]-&gt;(:Team)</code> para complementar a resposta.</span>
+            </div>
+            <div class="term-related" style="margin-top:14px;">
+                <span class="term-related-label">Relacionados:</span>
+                <span class="term-pill">Hybrid Search</span>
+                <span class="term-pill">Reranking</span>
+                <span class="term-pill">Chunk</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Termo: Hybrid Search -->
+    <div class="term-card">
+        <div class="card-header">
+            <div class="card-header-icon bg-purple"><i class="ri-bookmark-line"></i></div>
+            <span class="term-name">Hybrid Search</span>
+            <span class="category-badge" style="background:var(--purple-light);color:var(--purple);">Arquitetura</span>
+        </div>
+        <div class="card-body">
+            <div class="term-definition">
+                Estratégia de busca que combina busca vetorial (similaridade semântica) com busca estruturada (filtros de metadados e travessia de grafo). Garante resultados mais precisos e contextualizados do que cada abordagem isolada.
+            </div>
+            <div class="term-context">
+                <strong>No projeto</strong>
+                A Hybrid Search é o mecanismo central do retriever. Primeiro aplica filtros de acesso (confidencialidade, domínio), depois executa busca vetorial nos chunks, e por fim expande o contexto via travessia do grafo Neo4j antes do reranking.
+            </div>
+            <div class="alert alert-info" style="margin-top:12px;">
+                <i class="ri-lightbulb-line"></i>
+                <span><strong>Exemplo:</strong> Busca por "fluxo de pagamento" filtra por <code>confidentiality: internal</code> e <code>system: "Sistema Financeiro"</code>, recupera chunks por similaridade vetorial, e expande via relações <code>[:BELONGS_TO]</code> e <code>[:DEPENDS_ON]</code>.</span>
+            </div>
+            <div class="term-related" style="margin-top:14px;">
+                <span class="term-related-label">Relacionados:</span>
+                <span class="term-pill">GraphRAG</span>
+                <span class="term-pill">Embedding</span>
+                <span class="term-pill">Reranking</span>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</div><!-- /.container -->
+
+<!-- ===== FOOTER (badge-footer) ===== -->
+<div class="container">
+    <div class="badge-footer">
+        <div class="badge">
+            <div class="badge-bar"></div>
+            <div class="badge-body">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="badge-icon">FR</div>
+                    <div class="badge-text">
+                        <span class="badge-name">Fabio A. B. Rodrigues</span>
+                        <span class="badge-role">Arquitetura e Produtividade Corporativa</span>
+                        <span class="badge-date">Criado em: 20/03/2026</span>
+                    </div>
+                </div>
+                <div style="text-align:right; font-size:11px; color:var(--text-muted);">
+                    Empresa XPTO — Glossário do Pipeline RAG
+                </div>
+            </div>
+            <div class="badge-seal">Criado por</div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ====== TAB SWITCHING ====== */
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+}
+
+/* ====== THEME TOGGLE ====== */
+function toggleTheme() {
+    const html = document.documentElement;
+    const icon = document.getElementById('theme-icon');
+    if (html.getAttribute('data-theme') === 'light') {
+        html.removeAttribute('data-theme');
+        icon.className = 'ri-sun-line';
+        localStorage.setItem('caefe-theme', 'dark');
+    } else {
+        html.setAttribute('data-theme', 'light');
+        icon.className = 'ri-moon-line';
+        localStorage.setItem('caefe-theme', 'light');
+    }
+}
+
+/* ====== RESTORE SAVED THEME ====== */
+(function() {
+    const saved = localStorage.getItem('caefe-theme');
+    if (saved === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('theme-icon').className = 'ri-moon-line';
+        });
+    }
+})();
+</script>
+
+</body>
+</html>

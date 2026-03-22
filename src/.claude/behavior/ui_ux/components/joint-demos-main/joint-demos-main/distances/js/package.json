@@ -1,0 +1,19 @@
+{
+  "name": "joint-measurement",
+  "version": "4.2.2",
+  "license": "http://jointjs.com/license",
+  "description": "JointJS+ Measurement Application",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@joint/plus": "4.2.3"
+  },
+  "devDependencies": {
+    "vite": "^5.3.1"
+  }
+}
