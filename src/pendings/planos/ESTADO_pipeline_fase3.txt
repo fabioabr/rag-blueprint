@@ -1,0 +1,132 @@
+================================================================================
+ESTADO DO PIPELINE — FASE 3 (PROMOCAO)
+================================================================================
+Data: 24/03/2026
+Ultima sessao: 23-24/03/2026
+================================================================================
+
+
+================================================================================
+1. PROGRESSO GERAL
+================================================================================
+
+  .txt (draft/)       54/54   CONCLUIDO
+  .beta.md (beta/)    54/54   CONCLUIDO   score medio 95.1%
+  .md (docs/)         54/54   CONCLUIDO   score medio 95.2%
+  .html (presentation/) 11/54 PENDENTE    apenas os 11 antigos (transversais)
+
+  Pipeline geral: 67% (2 de 3 etapas concluidas)
+
+
+================================================================================
+2. AUDITORIA DOS .md — RESULTADO
+================================================================================
+
+  7 problemas sistemicos foram identificados nos .beta.md.
+  Apos a promocao para .md, uma auditoria verificou o estado de correcao:
+
+  TOTALMENTE CORRIGIDOS (5 de 7):
+    [x] 1. Wikilinks como texto plano ......... 54/54 corrigidos (100%)
+    [x] 2. Acentuacao removida ................ 32/32 corrigidos (100%)
+    [x] 3. Aliases insuficientes .............. 54/54 corrigidos (100%)
+    [x] 4. Tags abaixo de 50 ................. 5/5 corrigidos (100%)
+    [x] 7. Inconsistencia de heading H1 ....... 54/54 corrigidos (100%)
+
+  PARCIALMENTE CORRIGIDOS (2 de 7):
+    [~] 5. Tags com hifens em vez de espacos .. 8/11 corrigidos (73%)
+        PENDENTES: ADR-D01, ADR-D02, ADR-D04
+        NOTA: os hifens remanescentes sao nomes de produto/tecnologia
+              (ex: "bge-m3", "text-embedding-3-small", "on-premise")
+              Pode ser considerado ACEITAVEL — decisao pendente do Fabio.
+
+    [~] 6. Metadados soltos fora do front matter .. 12/16 corrigidos (75%)
+        PENDENTES: ADR-001, ADR-002, ADR-D03, ADR-D04
+        ACAO: remover tabela "Cabecalho" / "Status/Data/Decisor" do corpo
+              — informacao ja esta no front matter rico.
+
+
+================================================================================
+3. O QUE FALTA FAZER
+================================================================================
+
+  CORRECOES PENDENTES (antes de gerar HTMLs):
+  ---------------------------------------------
+  [ ] Remover metadados soltos de ADR-001, ADR-002, ADR-D03, ADR-D04
+      (tabela "Cabecalho" ou "Status/Data/Decisor" duplicada no corpo)
+
+  [ ] Decidir sobre tags com hifens em nomes de produto (D01, D02, D04):
+      Opcao A: aceitar como valido (nomes proprios usam hifen)
+      Opcao B: normalizar para espacos (ex: "bge m3" em vez de "bge-m3")
+
+
+  ETAPA 3 — .md >> .html (54 arquivos):
+  ---------------------------------------------
+  [ ] Gerar 54 HTMLs standalone em presentation/
+      - 3+ abas obrigatorias: Visao Macro, Visao Tecnica, Quality Assurance
+      - Secao de tags semanticas antes do rodape (fora das abas)
+      - Seguir template e design system corporativo
+      - Tema escuro padrao + toggle claro
+      - Poppins + Remix Icon
+
+  [ ] Regenerar os 11 HTMLs transversais (001-011)
+      Os HTMLs atuais sao da versao v1 (antes da reorganizacao).
+      Precisam ser regenerados com os .md v2.
+
+  [ ] Criar 43 novos HTMLs para os ADRs por fase (A01-J03)
+
+
+  POS-PIPELINE:
+  ---------------------------------------------
+  [ ] Atualizar dashboard final com scores .html e status 100%
+  [ ] Sincronizar docs/adrs/ (GitHub Pages) com os novos HTMLs
+  [ ] Atualizar CLAUDE.md com:
+      - Nova nomenclatura ADR-{FASE}{SEQ}
+      - Regra de tags semanticas (50 termos)
+      - Regra de novos ADRs (estrutura obrigatoria)
+  [ ] Atualizar plano de reorganizacao (PLANO_reorganizacao_adrs.txt)
+      com conclusao da Fase 3
+
+
+================================================================================
+4. ARQUIVOS DE REFERENCIA
+================================================================================
+
+  Dashboard:
+    src/pendings/planos/DASHBOARD_fase3_pipeline.html
+
+  Plano de reorganizacao:
+    src/pendings/planos/PLANO_reorganizacao_adrs.txt
+
+  Inventario:
+    src/pendings/planos/INVENTARIO_documentos.txt
+
+  Relatorio Fase 2:
+    src/pendings/planos/RELATORIO_fase2_consistencia.html
+
+  Schema front matter leve:
+    src/kb/rag-blueprint-adrs-draft/draft/ADR-B01_schema_front_matter_leve.txt
+
+  Schema front matter rico:
+    src/kb/rag-blueprint-adrs-draft/draft/ADR-B02_schema_front_matter_rico.txt
+
+
+================================================================================
+5. ESTRUTURA DE PASTAS
+================================================================================
+
+  src/kb/rag-blueprint-adrs-draft/
+    draft/          54 .txt  (fonte)
+    beta/           54 .beta.md (front matter leve + 50 tags)
+
+  src/kb/rag-blueprint-adrs-kb/
+    docs/           54 .md  (front matter rico + wikilinks + acentos)
+    presentation/   11 .html (DESATUALIZADO — regenerar)
+
+  Nomenclatura:
+    ADR-001 a ADR-011    ADRs transversais (numeracao propria)
+    ADR-A01 a ADR-J03    ADRs por fase (43 arquivos)
+
+
+================================================================================
+FIM DO ESTADO
+================================================================================

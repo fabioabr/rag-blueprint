@@ -1168,22 +1168,23 @@ td.desvio-col ul li::before { content: '\2022'; color: var(--warning); margin-ri
                         <div class="issue-card-title">5. Tags com hífens em vez de espaços</div>
                     </div>
                     <div class="issue-card-desc">
-                        Spec ADR-B01 define espaços para termos compostos, mas alguns usam hífens.
+                        Spec ADR-B01 define espaços para termos compostos, mas alguns usam hífens. Os 3 remanescentes são nomes de produto/tecnologia (ex: <code>bge-m3</code>, <code>text-embedding-3-small</code>, <code>on-premise</code>) — pode ser aceito como válido.
                     </div>
                     <div class="issue-card-files">
-                        <strong>Arquivos afetados:</strong> ADR-009, 010, 011, A01, A02, A03, A04, B01, B02, B03, B04
+                        <strong>Corrigidos:</strong> ADR-009, 010, 011, A01, A02, A03, A04, B01, B02, B03, B04 (8 de 11)<br>
+                        <strong>Pendentes:</strong> ADR-D01, ADR-D02, ADR-D04 (hífens em nomes de produto — decisão pendente)
                     </div>
                     <div class="issue-tracker">
                         <div class="issue-tracker-header">
                             <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
                             <div class="issue-tracker-stats">
                                 <span class="issue-tracker-affected pill pill-warning">11 afetados</span>
-                                <span class="issue-tracker-resolved" style="color: var(--success)">11 resolvidos</span>
+                                <span class="issue-tracker-resolved" style="color: var(--warning)">8 resolvidos</span>
                             </div>
                         </div>
-                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 73%; background: var(--warning);"></div></div>
                         <div class="issue-tracker-footer">
-                            <span>100%</span>
+                            <span>73% (3 pendentes — nomes de produto)</span>
                             <span>Meta: 11/11 no .md</span>
                         </div>
                     </div>
@@ -1196,22 +1197,23 @@ td.desvio-col ul li::before { content: '\2022'; color: var(--warning); margin-ri
                         <div class="issue-card-title">6. Metadados soltos fora do front matter</div>
                     </div>
                     <div class="issue-card-desc">
-                        Bloco "Tipo/Origem/Data" no corpo duplica informação do front matter YAML.
+                        Tabela "Cabeçalho" ou "Status/Data/Decisor" no corpo duplica informação do front matter YAML. Remover na próxima correção.
                     </div>
                     <div class="issue-card-files">
-                        <strong>Fases afetadas:</strong> G (G01–G04), H (H01–H03), I (I01–I03), J (J01–J03) — 16 arquivos
+                        <strong>Corrigidos:</strong> G01–G04, H01–H03, I01–I03, J01–J03 (12 de 16)<br>
+                        <strong>Pendentes:</strong> ADR-001, ADR-002, ADR-D03, ADR-D04 (tabela Cabeçalho/Status ainda presente)
                     </div>
                     <div class="issue-tracker">
                         <div class="issue-tracker-header">
                             <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
                             <div class="issue-tracker-stats">
                                 <span class="issue-tracker-affected pill pill-warning">16 afetados</span>
-                                <span class="issue-tracker-resolved" style="color: var(--success)">16 resolvidos</span>
+                                <span class="issue-tracker-resolved" style="color: var(--warning)">12 resolvidos</span>
                             </div>
                         </div>
-                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 75%; background: var(--warning);"></div></div>
                         <div class="issue-tracker-footer">
-                            <span>100%</span>
+                            <span>75% (4 pendentes)</span>
                             <span>Meta: 16/16 no .md</span>
                         </div>
                     </div>
