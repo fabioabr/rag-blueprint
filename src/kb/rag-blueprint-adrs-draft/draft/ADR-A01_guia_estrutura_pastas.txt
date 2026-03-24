@@ -1,0 +1,255 @@
+================================================================================
+ADR-A01 -- Guia de Estrutura de Pastas do Repositorio
+================================================================================
+Tipo:           ADR
+Origem:         ADR-001, ADR-011
+Data:           23/03/2026
+================================================================================
+
+1. VISAO GERAL
+================================================================================
+
+O projeto RAG Corporativo utiliza dois repositorios Git fisicamente separados,
+cada um com proposito distinto. A separacao fisica e motivada por compliance
+regulatorio (BACEN, LGPD) e pela necessidade de controlar quem edita o que.
+
+| Repositorio          | Proposito                                           |
+|----------------------|-----------------------------------------------------|
+| rag-workspace        | .beta.md em trabalho, fontes brutas, logs            |
+| rag-knowledge-base   | .md finais (fonte da verdade), apresentacoes, releases|
+
+Regra fundamental: humanos editam no workspace, o pipeline gera no knowledge-base.
+Ninguem edita manualmente o knowledge-base -- todo commit e feito por service account.
+
+
+2. ESTRUTURA DO RAG-WORKSPACE
+================================================================================
+
+O workspace e o repositorio editavel. Aqui ficam os insumos brutos (Fase 1),
+os .beta.md editaveis (Fase 2) e os logs/metricas do processo.
+
+```
+rag-workspace/
+|-- sources/                          # FASE 1 -- Insumos brutos
+|   |-- manifesto.json
+|   |-- external/
+|   |   |-- regulations/
+|   |   |-- vendor-docs/
+|   |   +-- web/
+|   +-- internal/
+|       |-- sharepoint/
+|       |-- confluence/
+|       |-- emails/
+|       |-- transcriptions/
+|       |-- documents/
+|       +-- tickets/
+|-- beta/                             # FASE 2 -- .beta.md editaveis
+|   |-- public-internal/              # -> KB Nivel 1
+|   |   |-- arquitetura/
+|   |   |-- operacional/
+|   |   |-- glossary/
+|   |   |-- apis/
+|   |   |-- onboarding/
+|   |   +-- faq/
+|   |-- restricted/                   # -> KB Nivel 2
+|   |   |-- financeiro/
+|   |   |-- gestao/
+|   |   |-- compliance/
+|   |   |-- seguranca/
+|   |   +-- estrategia/
+|   +-- confidential/                 # -> KB Nivel 3
+|       |-- contratos/
+|       |-- estrategia-corporativa/
+|       |-- juridico/
+|       |-- remuneracao/
+|       +-- continuidade/
+|-- manifests/
+|   |-- public-internal.manifest.yaml
+|   |-- restricted.manifest.yaml
+|   +-- confidential.manifest.yaml
+|-- process/                          # Logs e metricas do processo
+|   |-- logs/
+|   |-- metrics/
+|   +-- reports/
++-- .pipeline/                        # Configuracao do pipeline
+    |-- templates/
+    |-- schemas/
+    +-- config.json
+```
+
+2.1 Pasta sources/
+--------------------------------------------------------------------------------
+
+Armazena os insumos brutos da Fase 1 (selecao de fontes). Separada em:
+
+- external/ -- fontes externas (regulacoes, docs de fornecedores, conteudo web)
+- internal/ -- fontes internas (Sharepoint, Confluence, e-mails, transcricoes,
+  documentos diversos, tickets de Jira/ClickUp)
+
+O arquivo manifesto.json registra cada fonte com: origem, formato, data de
+captura, responsavel e nivel de confidencialidade.
+
+2.2 Pasta beta/
+--------------------------------------------------------------------------------
+
+Armazena os .beta.md editaveis da Fase 2. Organizada em 3 subpastas por nivel
+de confidencialidade (conforme ADR-011):
+
+- public-internal/ -- documentos PUBLIC e INTERNAL (KB Nivel 1)
+- restricted/ -- documentos RESTRICTED (KB Nivel 2)
+- confidential/ -- documentos CONFIDENTIAL (KB Nivel 3)
+
+Dentro de cada subpasta, os documentos sao organizados por dominio de negocio
+(ex: arquitetura/, financeiro/, operacional/).
+
+REGRAS:
+- Cada documento vive em exatamente uma subpasta de confidencialidade
+- A subpasta determina o nivel -- o front matter deve ser consistente
+- Inconsistencia entre pasta e front matter = erro de ingestao
+- Documentos nao podem estar em mais de uma pasta (exceto via cross_ref)
+
+2.3 Pasta process/
+--------------------------------------------------------------------------------
+
+Armazena logs de execucao do pipeline, metricas de observabilidade e relatorios
+de ingestao. Nao contem documentos de conhecimento.
+
+2.4 Pasta .pipeline/
+--------------------------------------------------------------------------------
+
+Configuracao do pipeline: templates de front matter, schemas de validacao e
+arquivo de configuracao central (config.json).
+
+
+3. ESTRUTURA DO RAG-KNOWLEDGE-BASE
+================================================================================
+
+O knowledge-base e o repositorio imutavel. Aqui ficam os .md finais (Fase 3)
+e os snapshots de release (Fase 4). Ninguem edita diretamente -- todo commit
+e feito por pipeline via service account.
+
+```
+rag-knowledge-base/
+|-- public-internal/                  # -> alimenta Base Vetorial A
+|   |-- docs/
+|   |-- presentations/
+|   +-- releases/
+|       +-- v{N.N}/
+|           |-- release-notes.md
+|           +-- manifest.json
+|-- restricted/                       # -> alimenta Base Vetorial B
+|   |-- docs/
+|   |-- presentations/
+|   +-- releases/
++-- confidential/                     # -> alimenta Base Vetorial C
+    |-- docs/
+    |-- presentations/
+    +-- releases/
+```
+
+3.1 Segregacao por Confidencialidade
+--------------------------------------------------------------------------------
+
+Replica a mesma estrutura de segregacao do workspace:
+
+| Subpasta           | Confidencialidade    | Base Vetorial |
+|--------------------|----------------------|---------------|
+| public-internal/   | PUBLIC + INTERNAL    | Instancia A   |
+| restricted/        | RESTRICTED           | Instancia B   |
+| confidential/      | CONFIDENTIAL         | Instancia C   |
+
+O pipeline de promocao le de cada pasta e envia para a Base Vetorial
+correspondente. Um .md em restricted/docs/ NUNCA e enviado para a
+Base Vetorial A.
+
+3.2 Subpastas por KB
+--------------------------------------------------------------------------------
+
+Cada subpasta de confidencialidade contem:
+
+- docs/ -- documentos .md finais (fonte da verdade)
+- presentations/ -- arquivos .html standalone gerados a partir dos .md
+- releases/ -- snapshots de release com release-notes.md e manifest.json
+
+3.3 Releases
+--------------------------------------------------------------------------------
+
+Cada release gera um diretorio em releases/ com:
+- release-notes.md -- changelog da versao
+- manifest.json -- lista de documentos incluidos, versao, hash
+
+Releases sao independentes por KB (ADR-011):
+- kb-public-internal@v1.2.0
+- kb-restricted@v1.0.3
+- kb-confidential@v1.0.1
+
+
+4. CONVENCOES DE NOMENCLATURA
+================================================================================
+
+4.1 Arquivos .beta.md (workspace)
+--------------------------------------------------------------------------------
+
+Formato: {dominio}/{nome_descritivo}.beta.md
+Exemplo: beta/public-internal/arquitetura/conciliacao_bancaria.beta.md
+
+- Nomes em lowercase
+- Palavras separadas por underscore
+- Extensao sempre .beta.md
+- Dominio como subpasta
+
+4.2 Arquivos .md (knowledge-base)
+--------------------------------------------------------------------------------
+
+Formato: {confidencialidade}/docs/{dominio}/{nome_descritivo}.md
+Exemplo: public-internal/docs/arquitetura/conciliacao_bancaria.md
+
+4.3 Identificadores
+--------------------------------------------------------------------------------
+
+- .beta.md: id no formato BETA-{NNN} (ex: BETA-001, BETA-042)
+- .md final: id no formato DOC-{NNNNNN} (ex: DOC-000042)
+
+4.4 TAGs de Release
+--------------------------------------------------------------------------------
+
+Formato SemVer: v{MAJOR}.{MINOR}.{PATCH}
+Exemplos: v1.0.0, v1.2.0, v1.2.1
+
+Para TAGs por KB: {kb-id}@v{MAJOR}.{MINOR}.{PATCH}
+Exemplos: kb-public-internal@v1.2.0, kb-restricted@v1.0.3
+
+
+5. MAPEAMENTO PASTA -> BASE VETORIAL -> MCP
+================================================================================
+
+| Pasta (workspace)          | Pasta (kb)          | Base Vetorial | MCP Server               |
+|----------------------------|---------------------|---------------|---------------------------|
+| beta/public-internal/      | public-internal/    | Instancia A   | mcp-knowledge-public      |
+| beta/restricted/           | restricted/         | Instancia B   | mcp-knowledge-restricted  |
+| beta/confidential/         | confidential/       | Instancia C   | mcp-knowledge-confidential|
+
+
+6. REGRAS GERAIS
+================================================================================
+
+- Documentos nao podem migrar entre subpastas de confidencialidade sem
+  revisao humana e atualizacao do front matter
+- Wikilinks cross-KB sao PROIBIDOS (revelam existencia de informacao restrita)
+- Para referencias cruzadas entre KBs, usar campo cross_ref no front matter
+- Inconsistencia entre pasta e campo confidentiality do front matter e tratada
+  como erro de ingestao (documento rejeitado)
+- A pasta sources/ nao possui segregacao por confidencialidade -- a
+  classificacao e feita na geracao do .beta.md (Fase 2)
+- Manifests por KB ficam em manifests/ no workspace, um por nivel
+
+
+7. REFERENCIAS
+================================================================================
+
+- ADR-001 (BETA-001) -- Pipeline de Geracao de Conhecimento em 4 Fases
+  (define estrutura original de pastas e separacao em 2 repositorios)
+- ADR-011 (BETA-011) -- Segregacao de KBs por Confidencialidade
+  (supercede estrutura de pastas do ADR-001, adicionando camada por nivel)
+- ADR-005 (BETA-005) -- Front Matter como Contrato de Metadados
+  (define campos que devem ser consistentes com a pasta)

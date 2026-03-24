@@ -1,0 +1,184 @@
+================================================================================
+ADR-F01 -- Procedimento de Benchmark de Modelos de Embedding
+================================================================================
+Tipo:           ADR
+Origem:         ADR-009
+Data:           23/03/2026
+================================================================================
+
+OBJETIVO
+
+Definir o procedimento padrao, em 5 etapas, para avaliar e comparar modelos
+de embedding candidatos antes de adota-los no pipeline de ingestao do RAG
+Corporativo. O benchmark deve produzir evidencias quantitativas que suportem
+a decisao de selecao (ou troca) de modelo.
+
+Este procedimento e obrigatorio ANTES de:
+- Adotar um novo modelo de embedding
+- Trocar o modelo em producao
+- Validar upgrade de versao de um modelo existente
+
+================================================================================
+ETAPA 1 -- PREPARACAO
+================================================================================
+
+1.1  Golden Set
+
+O golden set e o alicerce de todo benchmark. Sem ele, nenhuma metrica e
+confiavel.
+
+Requisitos minimos:
+- Minimo 50 pares query-documento (ideal: 200+)
+- Distribuicao equilibrada por dominio (financeiro, arquitetura, operacoes)
+- Incluir queries dificeis: ambiguas, com siglas, code-switching pt-BR/en
+- Incluir queries com termos exatos (codigos, identificadores, nomes proprios)
+- Todas as queries em portugues brasileiro; incluir variantes em ingles
+- Curadoria HUMANA obrigatoria -- nao gerar pares por IA
+- Cada par deve ter grau de relevancia (0 = irrelevante, 1 = parcial, 2 = relevante)
+
+Formato sugerido:
+
+  query_id | query_text | relevant_chunk_ids | relevance_grade
+  Q001     | "Como funciona a cobranca via boleto?" | [C-042, C-043] | [2, 1]
+
+1.2  Chunks Gerados
+
+- Chunks ja processados pelo pipeline de chunking (ADR-006)
+- Minimo 1.000 chunks para benchmark significativo
+- Incluir chunks de todos os doc_types (system-doc, adr, runbook, glossary)
+
+1.3  Modelos Candidatos
+
+Lista recomendada para benchmark comparativo:
+- BGE-M3 (BAAI) -- modelo primario proposto
+- multilingual-e5-large-instruct -- alternativa para ambientes sem GPU
+- nomic-embed-text -- candidato open-source emergente
+- all-MiniLM-L6-v2 -- baseline (modelo simples, referencia inferior)
+
+Para cada modelo, registrar:
+- Nome e versao (hash do HuggingFace)
+- Dimensao do vetor gerado
+- Numero de parametros
+- Requisitos de hardware (VRAM, RAM)
+
+================================================================================
+ETAPA 2 -- GERACAO DE EMBEDDINGS
+================================================================================
+
+Para CADA modelo candidato:
+
+2.1  Gerar embeddings de todos os chunks do corpus de teste
+     - Registrar: modelo, versao, batch_size, device (GPU/CPU), precision (fp16/fp32)
+     - Normalizar embeddings (normalize_embeddings=True) para similaridade coseno
+
+2.2  Gerar embeddings de todas as queries do golden set
+     - Usar prefixo de instrucao quando aplicavel (ex: BGE-M3 usa prefixo para queries)
+     - Registrar se prefixo foi usado e qual
+
+2.3  Medir throughput de indexacao
+     - Chunks por segundo em GPU
+     - Chunks por segundo em CPU (fallback)
+     - Tempo total para processar corpus completo
+
+2.4  Medir consumo de recursos
+     - VRAM utilizada (pico)
+     - RAM utilizada (pico)
+     - Temperatura GPU (pico)
+
+================================================================================
+ETAPA 3 -- AVALIACAO (METRICAS)
+================================================================================
+
+Para cada query do golden set, buscar os top-K chunks mais proximos por
+similaridade coseno e calcular as seguintes metricas:
+
+3.1  Recall@K (K=10)
+     - Dos chunks relevantes conhecidos, quantos foram encontrados nos top-K?
+     - Formula: |relevantes_encontrados| / |relevantes_totais|
+     - Principal metrica: mede se o modelo ENCONTRA os documentos certos
+
+3.2  Precision@K (K=10)
+     - Dos top-K retornados, quantos sao de fato relevantes?
+     - Formula: |relevantes_no_topK| / K
+     - Mede a "limpeza" dos resultados (poucos falsos positivos)
+
+3.3  MRR (Mean Reciprocal Rank)
+     - Posicao media do PRIMEIRO documento relevante
+     - Formula: media de (1 / posicao_primeiro_relevante) sobre todas as queries
+     - Mede a rapidez com que o usuario encontra algo util
+
+3.4  nDCG@K (K=10)
+     - Qualidade do ranking com relevancia graduada
+     - Considera que documentos mais relevantes devem aparecer mais acima
+     - Usa os graus de relevancia do golden set (0, 1, 2)
+
+3.5  Latencia por Query
+     - Tempo medio para gerar embedding da query
+     - Tempo medio para busca coseno no indice (1K, 10K, 50K chunks)
+
+================================================================================
+ETAPA 4 -- COMPARACAO CONSOLIDADA
+================================================================================
+
+Montar tabela consolidada com todos os modelos e metricas:
+
+  Modelo           | Recall@10 | Precision@10 | MRR   | nDCG@10 | Throughput | VRAM
+  BGE-M3 (GPU)     |    --     |      --      |  --   |   --    |   -- c/s   | -- GB
+  E5-large (CPU)   |    --     |      --      |  --   |   --    |   -- c/s   | -- GB
+  nomic-embed       |    --     |      --      |  --   |   --    |   -- c/s   | -- GB
+  MiniLM (baseline)|    --     |      --      |  --   |   --    |   -- c/s   | -- GB
+
+Analises complementares:
+- Comparar performance por dominio (queries financeiras vs tecnicas vs operacionais)
+- Comparar performance por idioma (pt-BR puro vs ingles vs code-switching)
+- Identificar queries onde cada modelo falha (analise de erros)
+- Verificar se algum modelo tem vieses sistematicos (ex: favorece docs longos)
+
+================================================================================
+ETAPA 5 -- DECISAO
+================================================================================
+
+Criterios de selecao (em ordem de prioridade):
+
+5.1  Thresholds minimos obrigatorios por fase:
+
+     Metrica     | Fase 1 MVP | Fase 2 Meta | Fase 3 Prod
+     Recall@10   | >= 70%     | >= 80%      | >= 85%
+     Precision@10| >= 50%     | >= 60%      | >= 70%
+     MRR         | >= 0.50    | >= 0.65     | >= 0.75
+
+     Modelo que NAO atinge os thresholds da fase atual e ELIMINADO.
+
+5.2  Equilibrio qualidade / throughput / hardware
+     - Modelo deve caber no hardware disponivel (GTX 1070 = 8 GB VRAM)
+     - Throughput minimo aceitavel: 30 chunks/s em GPU para re-embedding viavel
+     - Preferir modelo com melhor Recall@10 quando empate em outros criterios
+
+5.3  Compatibilidade com pipeline
+     - Modelo deve ser suportado por sentence-transformers
+     - Licenca MIT ou equivalente (uso comercial irrestrito)
+     - Suporte a normalizacao de embeddings
+
+5.4  Registro da decisao
+     - Documentar modelo selecionado, versao, metricas obtidas
+     - Documentar modelos descartados e motivos
+     - Arquivar golden set e resultados para reprodutibilidade
+     - Definir data de proximo benchmark (recomendado: trimestral)
+
+================================================================================
+PERIODICIDADE
+================================================================================
+
+- Benchmark OBRIGATORIO: antes de adotar ou trocar modelo
+- Benchmark RECOMENDADO: trimestral (novos modelos surgem frequentemente)
+- Benchmark EMERGENCIAL: quando golden set semanal indicar degradacao de metricas
+
+================================================================================
+REFERENCIAS
+================================================================================
+
+- ADR-009: Selecao de Modelos de Embedding (Trilha On-Premises)
+- ADR-007: Retrieval Hibrido e Agentes Especializados
+- ADR-008: Governanca -- Papeis, ciclo de vida e rollback
+- MTEB Leaderboard: https://huggingface.co/spaces/mteb/leaderboard
+- MIRACL Benchmark: https://project-miracl.github.io/

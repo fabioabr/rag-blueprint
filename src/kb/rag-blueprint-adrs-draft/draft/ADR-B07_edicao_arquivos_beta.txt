@@ -1,0 +1,241 @@
+================================================================================
+ADR-B07 -- Regras de Edicao de Arquivos .beta.md (Blocos LOCKED)
+================================================================================
+Tipo:           ADR
+Origem:         ADR-001 (blocos LOCKED, regras de edicao beta)
+Data:           23/03/2026
+================================================================================
+
+1. VISAO GERAL
+================================================================================
+
+Arquivos .beta.md no repositorio rag-workspace sao editados por DOIS
+atores: humanos (via Obsidian) e pipeline de IA (enriquecimento
+automatico na Fase 2). O mecanismo de blocos LOCKED resolve o conflito
+entre edicao humana e enriquecimento automatico, garantindo que trabalho
+humano validado nao seja sobrescrito pela IA.
+
+
+2. SINTAXE DOS BLOCOS LOCKED
+================================================================================
+
+2.1 Formato
+--------------------------------------------------------------------------------
+
+  <!-- LOCKED:START autor=fabio data=2026-03-21 -->
+  Este trecho foi validado e nao deve ser alterado pela IA.
+  Pode conter multiplos paragrafos, tabelas, code blocks, etc.
+  <!-- LOCKED:END -->
+
+2.2 Atributos obrigatorios
+--------------------------------------------------------------------------------
+
+  - autor:  identificador do humano que criou o lock (string, sem espacos)
+  - data:   data em que o lock foi criado, formato AAAA-MM-DD
+
+2.3 Formato tecnico
+--------------------------------------------------------------------------------
+
+  - Usa comentarios HTML (<!-- -->), invisiveis no Obsidian reading view
+  - Marcadores START e END devem estar em linhas separadas
+  - O conteudo entre START e END pode ser qualquer Markdown valido
+  - Multiplos blocos LOCKED podem existir no mesmo documento
+  - Blocos LOCKED NAO podem ser aninhados (um dentro do outro)
+  - O bloco pode conter headings, tabelas, code blocks, listas, etc.
+
+
+3. REGRAS PARA A IA (PIPELINE DE ENRIQUECIMENTO)
+================================================================================
+
+3.1 O que a IA PODE fazer
+--------------------------------------------------------------------------------
+
+  - Adicionar conteudo NOVO fora dos blocos LOCKED
+  - Reorganizar conteudo fora dos blocos LOCKED
+  - Sugerir mudancas em blocos LOCKED como COMENTARIO SEPARADO
+    (nunca alterar o bloco diretamente)
+  - Atualizar campo last_enrichment no front matter
+  - Adicionar/melhorar tags no front matter
+  - Enriquecer conteudo nao-locked com informacoes adicionais
+
+3.2 O que a IA NAO PODE fazer (NUNCA)
+--------------------------------------------------------------------------------
+
+  - Alterar qualquer conteudo dentro de LOCKED:START / LOCKED:END
+  - Remover um bloco LOCKED
+  - Mover um bloco LOCKED para outra posicao
+  - Inserir conteudo DENTRO de um bloco LOCKED
+  - Alterar os atributos (autor, data) de um bloco LOCKED
+  - Dividir ou juntar blocos LOCKED
+
+3.3 Como a IA sugere mudancas em blocos LOCKED
+--------------------------------------------------------------------------------
+
+  Se a IA identifica que um bloco LOCKED contem informacao desatualizada
+  ou incorreta, ela deve:
+
+  1. NAO alterar o bloco
+  2. Inserir um comentario APOS o bloco LOCKED com a sugestao:
+
+  <!-- LOCKED:END -->
+
+  <!-- AI-SUGGESTION data=2026-03-22 -->
+  <!-- Sugestao: o trecho acima menciona "versao 2.0", mas a versao
+       atual e 3.0 conforme fonte X. Considerar atualizar. -->
+
+  O humano decide se aceita a sugestao e atualiza o bloco LOCKED.
+
+
+4. REGRAS PARA HUMANOS (EDICAO VIA OBSIDIAN)
+================================================================================
+
+4.1 Criar um bloco LOCKED
+--------------------------------------------------------------------------------
+
+  O humano pode marcar qualquer trecho como LOCKED a qualquer momento.
+  Basta inserir os marcadores:
+
+  <!-- LOCKED:START autor=maria data=2026-03-21 -->
+  (conteudo protegido)
+  <!-- LOCKED:END -->
+
+4.2 Remover um bloco LOCKED
+--------------------------------------------------------------------------------
+
+  O humano pode remover o lock a qualquer momento, simplesmente
+  apagando as linhas <!-- LOCKED:START --> e <!-- LOCKED:END -->.
+  O conteudo permanece, mas volta a ser editavel pela IA.
+
+4.3 Editar conteudo dentro de um bloco LOCKED
+--------------------------------------------------------------------------------
+
+  O humano pode editar livremente o conteudo dentro de um bloco LOCKED.
+  Recomendacao: atualizar o atributo "data" quando fizer edicoes
+  significativas.
+
+4.4 Quando usar LOCKED
+--------------------------------------------------------------------------------
+
+  Recomendado para:
+    - Decisoes arquiteturais validadas por comite
+    - Definicoes de negocio aprovadas pelo PO
+    - Trechos revisados e confirmados por especialista de dominio
+    - Diagramas ASCII que representam decisoes finais
+    - Qualquer conteudo que o humano considera "pronto" e nao quer
+      que a IA altere
+
+  NAO recomendado para:
+    - Rascunhos iniciais (deixar a IA ajudar)
+    - Conteudo que o humano sabe que esta incompleto
+    - Front matter (protegido por schema, nao por LOCKED)
+
+
+5. COMPORTAMENTO NA RE-INGESTAO (MERGE)
+================================================================================
+
+Quando uma fonte e atualizada (ex: PDF v2 substitui PDF v1), o pipeline
+de re-ingestao precisa lidar com blocos LOCKED:
+
+5.1 Trecho SEM conflito (nao editado por humano, sem LOCKED)
+--------------------------------------------------------------------------------
+  Acao: atualizar automaticamente com conteudo da nova fonte.
+  Nenhuma intervencao humana necessaria.
+
+5.2 Trecho COM possivel conflito (editado por humano, SEM LOCKED)
+--------------------------------------------------------------------------------
+  Acao: inserir alerta inline no .beta.md:
+
+  <!-- CONFLICT fonte=pdf_v2 data=2026-03-22 -->
+  <!-- Trecho abaixo foi editado por humano mas a fonte mudou.
+       Revisar e decidir qual versao manter. -->
+  (conteudo do humano permanece)
+  <!-- CONFLICT:NEW -->
+  (conteudo da nova fonte)
+  <!-- CONFLICT:END -->
+
+  Humano deve revisar e resolver o conflito.
+
+5.3 Trecho em bloco LOCKED com fonte desatualizada
+--------------------------------------------------------------------------------
+  Acao: NAO alterar o bloco LOCKED. Inserir alerta externo:
+
+  <!-- LOCKED-CONFLICT fonte=pdf_v2 data=2026-03-22 -->
+  <!-- ATENCAO: A fonte deste bloco LOCKED foi atualizada.
+       O conteudo do bloco pode estar desatualizado.
+       Revisar e decidir se o lock deve ser mantido. -->
+
+  O bloco LOCKED permanece INTACTO. O humano decide se atualiza.
+
+5.4 Safety net via git diff
+--------------------------------------------------------------------------------
+  Como protecao adicional, o pipeline de re-ingestao compara o .beta.md
+  antes e depois via git diff. Qualquer edicao humana detectada (commits
+  por usuario humano) SEMPRE prevalece sobre o conteudo gerado pela IA.
+
+  Regra: na duvida, preservar o trabalho humano.
+
+
+6. RELATORIO DE RE-INGESTAO
+================================================================================
+
+Apos cada re-ingestao, o pipeline gera relatorio com:
+
+  - Quantos trechos atualizados automaticamente
+  - Quantos conflitos para revisao humana (CONFLICT)
+  - Quantos blocos LOCKED com fonte desatualizada (LOCKED-CONFLICT)
+  - Lista de documentos afetados
+  - Contagem de conflitos pendentes (nao resolvidos)
+
+
+7. RISCOS E MITIGACOES
+================================================================================
+
+7.1 Blocos LOCKED esquecidos
+--------------------------------------------------------------------------------
+  Risco:    Humano edita conteudo importante sem marcar LOCKED. Na
+            proxima re-ingestao, a IA sobrescreve.
+  Mitigacao: Safety net via git diff. Edicao humana detectada por
+             commit de usuario humano SEMPRE prevalece.
+
+7.2 Acumulo de conflitos
+--------------------------------------------------------------------------------
+  Risco:    Muitos alertas CONFLICT nao revisados, poluindo o documento.
+  Mitigacao: Relatorio de re-ingestao com contagem de conflitos
+             pendentes. Alertas em dashboard de saude da KB.
+
+7.3 Locks desatualizados
+--------------------------------------------------------------------------------
+  Risco:    Bloco LOCKED com informacao obsoleta permanece "protegido"
+            indefinidamente.
+  Mitigacao: Alerta LOCKED-CONFLICT quando fonte muda. Revisao
+             periodica de locks antigos (ex: locks com data > 6 meses).
+
+7.4 Blocos LOCKED muito grandes
+--------------------------------------------------------------------------------
+  Risco:    Humano marca documento inteiro como LOCKED, impedindo
+            qualquer enriquecimento pela IA.
+  Mitigacao: Recomendacao de boas praticas (lock trechos, nao
+             documentos inteiros). Pipeline emite warning se > 80%
+             do documento estiver locked.
+
+
+8. RESUMO DE REGRAS
+================================================================================
+
+  Ator      | Pode criar LOCKED | Pode remover LOCKED | Pode editar dentro | Pode editar fora
+  ----------|-------------------|---------------------|--------------------|------------------
+  Humano    | Sim               | Sim                 | Sim                | Sim
+  IA        | Nao               | Nao                 | NAO (nunca)        | Sim
+
+  Situacao                    | Acao do pipeline
+  ----------------------------|--------------------------------------------
+  Conteudo fora de LOCKED     | Atualiza livremente
+  Conteudo dentro de LOCKED   | NAO toca, sugere via comentario
+  Conflito sem LOCKED         | Insere <!-- CONFLICT -->
+  Conflito com LOCKED         | Insere <!-- LOCKED-CONFLICT --> (externo)
+  Git diff detecta edit humano| Preserva versao humana (safety net)
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

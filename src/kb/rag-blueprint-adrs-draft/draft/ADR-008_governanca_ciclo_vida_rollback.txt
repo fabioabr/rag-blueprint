@@ -1,0 +1,512 @@
+================================================================================
+ADR-008 -- Governanca: Papeis, Ciclo de Vida e Rollback
+================================================================================
+Status:         proposed
+Data:           21/03/2026
+Revisao:        23/03/2026 (reescrita para separar decisao de processo)
+Decisor:        Fabio A. B. Rodrigues
+
+
+================================================================================
+1. SUMARIO
+================================================================================
+
+Este ADR define a governanca operacional do RAG Corporativo em 4 pilares:
+
+  Pilar 1 -- Papeis e RACI (quem faz o que)
+  Pilar 2 -- Ciclo de vida do documento (como documentos evoluem)
+  Pilar 3 -- Rollback (o que fazer quando algo da errado)
+  Pilar 4 -- Criterios de transicao entre fases (quando avancar no roadmap)
+
+Conteudos procedimentais foram extraidos para documentos dedicados:
+
+  - RNB-C05: Incidente PII (procedimento passo a passo de rollback urgente)
+  - DOC-I01: Calendario de Curadoria (cadencias e atividades por periodo)
+  - DOC-I02: Capacity Planning KB (thresholds, projecoes e heuristicas)
+
+Referencias cruzadas:
+  - ADR-001: Pipeline de geracao de conhecimento em 4 fases
+  - ADR-004: Seguranca, controle de acesso e conformidade (LGPD/BACEN)
+  - ADR-006: Pipeline de ingestao (etapas, idempotencia, rastreabilidade)
+
+
+================================================================================
+2. CONTEXTO
+================================================================================
+
+2.1. Por que esta ADR existe
+-----------------------------
+
+A base de conhecimento corporativa com Base Vetorial e um sistema vivo:
+documentos sao criados, editados, promovidos, consumidos e descontinuados.
+Sem governanca explicita, surgem problemas previsiveis:
+
+  a) Ninguem sabe quem e responsavel por que.
+     Um documento desatualizado fica meses na base porque "nao e meu".
+     PII vaza porque ninguem sabia que compliance deveria aprovar aquela fonte.
+
+  b) Documentos ficam num limbo de maturidade.
+     Um rascunho entra na Base Vetorial porque nao havia gate impedindo.
+     Um documento aprovado nunca e revisado e serve informacao obsoleta.
+
+  c) Quando algo da errado, nao ha procedimento claro.
+     Um lote de ingestao trouxe dados errados. Como reverter?
+     PII foi indexada e servida para um agente. Quem age? Em quanto tempo?
+
+  d) A transicao entre fases do projeto (ADR-001) e subjetiva.
+     Sem criterios mensuraveis, a passagem de fase depende de "sentimento"
+     em vez de evidencia.
+
+2.2. Contexto regulatorio
+--------------------------
+
+  - LGPD: qualquer dado pessoal ingerido na Base Vetorial precisa de base
+    legal. Incidentes de PII exigem contencao e reporte em prazo legal, o
+    que demanda procedimento de rollback urgente com SLA definido.
+
+  - BACEN (Resolucao 4.893/2021): exige rastreabilidade de informacoes,
+    controle de acesso e auditoria, impactando quem pode promover documentos
+    e como cada acao e registrada no pipeline.
+
+  - SOX / Controles internos: exige segregacao de funcoes (quem aprova
+    diferente de quem executa), refletida na matriz RACI.
+
+2.3. Premissas
+---------------
+
+  - Git e a fonte da verdade. A Base Vetorial e uma projecao regeneravel.
+  - Todo documento tem um owner identificavel.
+  - O pipeline de ingestao e idempotente (ADR-006): re-processar um documento
+    com o mesmo conteudo produz o mesmo resultado na Base Vetorial.
+  - A equipe e pequena nas fases iniciais (1-3 pessoas), crescendo
+    gradualmente. Acumulo de papeis e aceitavel na Fase 1, desde que
+    documentado.
+
+
+================================================================================
+3. DECISAO -- 4 PILARES
+================================================================================
+
+------------------------------------------------------------------------
+PILAR 1 -- PAPEIS E RACI
+------------------------------------------------------------------------
+
+3.1.1. Definicao dos 7 papeis
+------------------------------
+
+  1. Arquiteto
+     Visao tecnica do pipeline, schemas, templates, padroes de qualidade
+     e ADRs. Guardiao da consistencia tecnica. Nao opera pipeline, nao
+     valida conteudo de dominio, nao gerencia infraestrutura.
+
+  2. Curador de Conhecimento
+     Especialista de dominio que edita, enriquece e valida conteudo dos
+     .beta.md. Guardiao da qualidade do conteudo (substancia, nao formato).
+     Nao edita o repositorio knowledge-base diretamente.
+
+  3. Engenheiro de Pipeline
+     Implementa, executa e mantem o pipeline de ingestao (ADR-006).
+     Garante que a Base Vetorial reflete fielmente o repositorio.
+
+  4. Dev API/Consumo
+     Camada de consumo: APIs, MCP server, agentes, filtros pre-retrieval
+     (ADR-004), reranking e protecao contra abuso.
+
+  5. Operacoes (Ops)
+     Infraestrutura, monitoramento, backup e resposta a incidentes.
+     Garante disponibilidade e performance dos componentes.
+
+  6. Owner de Documento
+     Responsavel pela precisao e atualidade de documentos especificos.
+     Ultima linha de defesa contra obsolescencia.
+
+  7. Compliance Officer
+     Conformidade com regulacoes (LGPD, BACEN) e politicas internas.
+     Define classificacao de dados, aprova fontes sensiveis, lidera
+     resposta a incidentes de PII. Nao executa operacoes no pipeline.
+
+Justificativa dos papeis: cada papel existe para evitar que decisoes
+criticas sejam tomadas ad hoc. Sem segregacao, incidentes demoram mais,
+conteudo nao-validado entra na base, e nao ha accountability.
+
+3.1.2. Matriz RACI
+--------------------
+
+Legenda: ARQ=Arquiteto, CUR=Curador, ENG=Engenheiro, DEV=Dev API,
+         OPS=Operacoes, OWN=Owner, CMP=Compliance
+
+  Atividade                          ARQ  CUR  ENG  DEV  OPS  OWN  CMP
+  -----------------------------------------------------------------------
+  Ingestao de nova fonte              A    C    R    I    I    I    C
+  Edicao de .beta.md                  I    R    I    -    -    A    -
+  Promocao beta -> md                 A    R    C    I    -    C    C
+  Release para Base Vetorial          C    I    R    I    A    -    I
+  Rollback urgente (PII)              I    I    R    C    R    I    A
+  Re-indexacao completa               A    I    R    I    C    -    I
+  Curadoria de glossario              C    A    -    I    -    R    -
+  Definicao de schema/front matter    R    C    C    I    -    I    C
+  Aprovacao de fase (ex: Fase1->2)    A    C    C    C    C    -    C
+  Auditoria de acesso                 I    -    I    I    R    -    A
+  Backup da Base Vetorial             I    -    -    -    R    -    A
+  Resposta a incidente de seguranca   C    I    R    C    R    I    A
+
+Nota: duplo R em "Rollback urgente" e intencional -- ENG remove dados da
+Base Vetorial enquanto OPS contem APIs simultaneamente. Compliance (A) decide
+se ha necessidade de notificacao a ANPD/BACEN.
+
+3.1.3. Acumulo de papeis
+--------------------------
+
+Combinacoes aceitaveis na Fase 1:
+  - Arquiteto + Engenheiro de Pipeline
+  - Curador + Owner de Documento
+  - Dev API/Consumo + Operacoes
+
+Combinacao PROIBIDA (mesmo na Fase 1):
+  - Compliance Officer + qualquer papel operacional
+    Justificativa: segregacao de funcoes e obrigatoria -- quem executa nao
+    pode ser quem audita (SOX, BACEN).
+
+Regra de transicao:
+  - Fase 2: desfazer acumulo Arquiteto + Engenheiro
+  - Fase 3: cada papel com pelo menos 1 pessoa dedicada
+
+
+------------------------------------------------------------------------
+PILAR 2 -- CICLO DE VIDA DO DOCUMENTO
+------------------------------------------------------------------------
+
+3.2.1. Maquina de estados
+---------------------------
+
+4 estados possiveis, sem atalhos (DRAFT nao vai direto para APPROVED):
+
+  DRAFT --> IN-REVIEW --> APPROVED --> DEPRECATED
+              |                           |
+              v                           v
+            DRAFT                       DRAFT
+
+Transicoes:
+
+  DRAFT -> IN-REVIEW
+    Quem dispara: Curador ou Owner
+    Pre-condicoes: front matter completo, sem placeholders/TODOs
+    Justificativa: separar "estou escrevendo" de "estou pronto para revisao"
+
+  IN-REVIEW -> APPROVED
+    Quem aprova: Arquiteto (docs tecnicos) ou PO (docs de negocio)
+    Pre-condicoes: revisao tecnica + conteudo + seguranca
+    Para docs restricted/confidential: Compliance deve ser consultado
+    Justificativa: quality gate principal -- nenhum conteudo entra na Base
+    Vetorial sem revisao humana
+
+  IN-REVIEW -> DRAFT
+    Quem dispara: Revisor (rejeicao com justificativa obrigatoria)
+
+  APPROVED -> DEPRECATED
+    Gatilhos: manual (Owner decide) ou automatico (12 meses sem atualizacao)
+    Mecanismo automatico: notifica Owner -> 30 dias para confirmar -> deprecated
+    Justificativa do threshold de 12 meses: equilibrio entre fadiga de
+    re-validacao (6 meses seria excessivo) e obsolescencia (24 meses seria
+    longo demais). Threshold unico para todos os doc_types -- politicas de
+    atualizacao sao externas ao mecanismo de auto-deprecacao.
+
+  DEPRECATED -> DRAFT
+    Quem aprova: Arquiteto
+    Justificativa: reativacao vai para DRAFT (nao APPROVED) porque conteudo
+    pode estar obsoleto ha meses -- exige re-validacao completa
+
+3.2.2. Impacto do estado na Base Vetorial
+-------------------------------------------
+
+  Estado       Indexacao                 Comportamento no retrieval
+  -----------------------------------------------------------------------
+  DRAFT        Nao indexado              Invisivel
+  IN-REVIEW    Nao indexado (padrao)     Invisivel (opcao de flag review_only
+                                         para testes com reviewers)
+  APPROVED     Totalmente indexado       Plenamente pesquisavel
+  DEPRECATED   Indexado com flag         Rank reduzido (score x 0.5),
+               deprecated=true          warning na resposta, suprimido
+                                         se ha alternativa APPROVED
+
+Justificativa para manter DEPRECATED indexado (em vez de remover):
+  - Pode ser a unica fonte sobre sistema legado ainda existente
+  - Contem contexto historico valioso
+  - Se reativado, chunks ja existem (economia de reprocessamento)
+
+Justificativa para IN-REVIEW nao indexado por padrao:
+  - Em ambientes regulados (BACEN, LGPD), servir informacao nao validada
+    e inaceitavel
+
+
+------------------------------------------------------------------------
+PILAR 3 -- ROLLBACK
+------------------------------------------------------------------------
+
+Premissa fundamental: a IDEMPOTENCIA do pipeline (ADR-006) torna rollbacks
+seguros. Reverter o .md no repositorio e re-executar o pipeline e suficiente
+para corrigir a Base Vetorial.
+
+3.3.1. Cenario A -- Rollback granular (1 documento)
+-----------------------------------------------------
+
+  Urgencia: BAIXA a MEDIA
+  SLA: 24 horas uteis
+  Responsavel: Engenheiro (R), Owner (A)
+
+  Estrategia: corrigir/reverter o .md no repositorio -> re-executar pipeline
+  em single document mode -> validar via busca semantica que chunks refletem
+  conteudo correto e nao ha orfaos.
+
+  Escolha entre correcao (editar .beta.md) e reversao (git revert) depende
+  de o erro ser localizado ou sistemico.
+
+3.3.2. Cenario B -- Rollback de lote (multiplos documentos)
+-------------------------------------------------------------
+
+  Urgencia: MEDIA
+  SLA: 48 horas uteis
+  Responsavel: Engenheiro (R), Arquiteto (A)
+
+  Estrategia: identificar lote via batch_id -> corrigir fonte (repo e/ou
+  pipeline) -> re-executar em batch mode -> validar contagens e filtros.
+
+  Decisao arquitetural: cada execucao do pipeline DEVE registrar batch_id
+  unico (formato BATCH-YYYY-MM-DD-NNN) com timestamp, lista de document_ids,
+  contagens de sucesso/falha e trigger. Justificativa: sem rastreabilidade
+  por lote, identificar documentos afetados requer investigacao forense em
+  logs; com batch_id, e uma consulta trivial.
+
+3.3.3. Cenario C -- Rollback urgente (PII / vazamento de dados)
+-----------------------------------------------------------------
+
+  Urgencia: CRITICA
+  SLA: contencao em 1 hora, remocao completa em 4 horas
+  Responsavel: Engenheiro + Operacoes (R), Compliance (A)
+
+  Justificativa dos SLAs: cada minuto amplia exposicao. LGPD (Art. 48)
+  exige resposta "em prazo razoavel" -- 4 horas demonstra diligencia.
+  Na implementacao corporativa, esses valores devem ser validados com
+  juridico/compliance e parametrizados no Onboarding Information.
+
+  Decisoes arquiteturais para viabilizar este cenario:
+
+    a) Blocklist de documentos no retrieval: mecanismo para impedir que
+       chunks de um document_id sejam retornados, sem derrubar a API inteira.
+       Na Fase 1, se blocklist nao existir, parar a API e aceitavel.
+
+    b) Exportacao de evidencia antes de delecao: chunks devem ser salvos em
+       local seguro (acesso restrito ao Compliance) para analise forense
+       e eventual notificacao a ANPD.
+
+    c) Limpeza em ambos os repositorios: knowledge-base repo E workspace repo
+       devem ser limpos para evitar re-ingestao. Se PII esta no historico
+       Git, avaliar git filter-branch ou BFG Repo-Cleaner.
+
+    d) Qualquer pessoa pode ativar a contencao sem aprovacao previa.
+       Justificativa: em incidentes de PII, exigir aprovacao hierarquica
+       adiciona latencia inaceitavel. Compliance deve ser notificado em
+       ate 15 minutos.
+
+  Procedimento detalhado: ver RNB-C05 (Incidente PII).
+
+  Pos-incidente (ate 5 dias uteis):
+    - Root Cause Analysis obrigatoria
+    - Acoes preventivas: scanner de PII, blocklist, treinamento, golden set
+    - Documentar RCA no knowledge-base repo
+
+3.3.4. Cenario D -- Rollback completo (restauracao de backup)
+---------------------------------------------------------------
+
+  Urgencia: ALTA
+  SLA: 8 horas
+  Responsavel: Operacoes (R), Arquiteto (A), Engenheiro (C)
+
+  Estrategia: restore do ultimo backup valido -> re-indexacao completa a
+  partir do knowledge-base repo (fonte da verdade) -> validar integridade
+  (contagem docs, golden set, relacoes de grafo, indice vetorial).
+
+  Decisao sobre threshold de corrupcao:
+    - Parcial (< 20% dos dados): usar rollback de lote (Cenario B)
+    - Ampla (> 20%) ou indeterminada: restore completo
+
+  Justificativa da arquitetura Git-como-fonte-da-verdade: no pior cenario,
+  perder toda a Base Vetorial e recuperavel (custo = tempo de reprocessamento,
+  sem perda de dados). Repositorio Git deve ter backup independente (mirror
+  em outro servico Git).
+
+
+------------------------------------------------------------------------
+PILAR 4 -- CRITERIOS DE TRANSICAO ENTRE FASES
+------------------------------------------------------------------------
+
+Decisao: transicoes baseadas em CRITERIOS MENSURAVEIS, nao em cronograma.
+
+Justificativa: cronograma ignora a realidade do projeto. Se Recall@10 esta
+em 55%, avancar para Fase 2 mascara problemas fundamentais de retrieval.
+Criterios mensuraveis garantem que cada fase resolva seus problemas antes
+de adicionar novos.
+
+3.4.1. Fase 1 -> Fase 2 (MVP -> Metadados)
+---------------------------------------------
+
+  C1: Pipeline funcional end-to-end (10 ingestoes consecutivas sem falha)
+  C2: Golden set com minimo 20 perguntas (3+ dominios)
+  C3: Recall@10 >= 70%
+  C4: 100% documentos com front matter valido (0 erros de parsing)
+  C5: Monitoramento basico operacional (dashboard acessivel)
+
+  Aprovacao: Arquiteto + PO conjuntamente (tecnico + negocio, evitando
+  avanco por pressao de prazo sem qualidade ou com golden set irrelevante).
+
+3.4.2. Fase 2 -> Fase 3 (Metadados -> Knowledge Graph)
+--------------------------------------------------------
+
+  C1: Front matter validado com vocabularios controlados (0 warnings)
+  C2: Golden set com 50+ perguntas (5+ dominios, incluindo relacionais)
+  C3: Recall@10 >= 80%
+  C4: Filtros de confidencialidade implementados e testados (0 vazamentos)
+  C5: Backup operacional com pelo menos 1 restore de teste bem-sucedido
+
+  Aprovacao: Arquiteto + PO conjuntamente.
+
+3.4.3. Fase 3 -> Fase 4 (Knowledge Graph -> GraphRAG Corporativo)
+-------------------------------------------------------------------
+
+  C1: Knowledge graph com >= 7 labels (Document + Chunk + 5 entidades)
+  C2: Pelo menos 1 fonte nao-.md integrada
+  C3: Golden set com 100+ perguntas (20+ exigindo traversal de grafo)
+  C4: Recall@10 >= 85%
+  C5: RBAC implementado (testes cobrindo 3+ papeis)
+  C6: Audit logging operacional (logs retidos >= 90 dias)
+
+  Aprovacao: Arquiteto + PO + Compliance Officer conjuntamente.
+  Justificativa para inclusao de Compliance: Fase 4 atende multiplos
+  consumidores em producao, escalando riscos regulatorios.
+
+
+================================================================================
+4. ALTERNATIVAS DESCARTADAS
+================================================================================
+
+4.1. Sem papeis formais ("todo mundo faz tudo")
+  - Viola segregacao de funcoes (SOX, BACEN)
+  - "Todo mundo faz tudo" = "ninguem e responsavel por nada"
+  - Funciona (mal) com 2 pessoas; colapsa com 5+
+
+4.2. Ciclo de vida binario (so APPROVED ou DEPRECATED)
+  - Sem DRAFT, documentos em construcao podem ser indexados acidentalmente
+  - Sem IN-REVIEW, nao ha quality gate entre autoria e publicacao
+  - Regulacoes exigem evidencia de revisao antes de servir conteudo
+
+4.3. Rollback manual (sem procedimentos documentados)
+  - Em incidentes de PII, improvisar sob pressao leva a erros e atrasos
+  - LGPD exige demonstracao de plano de resposta a incidentes
+  - Procedimentos documentados permitem que qualquer membro execute rollback
+
+4.4. Transicao de fase baseada em cronograma
+  - Cronogramas criam pressao para avancar sem fundacoes solidas
+  - Fase 2 sem front matter validado = filtros quebrados
+  - Fase 3 sem Recall@10 >= 80% = knowledge graph sobre base ruim
+  - Criterios mensuraveis criam objetividade ("nao e opiniao -- e o Recall
+    de 62%")
+
+4.5. Auto-deprecacao em 6 meses (em vez de 12)
+  - ADRs e docs arquiteturais sao naturalmente estaveis (podem ficar 2 anos
+    validos)
+  - 6 meses geraria fadiga de notificacao, levando a confirmacoes automaticas
+    sem leitura real, anulando o proposito do mecanismo
+  - 12 meses e o equilibrio adequado
+
+
+================================================================================
+5. CONSEQUENCIAS
+================================================================================
+
+5.1. Positivas
+---------------
+
+  - Accountability clara: para cada atividade, existe responsavel e
+    accountable identificaveis
+  - Quality gates: nenhum conteudo chega a Base Vetorial sem revisao humana
+  - Rollback previsivel: procedimento documentado para cada cenario
+  - Transicoes baseadas em evidencia: metricas, nao pressao de cronograma
+  - Conformidade regulatoria: atende LGPD, BACEN e controles internos
+  - Escalabilidade organizacional: papeis acumulaveis (Fase 1) e separaveis
+    (Fases 3-4)
+
+5.2. Negativas (trade-offs aceitos)
+-------------------------------------
+
+  - Overhead de processo: IN-REVIEW adiciona latencia entre "pronto" e
+    "pesquisavel". Mitigacao: fast-track (Arquiteto aprova sem PR, com
+    registro posterior).
+
+  - Complexidade para equipes pequenas: 7 papeis e excessivo para 1-2
+    pessoas. Mitigacao: acumulo documentado na Fase 1, separacao progressiva.
+
+  - Auto-deprecacao pode ser agressiva: 12 meses pode deprecar documentos
+    ainda validos. Mitigacao: mecanismo de confirmacao com 30 dias de graca.
+
+  - Rollback urgente depende de monitoramento: procedimento de PII assume
+    logs de retrieval disponiveis. Mitigacao: meta-monitoramento -- se logs
+    param, alerta imediato.
+
+  - Criterios de transicao podem atrasar o projeto: Recall@10 estagnado
+    prende a equipe na fase atual. Mitigacao: criterios revisaveis na
+    cadencia semestral, com justificativa documentada.
+
+
+================================================================================
+6. IMPLEMENTACAO (alto nivel)
+================================================================================
+
+Fase 1 -- Fundamentos:
+  - Documentar quem exerce cada papel (mesmo acumulado)
+  - Implementar campo "status" no front matter + validacao no pipeline
+  - Criar golden set inicial (20 perguntas)
+  - Implementar batch_id no pipeline
+  - Implementar rollback granular (re-ingestao de 1 documento)
+  - Configurar backup basico (diario)
+  - Documentar e simular (drill) rollback urgente (PII)
+  - Medir Recall@10 pela primeira vez
+
+Fase 2 -- Maturidade operacional:
+  - Implementar maquina de estados no pipeline (rejeitar DRAFT/IN-REVIEW)
+  - Implementar rollback de lote (batch)
+  - Implementar auto-deprecacao (cronjob + notificacao a Owners)
+  - Expandir golden set para 50 perguntas
+  - Implementar filtros de confidencialidade
+  - Testar e documentar restore from backup
+
+Fase 3 -- Governanca plena:
+  - Separar papeis acumulados (1 pessoa por papel, minimo)
+  - Implementar RBAC e audit logging completo
+  - Implementar scanner de PII no pipeline (prevencao)
+  - Implementar blocklist para rollback urgente cirurgico
+  - Expandir golden set para 100 perguntas (com traversal)
+  - Estabelecer cadencia formal de curadoria (ver DOC-I01)
+
+
+================================================================================
+7. REFERENCIAS
+================================================================================
+
+Internas:
+  - ADR-001: Pipeline de geracao de conhecimento em 4 fases
+  - ADR-004: Seguranca, controle de acesso e conformidade
+  - ADR-006: Pipeline de ingestao (idempotencia que torna rollbacks seguros)
+  - RNB-C05: Incidente PII (procedimento operacional extraido desta ADR)
+  - DOC-I01: Calendario de Curadoria (cadencias extraidas desta ADR)
+  - DOC-I02: Capacity Planning KB (thresholds e projecoes extraidos desta ADR)
+
+Externas:
+  - LGPD (Lei 13.709/2018): resposta a incidentes de PII
+  - BACEN Resolucao 4.893/2021: seguranca cibernetica para instituicoes
+    financeiras
+  - RACI Model (PMI): framework para definicao de responsabilidades
+
+
+================================================================================
+FIM DO DOCUMENTO -- ADR-008
+================================================================================

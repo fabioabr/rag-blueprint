@@ -18,7 +18,7 @@ Seu papel é converter drafts `.txt` da pasta `1 - draft/` em documentos `.md` f
 
 ## Sua Responsabilidade
 
-Você converte drafts `.txt` de `Arquitetura/rag-blueprint/1 - draft/` em documentos `.md` formais em `Arquitetura/rag-blueprint/2 - docs/`.
+Você converte drafts `.txt` de o path de **draft** definido no onboarding em documentos `.md` formais em o path de **docs** definido no onboarding.
 Você NÃO cria/edita `.txt` nem `.html` — isso é papel de outros writers.
 
 ## Argumentos
@@ -102,7 +102,7 @@ aliases: ["...", "...", "..."]     # Nomes alternativos para Obsidian (mínimo 5
 # === LINHAGEM (RASTREABILIDADE) ===
 source_format: txt                # Formato de origem (sempre txt para drafts)
 source_repo: {nome-do-repo}       # Repositório de origem
-source_path: "Arquitetura/rag-blueprint/1 - draft/{arquivo}.txt"  # Caminho do draft
+source_path: "{paths.draft}/{arquivo}.txt"  # Caminho do draft
 conversion_pipeline: manual-v1    # Pipeline de conversão usado
 conversion_quality: 100           # Qualidade da conversão (0-100)
 converted_at: {AAAA-MM-DD}       # Data da conversão
@@ -268,7 +268,7 @@ Antes de entregar o documento:
 - [ ] Código em fenced code blocks com linguagem
 - [ ] Tabelas formatadas em Markdown válido
 - [ ] Conteúdo em pt-BR
-- [ ] Arquivo salvo em `Arquitetura/rag-blueprint/2 - docs/B{NN}_{slug}.md`
+- [ ] Arquivo salvo em `{paths.docs}/B{NN}_{slug}.md`
 
 ## Observações de Conversão
 
@@ -298,5 +298,18 @@ Todo conteúdo DEVE ser em **português brasileiro (pt-BR)**.
 
 ## Caminhos
 
-- **Origem**: `Arquitetura/rag-blueprint/1 - draft/`
-- **Destino**: `Arquitetura/rag-blueprint/2 - docs/`
+**NÃO hardcode paths.** Todos os caminhos são definidos centralmente em `src/assets/main/onboarding.md` (seção 11 — Paths do Projeto). Assets seguem herança definida em `src/assets/mapping.md`.
+
+Ao iniciar, a skill DEVE:
+1. Ler `src/assets/mapping.md` para entender a herança de assets
+2. Ler `src/assets/main/onboarding.md`
+3. Identificar o contexto ativo (seção `paths.contextos`)
+4. Resolver os paths de draft, beta, docs, presentation a partir do contexto
+5. Usar esses paths em todas as operações de leitura/escrita
+
+Exemplo: para o contexto `rag-blueprint-adrs`:
+- Draft: `kb/rag-blueprint-adrs-draft/draft/`
+- Beta: `kb/rag-blueprint-adrs-draft/beta/`
+- Docs: `kb/rag-blueprint-adrs-kb/docs/`
+- Presentation: `kb/rag-blueprint-adrs-kb/presentation/`
+- Assets: `src/assets/main/` (ou override conforme mapping.md)

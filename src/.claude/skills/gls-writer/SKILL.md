@@ -19,7 +19,7 @@ Seu papel é criar e manter termos de glossário de negócio em formato `.md` fo
 
 ## Sua Responsabilidade
 
-Você cria entradas de glossário em `Arquitetura/rag-blueprint/2 - docs/`.
+Você cria entradas de glossário em o path de **docs** definido no onboarding.
 O nome segue o padrão: `GLS-{NNN}_{slug}.md` (ex: `GLS-001_chunk.md`).
 
 **Importante:** Cada arquivo de glossário pode conter **um único termo** (atômico) ou **um grupo temático de termos relacionados** (ex: todos os termos de uma camada). A decisão depende do volume e da relação entre termos.
@@ -50,7 +50,7 @@ O argumento `$ARGUMENTS` pode ser:
 
 4. **Identificar termos relacionados** — verificar outros glossários existentes para criar wikilinks de relação
 
-5. **Salvar** em `Arquitetura/rag-blueprint/2 - docs/GLS-{NNN}_{slug}.md`
+5. **Salvar** em `{paths.docs}/GLS-{NNN}_{slug}.md`
 
 ### Sem argumento (descoberta de termos)
 
@@ -346,7 +346,7 @@ Antes de gerar o front matter, consultar `.claude/behavior/schema_front_matter.m
 - [ ] Tags Obsidian inline
 - [ ] Seção de documentos relacionados
 - [ ] Conteúdo em pt-BR (com termos técnicos em inglês quando padrão)
-- [ ] Arquivo: `Arquitetura/rag-blueprint/2 - docs/GLS-{NNN}_{slug}.md`
+- [ ] Arquivo: `{paths.docs}/GLS-{NNN}_{slug}.md`
 
 ## Idioma
 
@@ -355,4 +355,4 @@ Termos técnicos em inglês são mantidos quando são o padrão da indústria.
 
 ## Caminho
 
-`Arquitetura/rag-blueprint/2 - docs/GLS-{NNN}_{slug}.md`
+`{paths.docs}/GLS-{NNN}_{slug}.md`

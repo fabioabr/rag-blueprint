@@ -1,0 +1,319 @@
+---
+id: BETA-J03
+title: "Hotfix"
+domain: arquitetura
+confidentiality: internal
+sources:
+  - type: txt
+    origin: "src/kb/rag-blueprint-adrs-draft/draft/ADR-J03_hotfix.txt"
+    captured_at: "2026-03-23"
+    conversion_quality: 95
+tags:
+  - hotfix
+  - correcao urgente
+  - patch
+  - versionamento semantico
+  - release patch
+  - producao
+  - staging
+  - fast track
+  - qa rapido
+  - aprovacao
+  - gate humano
+  - pipeline de promocao
+  - pipeline de ingestao
+  - tag
+  - branch de hotfix
+  - pr
+  - escopo minimo
+  - beta md
+  - md final
+  - front matter
+  - confidentiality
+  - pii
+  - vazamento
+  - lgpd
+  - rollback
+  - rebuild completo
+  - idempotencia
+  - smoke test
+  - testes focados
+  - golden set
+  - integridade
+  - release version
+  - rag workspace
+  - rag knowledge base
+  - curador
+  - arquiteto
+  - manager
+  - director
+  - compliance
+  - multi kb
+  - segregacao por confidencialidade
+  - kb publica
+  - kb restrita
+  - kb confidencial
+  - integracao com release
+  - merge
+  - conflitos
+  - timeline
+  - metricas de hotfix
+  - frequencia
+  - taxa de sucesso
+  - checklist
+  - stakeholders
+  - notificacao
+  - incidente
+  - anonimizacao
+  - contencao
+aliases:
+  - "ADR-J03"
+  - "Hotfix"
+status: draft
+last_enrichment: "2026-03-23"
+last_human_edit: "2026-03-23"
+---
+
+## ADR-J03 -- Hotfix
+
+**Tipo:** ADR
+**Origem:** ADR-010
+**Data:** 23/03/2026
+
+## 1. Objetivo
+
+Documentar o procedimento operacional de 6 passos para aplicar hotfix (correcao urgente) na base de conhecimento em producao, sem esperar a proxima release planejada. Extraido da secao "Hotfix" do ADR-010 (Release-Based Flow).
+
+## 2. Definicao
+
+Hotfix e uma correcao urgente em producao que nao pode esperar a proxima release. Gera uma release PATCH dedicada (incremento do terceiro digito do versionamento semantico: vX.Y.Z -> vX.Y.Z+1).
+
+Tempo total esperado: 1 a 4 horas (da deteccao a producao).
+
+## 3. Quando Usar Hotfix (vs. Rollback)
+
+| Cenario | Acao |
+|---|---|
+| 1-3 documentos com erro pontual | HOTFIX |
+| Erro de front matter causando filtro incorreto | HOTFIX |
+| Informacao sensivel vazou (PII/LGPD) | ROLLBACK imediato + HOTFIX |
+| Muitos documentos com erro | ROLLBACK (ADR-J02) |
+| Embedding model corrompeu vetores | ROLLBACK (ADR-J02) |
+| Recall@10 caiu significativamente | ROLLBACK (ADR-J02) |
+
+**Regra pratica:**
+- Problema PONTUAL (1-3 documentos, erro conhecido) -> HOTFIX
+- Problema AMPLO (muitos documentos, causa incerta) -> ROLLBACK
+- PII/vazamento -> ROLLBACK imediato para conter, depois HOTFIX para corrigir na versao definitiva
+
+## 4. Procedimento de Hotfix -- 6 Passos
+
+### Passo 1 -- Criar Release de Hotfix
+
+**Pre-condicoes:**
+- Problema identificado e documentado
+- TAG atual em producao conhecida (ex: v1.2.0)
+- Decisao de usar hotfix (vs. rollback) tomada
+
+**Acoes:**
+a) Partir da TAG atualmente em producao no rag-workspace:
+```bash
+git checkout v1.2.0
+```
+b) Criar branch de consolidacao do hotfix:
+```bash
+git checkout -b release/v1.2.1/main
+```
+c) Criar branch de trabalho para a correcao:
+```bash
+git checkout -b release/v1.2.1/{username}/fix-{descricao}
+```
+
+**Convencao de versionamento:**
+- Hotfix SEMPRE incrementa PATCH: v1.2.0 -> v1.2.1
+- Se ja existe v1.2.1 (hotfix anterior), incrementar: v1.2.2
+- NUNCA incrementar MINOR ou MAJOR em hotfix
+
+### Passo 2 -- Aplicar Correcao
+
+**Acoes:**
+a) Editar os .beta.md necessarios no branch de trabalho
+b) Correcoes tipicas:
+   - Conteudo factualmente incorreto -> corrigir texto
+   - Front matter invalido -> corrigir campo
+   - Documento com classificacao errada -> ajustar confidentiality
+   - Link quebrado -> corrigir referencia
+   - PII detectado -> anonimizar ou remover secao
+c) Commit com mensagem clara:
+```bash
+git commit -m "hotfix: {descricao do problema corrigido}"
+```
+d) Criar PR para release/v1.2.1/main
+   - Descricao do PR deve incluir: problema, causa, correcao aplicada
+   - Referenciar task ID ou incidente quando aplicavel
+
+**Regras:**
+- Escopo MINIMO: corrigir apenas o problema identificado
+- NAO adicionar novos documentos em hotfix
+- NAO fazer refatoracoes ou melhorias "aproveitando a oportunidade"
+- Se a correcao exige mudancas amplas -> nao e hotfix, e nova release
+
+### Passo 3 -- QA Rapido
+
+**Acoes:**
+a) QA score calculado APENAS nos documentos alterados (nao precisa re-validar toda a base)
+b) Front matter validado nos documentos alterados
+c) Revisao focada no PR:
+   - Verificar que a correcao resolve o problema
+   - Verificar que nao introduz novos problemas
+   - Verificar que escopo e minimo (sem mudancas extras)
+d) Aprovar PR (minimo 1 aprovacao -- fast-track)
+
+**Diferenca em relacao a release normal:**
+- Release normal: QA em TODOS os documentos, 2 aprovacoes no PR
+- Hotfix: QA apenas nos documentos ALTERADOS, 1 aprovacao no PR
+- Justificativa: urgencia do hotfix justifica fast-track, porem staging e obrigatorio (Passo 5)
+
+### Passo 4 -- TAG e Promocao
+
+**Acoes:**
+a) Curador cria TAG no rag-workspace:
+```bash
+git tag -a v1.2.1 -m "Hotfix v1.2.1 -- {descricao}"
+```
+b) TAG dispara pipeline de promocao:
+   - Le .beta.md da TAG v1.2.1
+   - Remove marcadores LOCKED
+   - Enriquece front matter
+   - Gera .md finais
+c) PR automatico no rag-knowledge-base:
+   - FAST-TRACK: 1 aprovacao (em vez de 2 na release normal)
+   - Aprovador verifica que apenas os documentos corrigidos mudaram
+d) Apos aprovacao:
+   - Merge no main do rag-knowledge-base
+   - TAG v1.2.1 espelhada no rag-knowledge-base
+
+### Passo 5 -- Staging
+
+**Acoes:**
+a) TAG v1.2.1 dispara pipeline de ingestao na Base Vetorial de staging
+b) Testes FOCADOS (nao precisa rodar suite completa):
+   - Golden set: subset relevante para os documentos corrigidos
+   - Verificacao especifica do fix: busca que reproduzia o problema agora retorna resultado correto
+   - Teste de integridade: contagem de documentos e chunks confere
+   - Teste de confidencialidade: se correcao envolveu classificacao
+
+Se teste falha:
+- Investigar, corrigir, incrementar patch (v1.2.2)
+- Repetir a partir do Passo 2
+
+### Passo 6 -- Producao
+
+**Acoes:**
+a) Aprovacao manual obrigatoria:
+   - Mesmo em hotfix, gate humano e OBRIGATORIO
+   - 1 aprovacao (Curador ou Arquiteto)
+b) Implantacao manual em producao:
+   - Pipeline usa TAG v1.2.1 (a mesma que passou em staging)
+   - Rebuild completo (idempotente)
+c) Pos-implantacao:
+   - Smoke test de producao
+   - Verificacao especifica: problema original resolvido
+   - release_version atualizada para v1.2.1
+   - Notificacao para stakeholders (versao, correcao aplicada)
+
+Tempo esperado do Passo 6: 30-60 minutos
+
+## 5. Timeline Completa de Hotfix
+
+| Passo | Tempo Tipico | Acumulado |
+|---|---|---|
+| 1. Criar release | 5-10 min | 10 min |
+| 2. Aplicar correcao | 15-30 min | 40 min |
+| 3. QA rapido + aprovacao PR | 15-30 min | 1h 10min |
+| 4. TAG + promocao + PR KB | 20-40 min | 1h 50min |
+| 5. Staging + testes focados | 30-60 min | 2h 50min |
+| 6. Producao + smoke test | 30-60 min | 3h 50min |
+
+**Total tipico:** 2 a 4 horas
+
+## 6. Integracao com Proxima Release
+
+Apos o hotfix ser implantado em producao:
+
+a) As correcoes do hotfix DEVEM ser incorporadas na proxima release.
+b) O branch release/v1.3.0/main (proxima release) deve fazer merge das correcoes do hotfix:
+```bash
+git merge release/v1.2.1/main
+```
+c) Se a proxima release ja estava em andamento, verificar conflitos e resolver.
+d) NAO e aceitavel que a proxima release "perca" as correcoes do hotfix.
+
+## 7. Hotfix em Contexto Multi-KB (ADR-011)
+
+Quando o modelo de segregacao em 3 KBs esta ativo:
+
+- Hotfix e aplicado na KB especifica afetada.
+- Exemplo: erro em documento da KB restrita
+  - kb-restricted@v1.0.3 -> hotfix -> kb-restricted@v1.0.4
+  - kb-public-internal@v1.2.0 -> nao afetada
+  - kb-confidential@v1.0.1 -> nao afetada
+- Cada KB tem seu proprio ciclo, entao hotfix em uma nao impacta as demais.
+- Pipeline de deploy por KB:
+  - KB publica: hotfix pode ser fast-track (1 aprovacao)
+  - KB restrita: hotfix requer aprovacao de Manager
+  - KB confidencial: hotfix requer aprovacao de Director + Compliance
+
+## 8. Hotfix para Incidente de PII
+
+Quando o hotfix e motivado por vazamento de PII ou dado sensivel:
+
+**Sequencia:**
+1. **PRIMEIRO:** rollback imediato para TAG estavel (ADR-J02) -> contem o vazamento em minutos
+2. **DEPOIS:** hotfix para corrigir o problema na versao definitiva -> anonimizar/remover dado sensivel no .beta.md -> gerar nova TAG patch -> promover via staging -> producao
+3. **PARALELO:** procedimento de incidente PII (ADR-008 cenario C) -> contencao, remocao, verificacao de logs, ANPD se necessario
+
+O rollback contem o problema RAPIDAMENTE. O hotfix corrige DEFINITIVAMENTE. Ambos sao necessarios.
+
+## 9. Checklist Rapido de Hotfix
+
+- [ ] Problema identificado e documentado
+- [ ] Decisao: hotfix (nao rollback)
+- [ ] Branch release/vX.Y.Z+1/main criado a partir da TAG em producao
+- [ ] Correcao aplicada (escopo minimo)
+- [ ] Commit com mensagem "hotfix: {descricao}"
+- [ ] PR aprovado (1 aprovacao, fast-track)
+- [ ] TAG criada no workspace
+- [ ] Pipeline de promocao gerou .md finais
+- [ ] PR no knowledge-base aprovado (1 aprovacao, fast-track)
+- [ ] Staging: testes focados passaram
+- [ ] Producao: aprovacao manual obtida
+- [ ] Producao: implantacao + smoke test OK
+- [ ] Problema original verificado como resolvido
+- [ ] Stakeholders notificados
+- [ ] Correcoes integradas na proxima release
+
+## 10. Metricas de Hotfix
+
+| Metrica | Meta (ADR-010) |
+|---|---|
+| Frequencia de hotfixes | < 2 por mes |
+| Tempo total de hotfix | < 4 horas |
+| Taxa de sucesso em staging | > 90% na primeira tentativa |
+| Hotfixes que exigiram rollback | 0 (hotfix nao deve piorar) |
+
+Se a frequencia de hotfixes exceder 2/mes consistentemente:
+- Investigar causa raiz (QA insuficiente? staging fraco? processo?)
+- Reforcar QA no Passo 1 do ADR-J01 (release normal)
+- Expandir golden set
+
+## 11. Referencias
+
+- ADR-010: Git Flow (hotfix 6 passos, metricas, cenarios)
+- ADR-008: Governanca (cenario C PII, rollback, papeis RACI)
+- ADR-006: Pipeline de Ingestao (idempotencia, rebuild)
+- ADR-011: Segregacao de KBs (hotfix independente por KB)
+- ADR-J01: Promocao Staging -> Producao (fluxo normal de referencia)
+- ADR-J02: Rollback de Release (quando hotfix nao e suficiente)
+
+<!-- conversion_quality: 95 -->

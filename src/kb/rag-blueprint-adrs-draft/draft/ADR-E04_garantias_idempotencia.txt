@@ -1,0 +1,195 @@
+================================================================================
+ADR-E04 -- Garantias de Idempotencia do Pipeline de Ingestao
+================================================================================
+Tipo:           ADR
+Origem:         ADR-006
+Data:           23/03/2026
+================================================================================
+
+SUMARIO
+-------
+Este documento detalha como o pipeline de ingestao garante idempotencia em
+cada uma de suas etapas, e por que essa propriedade e critica para a
+confiabilidade do sistema.
+
+
+================================================================================
+1. DEFINICAO FORMAL DE IDEMPOTENCIA
+================================================================================
+
+Um pipeline e idempotente quando executar a funcao f(x) duas vezes produz
+o mesmo resultado que executar uma vez:
+
+    f(f(x)) = f(x)
+
+No contexto deste pipeline: se os documentos nao mudaram desde a ultima
+execucao, re-executar DEVE resultar em ZERO ALTERACOES na Base Vetorial.
+
+Isso significa que:
+  - Nenhum no e criado, atualizado ou deletado.
+  - Nenhuma relacao e modificada.
+  - Nenhum embedding e recalculado.
+  - O estado da Base Vetorial antes e depois da re-execucao e identico.
+
+
+================================================================================
+2. COMO CADA ETAPA GARANTE IDEMPOTENCIA
+================================================================================
+
+--- Etapa 1: Descoberta (hash SHA-256) ---
+
+  Mecanismo: comparacao de hash SHA-256.
+
+  O hash SHA-256 e uma funcao deterministica: o mesmo conteudo sempre
+  produz o mesmo hash. Para cada documento .md no manifesto, o pipeline:
+
+    1. Calcula o hash SHA-256 do conteudo atual.
+    2. Consulta o hash armazenado na Base Vetorial (campo file_hash do
+       no Document).
+    3. Se os hashes sao identicos: classifica como UNCHANGED.
+
+  Documentos UNCHANGED sao completamente ignorados nas Etapas 2 a 6.
+  Nenhum processamento ocorre.
+
+  Este e o MECANISMO CENTRAL de idempotencia. Se nada mudou, nada e
+  processado.
+
+  Alternativas descartadas e por que nao funcionam:
+    - Data de modificacao: git clone reseta timestamps de arquivos.
+    - Numero de versao no front matter: depende do autor lembrar de
+      incrementar.
+    - Tamanho do arquivo: colisoes obvias (dois conteudos diferentes
+      podem ter o mesmo tamanho).
+
+--- Etapa 5: Persistencia (upsert) ---
+
+  Mecanismo: padrao upsert (MERGE no Cypher).
+
+  Upsert = "update if exists, insert if not". Se um documento NEW for
+  re-processado por qualquer razao:
+
+    - Se o no Document ja existe (criado na execucao anterior):
+      atualiza com os mesmos valores. Resultado identico.
+    - Se o no Document nao existe: cria normalmente.
+
+  O upsert garante que re-processar um documento ja existente nao
+  duplica nos nem corrompe relacoes. O resultado final e o mesmo
+  independente de quantas vezes a operacao e executada.
+
+  Isso se aplica tambem a criacao de nos auxiliares (System, Module,
+  Owner, Team): sao criados com MERGE, que so cria se nao existir.
+
+--- Etapa 6: Indexacao (CREATE IF NOT EXISTS) ---
+
+  Mecanismo: indices sao criados com semantica "CREATE IF NOT EXISTS".
+
+  Se o indice vetorial, full-text ou qualquer constraint ja existe:
+    - A operacao e um no-op (nada acontece).
+    - Nenhum erro e gerado.
+    - O indice existente permanece intacto.
+
+  Isso garante que re-executar a Etapa 6 quantas vezes for necessario
+  nunca duplica indices nem causa conflitos.
+
+
+================================================================================
+3. FLUXO COMPLETO DE IDEMPOTENCIA
+================================================================================
+
+Cenario: pipeline executado 2 vezes sobre os mesmos documentos sem mudancas.
+
+  Execucao 1:
+    Etapa 1: Classifica documentos como NEW -> processa tudo.
+    Etapa 2: Parse dos documentos.
+    Etapa 3: Gera chunks.
+    Etapa 4: Gera embeddings.
+    Etapa 5: Upsert cria nos e relacoes.
+    Etapa 6: Cria indices.
+    Etapa 7: Registra metricas.
+
+  Execucao 2 (mesmos documentos, sem mudancas):
+    Etapa 1: Calcula hash -> identico ao armazenado -> UNCHANGED para TODOS.
+    Etapas 2-6: NAO EXECUTADAS (todos documentos sao UNCHANGED).
+    Etapa 7: Registra metricas (0 documentos processados).
+
+  Resultado: Base Vetorial identica antes e depois da Execucao 2.
+
+
+================================================================================
+4. POR QUE IDEMPOTENCIA E CRITICA
+================================================================================
+
+--- 4.1 Webhooks duplicados ---
+
+  Plataformas Git (GitHub, GitLab) podem enviar o mesmo webhook mais de
+  uma vez. Motivos comuns:
+    - Timeout na resposta do handler (plataforma reenvia).
+    - Retry automatico apos falha de rede.
+    - Bug na plataforma.
+
+  Com idempotencia: o segundo webhook dispara o pipeline, que classifica
+  todos os documentos como UNCHANGED e termina sem alteracoes. Seguro.
+
+  Sem idempotencia: o segundo webhook reprocessaria tudo, potencialmente
+  duplicando chunks ou corrompendo relacoes. Perigoso.
+
+--- 4.2 Cron overlap ---
+
+  Se existir um cron job como fallback (ex: verificacao diaria de releases
+  nao processadas), duas execucoes podem sobrepor-se:
+
+  Com idempotencia: a segunda execucao encontra tudo UNCHANGED. No-op.
+  (Nota: o lock exclusivo da ADR-E03 impede execucao simultanea, mas
+  a idempotencia garante seguranca mesmo se o lock falhar.)
+
+--- 4.3 Retries seguros ---
+
+  Se o pipeline falha na Etapa 4 (Embeddings) e precisa ser re-executado:
+
+  Com idempotencia: documentos ja processados com sucesso nas Etapas 1-3
+  sao classificados como UNCHANGED na Etapa 1 da re-execucao. Apenas
+  documentos que falharam sao reprocessados.
+
+  Sem idempotencia: todos os documentos seriam reprocessados, incluindo
+  os que ja estavam corretos. Desperdicio de recursos e risco de erro.
+
+--- 4.4 Testabilidade ---
+
+  Idempotencia e diretamente testavel:
+
+    1. Executar pipeline sobre conjunto de documentos.
+    2. Registrar estado da Base Vetorial (snapshot).
+    3. Executar pipeline novamente sobre os mesmos documentos.
+    4. Comparar diff do estado: DEVE ser vazio.
+
+  Se o diff nao e vazio, ha um bug no pipeline. Este teste pode ser
+  automatizado e executado em CI/CD.
+
+
+================================================================================
+5. PROPRIEDADES DERIVADAS
+================================================================================
+
+A idempotencia do pipeline habilita outras propriedades importantes:
+
+  Reprodutibilidade:
+    Mesma entrada = mesma saida. Qualquer execucao sobre o mesmo conjunto
+    de documentos produz o mesmo estado na Base Vetorial.
+
+  Seguranca de retry:
+    Qualquer etapa pode ser re-executada sem risco de corromper dados.
+
+  Debugging simplificado:
+    Se o estado da Base Vetorial esta incorreto, basta re-executar o
+    pipeline com a release correta. A idempotencia garante que o
+    resultado sera o esperado.
+
+  Rollback previsivel:
+    Re-executar o pipeline com uma release anterior restaura o estado
+    correspondente. Documentos da release mais recente sao classificados
+    como DELETED e removidos.
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

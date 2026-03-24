@@ -1,0 +1,255 @@
+================================================================================
+ADR-006 — Pipeline de Ingestao: Da Fonte a Base Vetorial
+================================================================================
+
+Status:         proposed
+Data:           21/03/2026
+Revisao:        23/03/2026 (reescrita para separar decisao de processo)
+Decisor:        Fabio A. B. Rodrigues
+Escopo:         RAG Corporativo — Pipeline de ingestao de documentos .md
+Relaciona-se:   ADR-001 (Pipeline 4 Fases), ADR-002 (Soberania),
+                ADR-003 (Modelo de Dados), ADR-005 (Front Matter),
+                ADR-007 (Retrieval Hibrido), ADR-009 (Modelos de Embedding)
+
+================================================================================
+1. SUMARIO
+================================================================================
+
+Decidimos que a ingestao de documentos .md na Base Vetorial sera realizada
+por um pipeline de 7 etapas sequenciais, disparado exclusivamente por tags
+de release no repositorio knowledge-base. O pipeline e idempotente (mesma
+entrada = mesma saida), suporta re-indexacao sem downtime (Blue/Green), e
+garante limpeza automatica de documentos removidos.
+
+================================================================================
+2. CONTEXTO
+================================================================================
+
+A Base Vetorial nao e um simples banco onde se "joga" arquivos. Ela combina
+vetores de embedding, nos de grafo, relacoes semanticas e metadados
+estruturados. Para que funcione corretamente, o processo de ingestao precisa
+ser rigoroso, previsivel e observavel.
+
+Premissas fundamentais que motivaram as decisoes:
+
+  1. IDEMPOTENCIA — Re-executar o pipeline sobre os mesmos documentos DEVE
+     produzir zero alteracoes. Webhooks podem duplicar, cron jobs podem
+     sobrepor, falhas parciais exigem re-tentativa segura.
+
+  2. RE-INDEXACAO SEM DOWNTIME — Quando o modelo de embedding muda, TODOS
+     os vetores precisam ser re-gerados sem interromper o servico. Vetores
+     de modelos diferentes sao incompativeis no mesmo indice.
+
+  3. LIMPEZA DE ORFAOS — Documentos removidos do repositorio devem ter seus
+     chunks eliminados. Chunks orfaos poluem buscas e consomem espaco.
+
+  4. TRIGGER POR RELEASE — Apenas documentos aprovados e versionados entram
+     na Base Vetorial. Commits intermediarios nao sao ingeridos.
+
+  5. COMPATIBILIDADE COM ADR-003 — O pipeline popula os nos e relacoes do
+     modelo de dados (Document, Chunk, System, Module, Owner, Team, etc.)
+     respeitando constraints de unicidade.
+
+================================================================================
+3. DECISAO
+================================================================================
+
+3.1. PIPELINE DE 7 ETAPAS SEQUENCIAIS
+
+  O pipeline e composto por 7 etapas com responsabilidade unica:
+
+    1. Descoberta — identifica quais documentos processar (NEW/UPDATED/DELETED)
+    2. Parse — extrai estrutura e valida front matter (rejeicao bloqueante)
+    3. Chunking — divide em fragmentos semanticos com heranca de metadados
+    4. Embeddings — gera vetores por chunk (Track A ou B conforme ADR-002)
+    5. Persistencia — grava na Base Vetorial via UPSERT e limpa orfaos
+    6. Indexacao — cria/verifica indices vetoriais, full-text e compostos
+    7. Observabilidade — registra metricas e executa golden set
+
+  Por que 7 etapas e nao menos:
+    - Isolar falhas (se chunking falha, embeddings nem comecam)
+    - Medir gargalos (saber onde o tempo e gasto)
+    - Evoluir independentemente (trocar embedding sem alterar parse)
+    - Testar isoladamente (unit tests por etapa)
+
+  Para detalhamento de cada etapa: ver SPEC-E01 (Pipeline de Ingestao Detalhado)
+
+3.2. IDEMPOTENCIA VIA HASH SHA-256
+
+  O pipeline e idempotente: f(f(x)) = f(x). Se os documentos nao mudaram,
+  re-executar produz ZERO alteracoes.
+
+  Mecanismo:
+    - Etapa 1: comparacao de hash classifica inalterados como UNCHANGED (skip)
+    - Etapa 5: UPSERT garante resultado identico mesmo em reprocessamento
+    - Etapa 6: CREATE IF NOT EXISTS para indices
+
+  Por que hash e nao alternativas:
+    - Data de modificacao: nao confiavel (git clone reseta timestamps)
+    - Numero de versao no front matter: depende do autor atualizar
+    - Tamanho do arquivo: colisoes obvias
+
+  Para detalhamento das garantias: ver SPEC-E04 (Garantias de Idempotencia)
+
+3.3. TRIGGER POR RELEASE (NAO POR COMMIT)
+
+  O pipeline e disparado exclusivamente por tags de release no repositorio.
+  Um webhook envia a versao, commit e path do manifesto. O pipeline consome
+  o manifesto (nunca o gera).
+
+  Por que release e nao commit:
+    - Commits podem ser parciais, experimentais ou WIP
+    - Releases representam conjuntos APROVADOS (via PR review)
+    - Release tag permite versionar o estado da Base Vetorial
+    - Facilita rollback: re-ingerir release anterior
+
+  Para detalhamento do trigger e manifesto: ver SPEC-E02 (Trigger de Ingestao)
+
+3.4. RE-INDEXACAO BLUE/GREEN
+
+  Quando o modelo de embedding muda, o pipeline cria um NOVO indice ao lado
+  do antigo (sem altera-lo), re-embeda todos os chunks, valida qualidade via
+  golden set, e faz switch atomico. Se o novo modelo e pior, aborta sem
+  impacto.
+
+  Principios:
+    - Zero downtime (sistema nunca fica sem indice funcional)
+    - Rollback instantaneo (basta nao fazer o switch)
+    - Validacao antes de comprometer (golden set comparativo)
+    - Nenhum dado perdido durante o processo
+
+  Para procedimento completo: ver RNB-E06 (Reindexacao Blue/Green)
+
+3.5. LOCK DE EXECUCAO (CONCORRENCIA DE RELEASES)
+
+  NUNCA rodar dois pipelines simultaneamente contra a mesma Base Vetorial.
+  Se uma release chega durante execucao de outra, ela e enfileirada (FIFO).
+  Lock exclusivo com timeout (4h) para prevenir stale locks apos crash.
+
+  Por que serializar:
+    - Escritas concorrentes no mesmo indice podem corromper dados
+    - Transacoes concorrentes em Neo4j podem causar deadlocks
+    - Verificacao de consistencia seria invalida com escritas paralelas
+
+  Para detalhamento: ver SPEC-E03 (Gestao de Concorrencia)
+
+3.6. CHUNKING SEMANTICO COM HERANCA DE METADADOS
+
+  Chunks sao a unidade de busca. Cada chunk herda TODOS os metadados do
+  documento pai (incluindo confidentiality). Sem heranca, filtros
+  pre-retrieval nao funcionam e dados confidenciais podem vazar.
+
+  Decisoes-chave:
+    - Divisao por headings (fronteiras semanticas naturais)
+    - Faixa 300-800 tokens (equilibrio precisao vs contexto)
+    - Estrategia adaptativa por doc_type
+    - Decisao adiada: chunking hierarquico (reconsiderar se Recall@10 < 70%)
+
+3.7. PERSISTENCIA VIA UPSERT (NAO DELETE + RECREATE)
+
+  UPSERT preserva relacoes externas do Document que podem ter sido
+  enriquecidas por outros pipelines. DELETE + RECREATE destruiria essas
+  relacoes. Para documentos atualizados, apenas chunks sao substituidos.
+
+3.8. VALIDACAO BLOQUEANTE NO PARSE
+
+  Documentos com front matter invalido sao REJEITADOS. Preferimos rejeitar
+  a poluir a Base Vetorial. Documentos rejeitados geram alerta mas nao
+  bloqueiam os demais.
+
+================================================================================
+4. ALTERNATIVAS DESCARTADAS
+================================================================================
+
+4.1. Pipeline em streaming (processamento continuo por commit)
+  Descartada: commits intermediarios geram ingestoes parciais; sem conceito
+  de "conjunto aprovado"; impossibilita rollback coerente.
+
+4.2. Pipeline batch diario (cron)
+  Descartada: desperdicio (re-processa inalterados); latencia alta (mudanca
+  so disponivel no dia seguinte); sem vinculo com release.
+
+4.3. Chunking por tamanho fixo (sem headings)
+  Descartada: ignora estrutura semantica; corta frases no meio; perde
+  contexto de headings; mistura temas no mesmo chunk.
+
+4.4. Embeddings sob demanda (lazy/cache-aside)
+  Descartada: primeira busca lenta; indice HNSW precisa de vetores
+  pre-computados; complexidade de cache invalidation.
+
+4.5. Delete + Recreate (em vez de Upsert)
+  Descartada: perda de relacoes externas; downtime durante reprocessamento;
+  desperdicio de recursos; sem idempotencia.
+
+================================================================================
+5. CONSEQUENCIAS
+================================================================================
+
+Positivas:
+  - Pipeline previsivel e reprodutivel (mesma entrada = mesma saida)
+  - Idempotencia elimina riscos de re-execucao
+  - Observabilidade completa de cada execucao
+  - Re-indexacao sem downtime (Blue/Green)
+  - Suporte a Track A e B do ADR-002 (Cloud e On-Prem)
+  - Limpeza automatica de orfaos
+  - Trigger por release garante que so conhecimento aprovado e indexado
+  - Chunking adaptativo por doc_type maximiza qualidade de retrieval
+  - Heranca de metadados viabiliza filtros pre-retrieval (ADR-004)
+
+Negativas / Trade-offs:
+  - Complexidade de implementacao (7 etapas com logica propria)
+  - Re-indexacao Blue/Green requer espaco temporario (2 indices simultaneos)
+  - Validacao bloqueante pode rejeitar documentos com problemas menores
+  - Latencia de horas para releases grandes (>1000 documentos)
+  - Estrategias de chunking por doc_type requerem manutencao
+
+Riscos:
+  - Hash collision (SHA-256): probabilidade negligivel (2^128)
+  - Embedding model deprecated: mitigacao via Track B como fallback
+  - Manifesto desatualizado: mitigacao via validacao automatica no PR
+  - Base Vetorial indisponivel: mitigacao via retry com backoff + alertas
+
+================================================================================
+6. IMPLEMENTACAO (ALTO NIVEL)
+================================================================================
+
+Alinhado com o rollout do CLAUDE.md:
+
+  Fase 1 (MVP):
+    Etapas 1-5 basicas, chunking por headings, 1 modelo de embedding,
+    indices basicos, observabilidade minima (logs + contadores)
+
+  Fase 2 (Metadados):
+    Validacao de front matter (ADR-005), heranca completa de metadados,
+    indices compostos, full-text index
+
+  Fase 3 (Knowledge Graph):
+    Relacoes (System, Module, Owner, etc.), deteccao de referencias,
+    DocumentFamily e relacoes temporais
+
+  Fase 4 (GraphRAG Corporativo):
+    Chunking adaptativo por doc_type, Blue/Green, observabilidade completa,
+    verificacao de consistencia automatizada
+
+================================================================================
+7. REFERENCIAS
+================================================================================
+
+ADRs relacionados:
+  - ADR-001: Pipeline de Geracao de Conhecimento em 4 Fases
+  - ADR-002: Soberania de Dados (Track A/B para embedding)
+  - ADR-003: Modelo de Dados da Base Vetorial (nos e relacoes)
+  - ADR-005: Front Matter como Contrato de Metadados (schema de validacao)
+  - ADR-007: Retrieval Hibrido e Agentes (consome a Base Vetorial)
+  - ADR-009: Selecao de Modelos de Embedding (BGE-M3, limites de tokens)
+
+Documentos de processo extraidos deste ADR:
+  - SPEC-E01: Pipeline de Ingestao Detalhado (7 etapas com entradas/saidas)
+  - SPEC-E02: Trigger de Ingestao (JSON schema, fluxo, manifesto)
+  - SPEC-E03: Gestao de Concorrencia (lock, fila, timeout)
+  - SPEC-E04: Garantias de Idempotencia (hash, upsert, dedup)
+  - RNB-E06: Reindexacao Blue/Green (procedimento completo)
+
+================================================================================
+FIM DO DOCUMENTO — ADR-006
+================================================================================

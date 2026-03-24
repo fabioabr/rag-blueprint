@@ -1,0 +1,437 @@
+================================================================================
+ADR-007 -- Retrieval Hibrido e Agentes Especializados
+================================================================================
+Status:         proposed
+Data:           21/03/2026
+Revisao:        23/03/2026 (reescrita para separar decisao de processo)
+Decisor:        Fabio A. B. Rodrigues
+
+IDENTIFICACAO
+  ID:                ADR-007
+  Tipo:              ADR (Architecture Decision Record)
+  Sistema:           RAG Corporativo
+  Modulo:            Busca e Recuperacao de Conhecimento
+  Dominio:           Arquitetura
+  Owner:             fabio
+  Time:              arquitetura
+  Status:            proposed
+  Confidencialidade: internal
+  Tags:              adr, retrieval, busca-hibrida, agentes, reranking, rrf,
+                     seguranca, rag, base-vetorial
+
+REFERENCIAS CRUZADAS
+  Depende de:      ADR-001 (Pipeline de Geracao de Conhecimento em 4 Fases)
+                   ADR-002 (Soberania e Residencia de Dados -- Track A/B)
+                   ADR-003 (Modelo de Dados da Base Vetorial)
+                   ADR-004 (Seguranca e Classificacao de Dados)
+  Relaciona-se:    ADR-005 (Front Matter como Contrato de Metadados)
+                   ADR-006 (Pipeline de Ingestao -- popula a Base Vetorial)
+                   ADR-009 (Selecao de Modelos de Embedding e Reranking)
+
+DOCUMENTOS EXTRAIDOS (processo e especificacao)
+  SPEC-G01:  Estrategias de Busca (detalhe das 3 buscas: vetorial, keyword, grafo)
+  SPEC-G02:  Pipeline de Query (query rewriting, expansion, decomposition)
+  SPEC-G03:  Catalogo de Agentes (configuracao, filtros, prompts, dispatcher)
+  RNB-G04:   Feedback Loop (avaliacao, gaps, metricas de qualidade)
+
+
+================================================================================
+1. SUMARIO
+================================================================================
+
+Esta ADR estabelece a arquitetura de retrieval hibrido para o RAG Corporativo,
+combinando tres estrategias de busca paralelas (vetorial, keyword e grafo) com
+fusao por Reciprocal Rank Fusion (RRF) e reranking por cross-encoder.
+
+Define tambem a decisao de adotar agentes especializados por dominio
+(Arquitetura, Operacoes, Negocios) em vez de um agente unico generalista,
+com dispatcher automatico baseado em classificacao de intencao.
+
+O detalhamento de processo e especificacao foi extraido para documentos
+dedicados: SPEC-G01 (estrategias de busca), SPEC-G02 (pipeline de query),
+SPEC-G03 (catalogo de agentes) e RNB-G04 (feedback loop).
+
+
+================================================================================
+2. CONTEXTO
+================================================================================
+
+Posicao no pipeline de 4 fases (ADR-001):
+
+  Esta ADR atua na FASE 4 -- Geracao do RAG (Camada Ouro). O .md final
+  gerado na Fase 3 (fonte da verdade, nunca editado manualmente) e a
+  origem dos dados que a busca hibrida consulta.
+
+A Base Vetorial, populada pelo pipeline definido na ADR-006, contem:
+  - Nos :Document com metadados ricos (front matter, vigencia, classificacao)
+  - Nos :Chunk com embeddings vetoriais e conteudo textual
+  - Grafo de relacoes (System, Module, Owner, Team, Task, GlossaryTerm)
+  - Indices vetoriais, full-text e compostos
+
+O problema central e: COMO recuperar o conhecimento certo para a pergunta
+certa, no contexto certo, com a seguranca certa.
+
+Por que busca vetorial simples NAO e suficiente:
+
+  1. TERMOS EXATOS: a busca vetorial "entende" semantica mas NAO garante
+     match de termos exatos. Se um usuario busca "BACEN 4893", o embedding
+     pode ser proximo de chunks sobre "regulamentacao bancaria" genericamente,
+     mas nao necessariamente do chunk que contem "4893" literalmente. Em
+     contexto regulatorio, retornar a resolucao ERRADA e inaceitavel.
+
+  2. RELACOES ESTRUTURAIS: a busca vetorial nao "sabe" que o Modulo de
+     Cobranca DEPENDE do Modulo de Pagamentos. Perguntas de impacto nao
+     conseguem navegar relacoes DEPENDS_ON -- so retornam chunks
+     textualmente similares.
+
+  3. CODIGOS E SIGLAS: embeddings tratam codigos como "SKU-12345" ou
+     "CU-4567" como texto generico. A probabilidade de discriminar entre
+     "SKU-12345" e "SKU-12346" e baixa. Full-text search resolve isso
+     trivialmente.
+
+  4. CONTEXTO ORGANIZACIONAL: perguntas como "quem e responsavel pelo
+     sistema X?" sao perguntas de GRAFO, nao de similaridade textual.
+
+Perfis de consumo:
+
+  Desenvolvedores, tech leads, gestores e agentes de IA fazem perguntas
+  de natureza diferente. A estrategia de retrieval precisa acomodar todos.
+
+Requisitos transversais:
+
+  - TEMPORALIDADE: queries como "qual era a regra antes de janeiro?" exigem
+    filtro por valid_from/valid_until (ADR-001)
+  - SEGURANCA: filtros de confidentiality devem ser aplicados ANTES da busca,
+    nao depois (ADR-004). Fail-closed obrigatorio.
+
+
+================================================================================
+3. DECISAO
+================================================================================
+
+--------------------------------------------------------------------------------
+3.1 BUSCA HIBRIDA -- 3 Estrategias Paralelas
+--------------------------------------------------------------------------------
+
+Decidimos combinar 3 tipos de busca executados em PARALELO, cujos resultados
+sao fundidos e re-ranqueados para produzir a lista final de chunks relevantes.
+
+Justificativa: cada tipo de busca tem forcas e fraquezas complementares.
+Nenhuma isoladamente cobre todos os cenarios de perguntas corporativas.
+A combinacao maximiza o recall sem sacrificar excessivamente a precisao.
+
+  BUSCA 1 -- VECTOR SEARCH (similaridade coseno):
+    Entende semantica e sinonimos. Tolerante a erros de digitacao.
+    Fraco para termos exatos (codigos, numeros, siglas).
+
+  BUSCA 2 -- KEYWORD SEARCH (full-text / BM25):
+    Match exato de termos, codigos e identificadores.
+    Nao entende semantica nem tolera sinonimos.
+
+  BUSCA 3 -- GRAPH SEARCH (navegacao relacional):
+    Descobre relacoes estruturais (dependencias, responsaveis, versoes).
+    Depende de entidades existirem no grafo; sem entidade, nao retorna nada.
+
+Detalhamento de mecanismos, parametros e exemplos: ver SPEC-G01.
+
+Tratamento de falhas: se uma das 3 buscas falhar (timeout, erro de indice),
+o sistema DEVE continuar com as buscas restantes. O RRF opera sobre 2 listas
+em vez de 3 -- degradacao graciosa. Se TODAS falharem, retornar erro explicito.
+Cada falha e registrada em log (pilar D da ADR-001, observabilidade).
+
+--------------------------------------------------------------------------------
+3.2 FUSAO -- Reciprocal Rank Fusion (RRF)
+--------------------------------------------------------------------------------
+
+Decidimos usar RRF com k=60 para fundir os resultados das 3 buscas.
+
+  Formula: score_RRF(d) = SUM( 1 / (k + rank_i(d)) ) para cada busca i
+
+Justificativa:
+  - As 3 buscas usam escalas de scoring incompativeis (coseno 0-1, BM25 0-inf,
+    grafo sem score). RRF opera sobre POSICOES, nao scores, eliminando a
+    necessidade de normalizacao.
+  - k=60 vem do paper original de Cormack, Clarke e Buettcher (2009), validado
+    empiricamente como equilibrio entre valorizar posicoes altas sem exagerar
+    a diferenca e sem achatar resultados.
+  - Os top ~50 candidatos do RRF seguem para reranking.
+
+--------------------------------------------------------------------------------
+3.3 RERANKING -- Cross-Encoder
+--------------------------------------------------------------------------------
+
+Decidimos adotar reranking obrigatorio com cross-encoder apos o RRF.
+
+Justificativa:
+  - First-stage retrieval (vetor + keyword + grafo) avalia query e chunk
+    SEPARADAMENTE. O cross-encoder faz ATENCAO CRUZADA entre todos os tokens
+    da query e do chunk, capturando negacoes, contexto condicional e parafrases.
+  - Experimentos em information retrieval mostram melhoria de NDCG@10 em
+    10-30% sobre first-stage retrieval.
+  - O custo (latencia 200-500ms + custo de API) e justificado pela melhoria.
+
+Dual-track (conforme ADR-002 e ADR-009):
+  - Track A (Cloud): Cohere Rerank v3 -- para chunks public/internal
+  - Track B (On-prem): BGE-Reranker-v2-m3 (BAAI) -- obrigatorio para
+    chunks restricted/confidential
+  - Selecao detalhada de modelos: delegada para ADR-009.
+
+--------------------------------------------------------------------------------
+3.4 FILTRAGEM TEMPORAL
+--------------------------------------------------------------------------------
+
+Decidimos aplicar filtro temporal em TODAS as buscas, usando os campos
+valid_from/valid_until dos documentos.
+
+Justificativa: o conhecimento corporativo muda ao longo do tempo. Regulacoes
+sao atualizadas, politicas revisadas. O sistema precisa responder tanto "qual e
+a regra atual?" quanto "qual era a regra antes de janeiro?".
+
+Decisoes-chave:
+  - Se contexto temporal detectado na query: filtrar chunks pela data de
+    referencia extraida.
+  - Se contexto temporal NAO detectado: assumir data atual, excluir documentos
+    com status "deprecated".
+  - Navegacao SUPERSEDES para perguntas sobre "versao anterior".
+
+--------------------------------------------------------------------------------
+3.5 FILTRO DE SEGURANCA PRE-RETRIEVAL
+--------------------------------------------------------------------------------
+
+Decidimos aplicar filtros de seguranca ANTES de qualquer busca (pre-filtering),
+nunca apos (pos-filtering).
+
+Justificativa: se o chunk chega ao contexto do LLM, ele pode vazar na resposta
+-- mesmo que o prompt diga "nao mencione informacoes confidenciais". A unica
+garantia e impedir que chunks confidenciais sejam sequer considerados.
+
+Decisoes-chave:
+  - Filtro aplicado no indice (pre-filtering) nas 3 buscas.
+  - Na busca por grafo, documentos acima do nivel do usuario sao tratados como
+    INEXISTENTES (relacoes cortadas).
+  - REGRA DE OURO: "Se o filtro de seguranca falhar, o sistema DEVE retornar
+    ZERO resultados -- NUNCA resultados sem filtro." Fail-closed, nao fail-open.
+  - Auditoria obrigatoria: toda query logada com user_id, niveis solicitados,
+    niveis aplicados e quantidade de chunks filtrados.
+  - Niveis: public, internal, restricted, confidential (conforme ADR-004).
+
+--------------------------------------------------------------------------------
+3.6 PROCESSAMENTO DE QUERY
+--------------------------------------------------------------------------------
+
+Decidimos adotar um pipeline de pre-processamento com 3 etapas antes das
+buscas: query rewriting, query expansion e query decomposition.
+
+Justificativa: usuarios fazem perguntas vagas, com erros ou usando jargao
+informal. O pre-processamento melhora o recall e a precisao das buscas.
+
+Decisoes-chave:
+  - Query rewriting: LLM reformula a query para versao mais precisa. Dual-track
+    conforme ADR-002 (Track A cloud para queries public/internal, Track B
+    on-prem para restricted/confidential).
+  - Query expansion: 2-3 variacoes da query cobrindo sinonimos e reformulacoes.
+    Limite intencional para nao diluir precisao.
+  - Query decomposition: perguntas complexas decompostas em sub-queries
+    atomicas processadas independentemente.
+
+Detalhamento de implementacao: ver SPEC-G02.
+
+--------------------------------------------------------------------------------
+3.7 AGENTES ESPECIALIZADOS POR DOMINIO
+--------------------------------------------------------------------------------
+
+Decidimos adotar agentes especializados por dominio com dispatcher automatico,
+em vez de um agente unico generalista.
+
+Agentes definidos:
+  - Architecture Agent: decisoes arquiteturais, dependencias, trade-offs
+  - Operations Agent: procedimentos, troubleshooting, runbooks, tarefas
+  - Business Agent: regras de negocio, politicas, responsaveis, glossario
+
+Cada agente e configurado com filtros de doc_type/domain pre-definidos,
+relacoes de grafo priorizadas e system prompt especializado.
+
+Dispatcher: classifica a intencao da query via LLM leve com few-shot examples.
+Se classificacao ambigua, encaminha para TODOS os agentes e funde resultados
+via RRF.
+
+Detalhamento de configuracao: ver SPEC-G03.
+
+--------------------------------------------------------------------------------
+3.8 FEEDBACK LOOP
+--------------------------------------------------------------------------------
+
+Decidimos adotar um ciclo de retroalimentacao continua para identificar
+problemas e melhorar o sistema de retrieval.
+
+Decisoes-chave:
+  - Avaliacao do usuario apos cada resposta (positiva/negativa + comentario)
+  - Deteccao automatica de gaps: queries sem resultado recorrentes (3+ vezes)
+    geram alertas para o time de governanca.
+  - Revisao de respostas mal avaliadas (automatica e humana) com classificacao
+    de causa raiz.
+  - Dashboard de metricas semanais.
+
+Detalhamento de procedimentos: ver RNB-G04.
+
+
+================================================================================
+4. ALTERNATIVAS DESCARTADAS
+================================================================================
+
+4.1 Busca vetorial pura (sem keyword ou grafo):
+  Falha para termos exatos (codigos, numeros, siglas), nao navega relacoes
+  estruturais, nao atende 100% dos cenarios de perguntas corporativas.
+
+4.2 Busca keyword pura (Elasticsearch/BM25):
+  Nao entende semantica, nao tolera sinonimos, nao encontra respostas quando
+  vocabulario difere. Eficaz para termos exatos mas insuficiente para
+  perguntas conceituais.
+
+4.3 Reranking com LLM generativo (em vez de cross-encoder):
+  Latencia muito alta (~2-5s vs ~200ms do cross-encoder). Custo desproporcional.
+  Cross-encoder e treinado especificamente para ranking e supera LLMs
+  generativos nessa funcao especifica.
+
+4.4 Agente unico generalista:
+  Resultados diluidos (busca em 100% do corpus em vez de ~30% filtrado).
+  Instrucoes genericas geram respostas rasas. Impossibilita metricas por
+  dominio.
+
+4.5 Fusao por weighted average (em vez de RRF):
+  Normalizacao de scores e fragil -- distribuicao muda conforme corpus e query.
+  Pesos fixos nao se adaptam ao tipo de pergunta. RRF e mais robusto e nao
+  exige normalizacao.
+
+4.6 Query rewriting sem query expansion:
+  Reformulacao melhora precisao mas nao recall. Expansion gera variacoes que
+  cobrem vocabulario alternativo, aumentando a chance de encontrar chunks
+  relevantes.
+
+
+================================================================================
+5. CONSEQUENCIAS
+================================================================================
+
+5.1 Positivas:
+
+  - Retrieval hibrido cobre TODOS os tipos de perguntas corporativas
+    (semanticas, exatas, relacionais)
+  - RRF combina resultados sem necessidade de normalizacao de scores
+  - Reranking melhora qualidade do top-K em 10-30%
+  - Filtragem temporal permite consultas historicas
+  - Seguranca pre-retrieval com fail-closed garante zero vazamento
+  - Agentes especializados maximizam precisao por dominio
+  - Feedback loop identifica gaps e permite melhoria continua
+  - Dispatcher automatico elimina necessidade de o usuario classificar
+    sua pergunta
+
+5.2 Negativas / Trade-offs:
+
+  - Latencia total maior que busca vetorial pura:
+    * Busca vetorial pura: ~50ms
+    * Hibrido completo: ~500-1000ms (3 buscas + RRF + reranking)
+    * Trade-off aceito: qualidade >>> velocidade para conhecimento corporativo
+  - Complexidade de implementacao: 3 tipos de busca, fusao, reranking,
+    3 agentes, dispatcher -- muitos componentes para manter
+  - Custo operacional: reranking cloud (Track A) tem custo por query;
+    reranking local (Track B) exige GPU
+  - Dispatcher pode errar: classificacao incorreta direciona para agente
+    errado; fallback com todos os agentes mitiga parcialmente
+
+5.3 Riscos:
+
+  - MODELO DE EMBEDDING DEGRADA: se o modelo gera embeddings de menor
+    qualidade (ex: atualizacao silenciosa do provider), a busca vetorial
+    retorna resultados piores. Mitigacao: golden set rodado semanalmente
+    com alerta se Recall@10 cair.
+
+  - GRAFO INCOMPLETO: se relacoes nao sao criadas (pipeline de ingestao
+    falhando parcialmente), a busca por grafo retorna menos resultados.
+    Mitigacao: verificacao de consistencia na ADR-006, Etapa 7.
+
+  - FEEDBACK ENVIESADO: usuarios podem avaliar negativamente respostas
+    corretas ou positivamente respostas erradas. Mitigacao: revisao humana
+    de amostra, golden set como ground truth.
+
+  - LATENCIA EM PICO: se as 3 buscas sao lentas simultaneamente (Base
+    Vetorial sob carga), latencia pode ultrapassar 2s. Mitigacao: timeout
+    por busca (500ms), retornar resultados parciais se uma busca falhar.
+
+
+================================================================================
+6. IMPLEMENTACAO (alto nivel)
+================================================================================
+
+Faseamento alinhado com rollout geral do projeto:
+
+  Fase 1 (MVP):
+    - Busca vetorial simples (sem keyword, sem grafo)
+    - Sem reranking (resultados diretos do vetor)
+    - Sem agentes especializados (ponto unico de busca)
+    - Sem query processing
+    - Filtro de seguranca basico (public/internal)
+
+  Fase 2 (Metadados):
+    - Filtros por system, module, domain
+    - Filtro de seguranca completo (4 niveis)
+    - Filtragem temporal basica (valid_from/valid_until)
+
+  Fase 3 (Knowledge Graph):
+    - Busca por grafo (navegacao de relacoes)
+    - RRF (fusao de vetor + grafo)
+    - Query rewriting basico
+
+  Fase 4 (GraphRAG Corporativo):
+    - Busca keyword (full-text)
+    - RRF completo (3 buscas)
+    - Reranking com cross-encoder
+    - Agentes especializados + Dispatcher
+    - Query expansion e decomposition
+    - Feedback loop completo
+    - Dashboard de metricas
+
+
+================================================================================
+7. REFERENCIAS
+================================================================================
+
+ADRs relacionadas:
+  - ADR-001: Pipeline de Geracao de Conhecimento em 4 Fases
+  - ADR-002: Soberania de Dados (Track A/B para modelos de reranking e LLMs)
+  - ADR-003: Modelo de Dados da Base Vetorial (nos e relacoes consultadas)
+  - ADR-004: Seguranca e Classificacao de Dados (filtros pre-retrieval)
+  - ADR-005: Front Matter Obrigatorio (metadados usados como filtro)
+  - ADR-006: Pipeline de Ingestao (popula a Base Vetorial consultada)
+  - ADR-009: Selecao de Modelos de Embedding e Reranking
+
+Documentos extraidos desta ADR:
+  - SPEC-G01: Estrategias de Busca
+  - SPEC-G02: Pipeline de Query
+  - SPEC-G03: Catalogo de Agentes
+  - RNB-G04:  Feedback Loop
+
+Blueprints relacionados:
+  - B05 -- Knowledge Graph: modelo de grafo usado na busca por grafo
+  - B06 -- Retrieval e Ranking: conceitos originais expandidos neste ADR
+  - B14 -- Seguranca: requisitos de classificacao de dados
+
+Referencias tecnicas:
+  - Reciprocal Rank Fusion:
+    Cormack, Clarke, Buettcher (2009). "Reciprocal Rank Fusion outperforms
+    Condorcet and individual Rank Learning Methods"
+  - Cross-Encoder Reranking:
+    Nogueira, Cho (2019). "Passage Re-ranking with BERT"
+  - HNSW (indice vetorial):
+    Malkov, Yashunin (2018). "Efficient and robust approximate nearest
+    neighbor search using Hierarchical Navigable Small World graphs"
+  - BM25 (keyword search):
+    Robertson, Zaragoza (2009). "The Probabilistic Relevance Framework:
+    BM25 and Beyond"
+  - Cohere Rerank: https://docs.cohere.com/docs/rerank-2
+  - BGE-Reranker: https://huggingface.co/BAAI/bge-reranker-v2-m3
+
+
+================================================================================
+FIM DO DOCUMENTO -- ADR-007
+================================================================================

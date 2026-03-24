@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADR-001 — Pipeline de Geracao de Conhecimento em 4 Fases</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --color-primary-dark:    #023E8A;
+      --color-primary:         #0077B6;
+      --color-primary-light:   #90E0EF;
+      --color-primary-lighter: #CAF0F8;
+      --color-black:       #0A0A0A;
+      --color-gray-900:    #333333;
+      --color-gray-600:    #666666;
+      --color-gray-200:    #E0E0E0;
+      --color-gray-100:    #F5F5F5;
+      --color-white:       #FFFFFF;
+      --color-success: #2E7D32;
+      --color-warning: #F9A825;
+      --color-error:   #C62828;
+      --color-info:    #0077B6;
+      --font-family:      'Inter', system-ui, sans-serif;
+      --font-family-mono: 'JetBrains Mono', monospace;
+      --space-xs:  4px;
+      --space-sm:  8px;
+      --space-md:  16px;
+      --space-lg:  24px;
+      --space-xl:  32px;
+      --space-2xl: 48px;
+      --space-3xl: 64px;
+      --radius-sm:   4px;
+      --radius-md:   8px;
+      --radius-lg:   12px;
+      --shadow-1: 0 1px 3px rgba(0,0,0,0.08);
+      --shadow-2: 0 4px 12px rgba(0,0,0,0.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-family);
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--color-gray-900);
+      background: var(--color-gray-100);
+    }
+
+    /* Cover */
+    .cover {
+      background: linear-gradient(135deg, var(--color-primary-dark), var(--color-primary));
+      color: var(--color-white);
+      padding: var(--space-3xl) var(--space-xl);
+      text-align: center;
+    }
+    .cover h1 {
+      font-size: 40px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: var(--space-md);
+    }
+    .cover .subtitle {
+      font-size: 20px;
+      color: var(--color-primary-lighter);
+      margin-bottom: var(--space-lg);
+    }
+    .cover .meta-badges {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+    .cover .badge {
+      background: rgba(255,255,255,0.15);
+      color: var(--color-primary-lighter);
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* Page wrapper */
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--color-white);
+      box-shadow: var(--shadow-2);
+    }
+
+    /* Header / Footer */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-sm) var(--space-xl);
+      border-bottom: 1px solid var(--color-primary-dark);
+      font-size: 12px;
+      color: var(--color-gray-600);
+    }
+    .page-footer {
+      text-align: center;
+      padding: var(--space-sm) var(--space-xl);
+      font-size: 12px;
+      color: var(--color-gray-600);
+      border-top: 1px solid var(--color-gray-200);
+    }
+
+    /* Content area */
+    .content {
+      padding: var(--space-2xl) var(--space-xl);
+    }
+
+    /* Headings per design system 11.4 */
+    h1 {
+      color: var(--color-primary-dark);
+      font-size: 24px;
+      font-weight: 700;
+      border-bottom: 2px solid var(--color-primary);
+      padding-bottom: var(--space-sm);
+      margin-top: var(--space-2xl);
+      margin-bottom: var(--space-lg);
+    }
+    h2 {
+      color: var(--color-primary);
+      font-size: 20px;
+      font-weight: 600;
+      margin-top: var(--space-xl);
+      margin-bottom: var(--space-md);
+    }
+    h3 {
+      color: var(--color-gray-900);
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: var(--space-lg);
+      margin-bottom: var(--space-sm);
+    }
+
+    p {
+      margin-bottom: var(--space-md);
+    }
+
+    a {
+      color: var(--color-primary);
+      text-decoration: underline;
+    }
+
+    strong { font-weight: 600; }
+
+    code {
+      font-family: var(--font-family-mono);
+      font-size: 13px;
+      background: var(--color-primary-lighter);
+      color: var(--color-primary-dark);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+    }
+
+    /* Tables per design system 5.5 */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: var(--space-lg);
+      font-size: 14px;
+    }
+    thead th {
+      background: var(--color-primary-dark);
+      color: var(--color-white);
+      font-weight: 600;
+      text-align: left;
+      padding: 12px 16px;
+    }
+    tbody td {
+      padding: 12px 16px;
+      border: 1px solid var(--color-gray-200);
+    }
+    tbody tr:nth-child(odd) { background: var(--color-white); }
+    tbody tr:nth-child(even) { background: var(--color-primary-lighter); }
+    tbody tr:hover { background: rgba(2, 62, 138, 0.1); }
+
+    /* Ordered / Unordered lists */
+    ul, ol {
+      margin-bottom: var(--space-md);
+      padding-left: var(--space-lg);
+    }
+    li {
+      margin-bottom: var(--space-xs);
+    }
+    li ul, li ol {
+      margin-top: var(--space-xs);
+      margin-bottom: 0;
+    }
+
+    /* Info callout per design system 11.4 */
+    .callout {
+      padding: var(--space-md);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-lg);
+    }
+    .callout-info {
+      background: var(--color-primary-lighter);
+      border-left: 4px solid var(--color-primary);
+    }
+    .callout-warning {
+      background: #FFF8E1;
+      border-left: 4px solid var(--color-warning);
+    }
+    .callout-error {
+      background: #FFEBEE;
+      border-left: 4px solid var(--color-error);
+    }
+    .callout-success {
+      background: #E8F5E9;
+      border-left: 4px solid var(--color-success);
+    }
+    .callout-quote {
+      background: var(--color-gray-100);
+      border-left: 4px solid var(--color-primary-dark);
+      font-style: italic;
+    }
+
+    /* Phase cards */
+    .phase-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      margin-bottom: var(--space-md);
+      box-shadow: var(--shadow-1);
+    }
+    .phase-card:hover {
+      box-shadow: var(--shadow-2);
+      border-color: var(--color-primary);
+    }
+    .phase-card .phase-label {
+      display: inline-block;
+      background: var(--color-primary-dark);
+      color: var(--color-white);
+      font-size: 12px;
+      font-weight: 600;
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-sm);
+    }
+    .phase-card h3 {
+      margin-top: 0;
+      color: var(--color-primary-dark);
+    }
+
+    /* Badge inline */
+    .badge-inline {
+      display: inline-block;
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge-default { background: var(--color-primary-lighter); color: var(--color-primary-dark); }
+    .badge-success { background: #E8F5E9; color: var(--color-success); }
+    .badge-warning { background: #FFF8E1; color: #F57F17; }
+    .badge-error   { background: #FFEBEE; color: var(--color-error); }
+
+    /* Consequence blocks */
+    .consequences-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+    @media (max-width: 768px) {
+      .consequences-grid { grid-template-columns: 1fr; }
+    }
+    .consequence-block {
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+    }
+    .consequence-block h3 { margin-top: 0; }
+    .consequence-positive {
+      background: #E8F5E9;
+      border-left: 4px solid var(--color-success);
+    }
+    .consequence-negative {
+      background: #FFF8E1;
+      border-left: 4px solid var(--color-warning);
+    }
+
+    /* Section divider */
+    .section-divider {
+      border: none;
+      border-top: 2px solid var(--color-primary-light);
+      margin: var(--space-2xl) 0;
+    }
+
+    /* Discarded alternative */
+    .alt-discarded {
+      background: var(--color-gray-100);
+      border-left: 4px solid var(--color-gray-600);
+      padding: var(--space-md);
+      margin-bottom: var(--space-md);
+      border-radius: var(--radius-sm);
+    }
+    .alt-discarded h3 {
+      color: var(--color-gray-600);
+      margin-top: 0;
+    }
+
+    /* Risk item */
+    .risk-item {
+      background: #FFEBEE;
+      border-left: 4px solid var(--color-error);
+      padding: var(--space-md);
+      margin-bottom: var(--space-sm);
+      border-radius: var(--radius-sm);
+    }
+    .risk-item strong { color: var(--color-error); }
+    .risk-item em { color: var(--color-success); font-style: normal; font-weight: 600; }
+
+    /* TOC */
+    .toc {
+      background: var(--color-primary-lighter);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      margin-bottom: var(--space-xl);
+    }
+    .toc h2 {
+      color: var(--color-primary-dark);
+      margin-top: 0;
+      font-size: 18px;
+    }
+    .toc ol { padding-left: var(--space-lg); }
+    .toc li { margin-bottom: var(--space-xs); }
+    .toc a { color: var(--color-primary-dark); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+
+    /* Print */
+    @media print {
+      body { background: white; }
+      .page { box-shadow: none; }
+      .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      thead th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- COVER -->
+  <div class="cover">
+    <h1>Pipeline de Geracao de Conhecimento em 4 Fases</h1>
+    <div class="subtitle">ADR-001 &mdash; RAG Corporativo &mdash; Banco Patria</div>
+    <div class="meta-badges">
+      <span class="badge">BETA-001</span>
+      <span class="badge">Status: proposed</span>
+      <span class="badge">Decisor: Fabio A. B. Rodrigues</span>
+      <span class="badge">Revisao: 23/03/2026</span>
+    </div>
+  </div>
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <span>ADR-001 &mdash; Pipeline de Geracao de Conhecimento em 4 Fases</span>
+    <span>23/03/2026</span>
+  </div>
+
+  <div class="content">
+
+    <!-- CABECALHO -->
+    <table>
+      <thead>
+        <tr><th>Campo</th><th>Valor</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Status</strong></td><td><span class="badge-inline badge-default">proposed</span></td></tr>
+        <tr><td><strong>Data</strong></td><td>21/03/2026</td></tr>
+        <tr><td><strong>Revisao</strong></td><td>23/03/2026 (reescrita para separar decisao de processo)</td></tr>
+        <tr><td><strong>Decisor</strong></td><td>Fabio A. B. Rodrigues</td></tr>
+        <tr><td><strong>Escopo</strong></td><td>RAG Corporativo &mdash; Pipeline completo de geracao de conhecimento</td></tr>
+        <tr><td><strong>Relaciona-se</strong></td><td>ADR-002 (Soberania de Dados), ADR-003 (Modelo de Dados), ADR-005 (Front Matter), ADR-006 (Pipeline de Ingestao), ADR-011 (Segregacao de KBs)</td></tr>
+      </tbody>
+    </table>
+
+    <!-- TOC -->
+    <div class="toc">
+      <h2>Sumario</h2>
+      <ol>
+        <li><a href="#sumario">Sumario</a></li>
+        <li><a href="#contexto">Contexto</a></li>
+        <li><a href="#decisao">Decisao</a></li>
+        <li><a href="#alternativas">Alternativas descartadas</a></li>
+        <li><a href="#consequencias">Consequencias</a></li>
+        <li><a href="#implementacao">Implementacao</a></li>
+        <li><a href="#referencias">Referencias</a></li>
+      </ol>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- 1. SUMARIO -->
+    <h1 id="sumario">1. Sumario</h1>
+    <div class="callout callout-info">
+      <p>Decidimos adotar um pipeline de geracao de conhecimento em <strong>4 fases</strong> com camada intermediaria <code>.beta.md</code> (editavel por humanos e IA) e separacao fisica em <strong>2 repositorios</strong> (workspace editavel + knowledge-base imutavel). O <code>.md</code> final e a <strong>fonte da verdade</strong> para o RAG, gerado exclusivamente por pipeline automatizado e nunca editado manualmente.</p>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- 2. CONTEXTO -->
+    <h1 id="contexto">2. Contexto</h1>
+    <p>O projeto RAG Corporativo precisa transformar fontes diversas (PDFs, e-mails, Confluence, transcricoes, planilhas, etc.) em uma base de conhecimento estruturada para alimentar uma Base Vetorial (Neo4j com grafo + vetor).</p>
+    <p>Um modelo anterior (Bronze/Prata/Ouro, inspirado em data lakehouse) definiu 3 camadas, mas nao enderecava lacunas criticas:</p>
+    <ol>
+      <li><strong>Edicao humana</strong> &mdash; Como permitir que POs, analistas e especialistas enriquecam o conteudo gerado pela IA sem conflitos de sobrescrita.</li>
+      <li><strong>Fonte da verdade</strong> &mdash; Qual artefato e a referencia autoritativa para o RAG. Sem definicao clara, diferentes versoes do mesmo documento circulam sem controle.</li>
+      <li><strong>Segregacao de acesso</strong> &mdash; Como garantir que a fonte da verdade nao seja alterada manualmente, mantendo auditabilidade para ambientes regulados (BACEN, LGPD).</li>
+      <li><strong>Temporalidade</strong> &mdash; Como representar informacoes que mudam ao longo do tempo (leis, regulacoes, politicas internas) sem perder historico.</li>
+      <li><strong>Re-ingestao</strong> &mdash; Como lidar com atualizacoes de fontes sem destruir edicoes humanas ja validadas.</li>
+    </ol>
+
+    <h2>Pilares que guiam o pipeline</h2>
+    <table>
+      <thead>
+        <tr><th>Pilar</th><th>Descricao</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>A</strong></td><td>Segregacao de responsabilidades (quem faz o que em cada etapa)</td></tr>
+        <tr><td><strong>B</strong></td><td>Desacoplamento de etapas (falha em uma nao impacta outra)</td></tr>
+        <tr><td><strong>C</strong></td><td>Metodo garantidor de qualidade (gates entre fases)</td></tr>
+        <tr><td><strong>D</strong></td><td>Observabilidade e Governanca (rastreio, metricas, auditoria)</td></tr>
+        <tr><td><strong>E</strong></td><td>Clareza da informacao (documentos autoexplicativos)</td></tr>
+        <tr><td><strong>F</strong></td><td>Versionamento (controle de versao via Git)</td></tr>
+        <tr><td><strong>G</strong></td><td>Rastreabilidade de origem (linhagem completa)</td></tr>
+        <tr><td><strong>H</strong></td><td>Reprodutibilidade (mesmo input = mesmo output)</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="section-divider">
+
+    <!-- 3. DECISAO -->
+    <h1 id="decisao">3. Decisao</h1>
+
+    <h2>3.1. Pipeline em 4 fases sequenciais</h2>
+    <p>O pipeline e composto por 4 fases com fronteiras claras e gates de qualidade:</p>
+
+    <div class="phase-card">
+      <span class="phase-label">Fase 1</span>
+      <h3>Selecao dos Insumos</h3>
+      <p>Definir quais fontes sao relevantes para o contexto de negocio. Disponibilizar arquivos para processamento com manifesto de ingestao (origem, formato, data, responsavel, confidencialidade).</p>
+      <p><strong>Fontes:</strong> externas (internet, documentacoes de fornecedores, leis), internas (Sharepoint, Confluence, Jira, e-mails, transcricoes, PDFs, planilhas), repositorios de codigo, wikis, post-mortems.</p>
+    </div>
+
+    <div class="phase-card">
+      <span class="phase-label">Fase 2</span>
+      <h3>Mineracao e Preparacao (<code>.beta.md</code>)</h3>
+      <p>Pipeline de IA gera/atualiza <code>.beta.md</code> a partir dos insumos. Humanos editam via Obsidian (compativel, com front matter leve). Blocos <code>LOCKED</code> protegem edicoes humanas contra sobrescrita da IA. Multiplas rodadas de enriquecimento (IA + humano) ate consolidacao.</p>
+    </div>
+
+    <div class="phase-card">
+      <span class="phase-label">Fase 3</span>
+      <h3>Geracao da Origem Consolidada (<code>.md</code> final)</h3>
+      <p>Pipeline promove <code>.beta.md</code> para <code>.md</code> final com front matter rico. O <code>.md</code> final <strong>NUNCA</strong> e editado manualmente &mdash; sempre gerado por pipeline.</p>
+      <p>Aprovacao via PR no repositorio knowledge-base (PO + Arquiteto). Release com tag para controlar o que entra na Base Vetorial.</p>
+      <div class="callout callout-info">
+        <strong>Gate de qualidade:</strong> QA score &ge; 90%. Documentos com score 80-89% podem ser promovidos se motivos estiverem documentados em <code>qa_notes</code>. Abaixo de 80% e bloqueante.
+      </div>
+    </div>
+
+    <div class="phase-card">
+      <span class="phase-label">Fase 4</span>
+      <h3>Geracao do RAG (Base Vetorial)</h3>
+      <p>Pipeline de ingestao (ADR-006) constroi/atualiza banco vetorial, disparado por release tag no repositorio knowledge-base. Versao da release registrada no header dos dados na Base Vetorial.</p>
+    </div>
+
+    <div class="callout callout-quote">
+      <strong>Por que 4 fases e nao 3 (Bronze/Prata/Ouro):</strong>
+      <ul>
+        <li>O modelo de 3 camadas nao previa edicao humana intermediaria</li>
+        <li>Sem camada beta, qualquer correcao exige reprocessamento completo</li>
+        <li>A fase 2 (beta) permite coexistencia de IA e curadoria humana</li>
+        <li>A separacao entre beta (editavel) e final (imutavel) garante que a fonte da verdade nunca e corrompida por edicao manual</li>
+      </ul>
+    </div>
+    <p>Para detalhamento de estrutura de pastas dos repositorios: ver <strong>DOC-A01</strong> (Guia de Estrutura de Pastas)</p>
+
+    <h2>3.2. Dois repositorios fisicamente separados</h2>
+    <table>
+      <thead>
+        <tr><th>Repositorio</th><th>Proposito</th><th>Quem edita</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>rag-workspace</code></td><td><code>.beta.md</code> em trabalho, fontes brutas, logs</td><td>Humanos (Obsidian) + IA (pipeline)</td></tr>
+        <tr><td><code>rag-knowledge-base</code></td><td><code>.md</code> finais (fonte da verdade), apresentacoes, releases</td><td>Pipeline apenas (service account)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-quote">
+      <strong>Por que 2 repos e nao 1 com branch protection:</strong>
+      <ul>
+        <li>Branches podem confundir equipes nao-tecnicas</li>
+        <li>Risco de merge acidental em repositorio unico</li>
+        <li>Para ambiente regulado (BACEN, LGPD), separacao fisica e mais segura e auditavel do que separacao logica por branches</li>
+        <li>Obsidian com Git requer plugin; separacao fisica simplifica o setup</li>
+      </ul>
+    </div>
+    <p>Wikilinks sao segregados: <code>.beta.md</code> so navega para <code>.beta.md</code>, <code>.md</code> so navega para <code>.md</code>. Isso evita referencias cruzadas entre artefatos de maturidade diferente.</p>
+    <p>Para detalhamento de estrutura de pastas: ver <strong>DOC-A01</strong> (Guia de Estrutura de Pastas)</p>
+
+    <h2>3.3. Protecao de edicoes humanas (Blocos LOCKED)</h2>
+    <p>Humanos podem marcar trechos no <code>.beta.md</code> como protegidos contra sobrescrita da IA usando marcadores <code>LOCKED:START</code> / <code>LOCKED:END</code>.</p>
+
+    <h3>Regras</h3>
+    <ul>
+      <li>IA pode adicionar conteudo novo fora dos blocos locked</li>
+      <li>IA <strong>NUNCA</strong> altera conteudo dentro de <code>LOCKED:START</code>/<code>LOCKED:END</code></li>
+      <li>IA pode sugerir mudancas em blocos locked como comentario separado</li>
+      <li>Humano pode remover o lock a qualquer momento</li>
+    </ul>
+
+    <div class="callout callout-quote">
+      <strong>Por que blocos inline e nao arquivos separados por autor:</strong>
+      <ul>
+        <li>Separar em <code>.ai.beta.md</code> + <code>.human.beta.md</code> triplica arquivos</li>
+        <li>Merge entre dois arquivos e mais complexo que protecao inline</li>
+        <li>Blocos LOCKED sao granulares (protegem trechos, nao documentos inteiros)</li>
+        <li>Humano ve e edita um unico arquivo no Obsidian</li>
+      </ul>
+    </div>
+    <p>Para regras detalhadas de edicao de arquivos beta: ver <strong>RNB-B07</strong> (Edicao de Arquivos Beta)</p>
+
+    <h2>3.4. Front matter em dois niveis (leve + rico)</h2>
+    <p>O <code>.beta.md</code> usa <strong>front matter leve</strong> (<code>id</code>, <code>title</code>, <code>domain</code>, <code>sources</code>, <code>tags</code>, <code>status</code>, <code>confidentiality</code>, <code>last_enrichment</code>, <code>last_human_edit</code>). O <code>.md</code> final usa <strong>front matter rico</strong> com governanca completa (<code>system</code>, <code>module</code>, <code>owner</code>, <code>team</code>, QA, temporalidade, linhagem).</p>
+    <div class="callout callout-warning">
+      <strong>Excecao:</strong> <code>confidentiality</code> e incluido no front matter leve porque ADR-002 precisa dele para rotear pela trilha correta (cloud vs on-prem) desde a Fase 2. Seguranca nao pode esperar a Fase 3.
+    </div>
+    <p>Para schemas completos: ver <strong>ADR-005</strong> (Front Matter como Contrato).</p>
+
+    <h2>3.5. conversion_quality como gate de automacao</h2>
+    <p>Cada fonte convertida para <code>.beta.md</code> recebe um score <code>conversion_quality</code> (0-100%) que expressa confianca na fidelidade da extracao. O score e calculado como media ponderada de sinais especificos por formato de origem.</p>
+
+    <h3>Uso do score</h3>
+    <table>
+      <thead>
+        <tr><th>Faixa</th><th>Acao</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="badge-inline badge-success">&ge; 80%</span></td><td>Ingestao automatica no <code>.beta.md</code></td></tr>
+        <tr><td><span class="badge-inline badge-warning">30-79%</span></td><td><code>.beta.md</code> gerado com <code>status: draft</code>, revisao humana obrigatoria</td></tr>
+        <tr><td><span class="badge-inline badge-error">&lt; 30%</span></td><td>Fonte rejeitada, log de erro gerado</td></tr>
+      </tbody>
+    </table>
+    <p>Para detalhamento de sinais por formato: ver <strong>SPEC-B05</strong> (Conversao de Formatos RAW)</p>
+
+    <h2>3.6. Temporalidade do conhecimento</h2>
+    <p>Modelo em 3 camadas para versionamento semantico de documentos:</p>
+
+    <div class="phase-card">
+      <span class="phase-label">Camada 1</span>
+      <h3>No <code>.md</code> (front matter)</h3>
+      <p><code>valid_from</code>, <code>valid_until</code> (null = vigente), <code>superseded_by</code>, <code>supersedes</code>.</p>
+    </div>
+
+    <div class="phase-card">
+      <span class="phase-label">Camada 2</span>
+      <h3>Na Base Vetorial (relacoes temporais)</h3>
+      <ul>
+        <li><code>(:Document)-[:SUPERSEDES]-&gt;(:Document)</code></li>
+        <li><code>(:Document)-[:VERSION_OF]-&gt;(:DocumentFamily)</code></li>
+        <li>No <code>:DocumentFamily</code> com <code>family_id</code>, <code>title</code>, <code>current_version</code></li>
+      </ul>
+    </div>
+
+    <div class="phase-card">
+      <span class="phase-label">Camada 3</span>
+      <h3>No retrieval (filtro temporal)</h3>
+      <p>Detectar contexto temporal na pergunta, filtrar por vigencia antes da busca vetorial, assumir data atual se nao houver contexto explicito.</p>
+    </div>
+
+    <div class="callout callout-quote">
+      <strong>Por que temporalidade explicita e nao versionamento implicito via Git:</strong>
+      <ul>
+        <li>Git versiona <strong>arquivos</strong>, nao <strong>vigencia</strong> de regras de negocio</li>
+        <li>Uma lei pode ser vigente de 2024 a 2026 independente de commits</li>
+        <li>Retrieval precisa filtrar por data de consulta, nao por data de commit</li>
+        <li>DocumentFamily permite consultas "como era antes?"</li>
+      </ul>
+    </div>
+    <p>Para politica completa de temporalidade: ver <strong>SPEC-B06</strong> (Politica de Temporalidade)</p>
+
+    <h2>3.7. Re-ingestao com merge (nao sobrescrita)</h2>
+    <p>Quando uma fonte e atualizada (ex: PDF v2), o pipeline faz <strong>merge inteligente</strong> em vez de sobrescrita total:</p>
+    <ol>
+      <li><strong>Diff de fontes</strong> &mdash; comparar v1 com v2, gerar lista de mudancas</li>
+      <li><strong>Analise de impacto</strong> &mdash; classificar cada trecho do <code>.beta.md</code>:
+        <ul>
+          <li><em>Sem conflito</em> (nao editado por humano): atualizar automaticamente</li>
+          <li><em>Possivel conflito</em> (editado por humano E fonte mudou): alerta <code>CONFLICT</code></li>
+          <li><em>Conflito em bloco locked</em>: nao alterar, registrar alerta <code>LOCKED-CONFLICT</code></li>
+        </ul>
+      </li>
+      <li><strong>Relatorio</strong> &mdash; quantos trechos atualizados, conflitos para revisao</li>
+    </ol>
+
+    <div class="callout callout-quote">
+      <strong>Por que merge e nao sobrescrita:</strong>
+      <ul>
+        <li>Sobrescrita destruiria edicoes humanas validadas</li>
+        <li>Blocos LOCKED seriam ignorados em sobrescrita total</li>
+        <li>Merge preserva trabalho humano e sinaliza conflitos para revisao</li>
+        <li>Humano sempre tem a palavra final</li>
+      </ul>
+    </div>
+    <p>Para procedimento completo de re-ingestao: ver <strong>RNB-E05</strong> (Reingestao com Merge)</p>
+
+    <hr class="section-divider">
+
+    <!-- 4. ALTERNATIVAS DESCARTADAS -->
+    <h1 id="alternativas">4. Alternativas descartadas</h1>
+
+    <div class="alt-discarded">
+      <h3>4.1. Modelo Bronze/Prata/Ouro (3 camadas)</h3>
+      <p><strong>Descartada:</strong> nao preve edicao humana; mistura preparacao e verdade final na camada prata; sem temporalidade; sem re-ingestao com merge. Conceitos uteis (conversion_quality, linhagem, formatos suportados) foram absorvidos neste ADR.</p>
+    </div>
+
+    <div class="alt-discarded">
+      <h3>4.2. Pipeline direto sem camada beta (fontes &rarr; .txt &rarr; .md)</h3>
+      <p><strong>Descartada:</strong> nao permite edicao humana antes da promocao; qualquer correcao exige reprocessamento completo; nao suporta fontes diversas (apenas .txt); insuficiente para cenario corporativo com curadoria humana.</p>
+    </div>
+
+    <div class="alt-discarded">
+      <h3>4.3. Repositorio unico com branch protection</h3>
+      <p><strong>Descartada:</strong> branches confundem equipes nao-tecnicas; risco de merge acidental; para ambiente regulado (BACEN, LGPD), separacao fisica e mais segura e auditavel; Obsidian com Git requer plugin.</p>
+    </div>
+
+    <div class="alt-discarded">
+      <h3>4.4. Arquivos separados por autor (.ai.beta.md + .human.beta.md)</h3>
+      <p><strong>Descartada:</strong> triplicacao de arquivos; merge nao-trivial entre dois arquivos; humano precisa saber qual arquivo editar; nao escala. Blocos LOCKED resolvem o conflito de forma mais simples e granular.</p>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- 5. CONSEQUENCIAS -->
+    <h1 id="consequencias">5. Consequencias</h1>
+
+    <div class="consequences-grid">
+      <div class="consequence-block consequence-positive">
+        <h3>Positivas</h3>
+        <ul>
+          <li>Edicao humana e enriquecimento por IA coexistem sem conflito</li>
+          <li>Fonte da verdade (<code>.md</code>) e imutavel e auditavel</li>
+          <li>Separacao fisica de repos garante compliance regulatorio</li>
+          <li>Temporalidade permite consultas historicas ("como era antes?")</li>
+          <li>Re-ingestao nao destroi trabalho humano</li>
+          <li>Pipeline e reprodutivel (pilar H) e rastreavel (pilar G)</li>
+          <li>Gate de qualidade (QA score) previne promocao de conteudo imaturo</li>
+        </ul>
+      </div>
+      <div class="consequence-block consequence-negative">
+        <h3>Negativas / Trade-offs</h3>
+        <ul>
+          <li>Complexidade aumenta: 2 repos, 2 niveis de front matter, blocos LOCKED</li>
+          <li>Curva de aprendizado: equipes precisam entender o fluxo beta &rarr; md</li>
+          <li>Pipeline de promocao (Fase 3) e mais complexo que conversao direta</li>
+          <li>Wikilinks segregados impede navegacao cross-repo no Obsidian</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>Riscos</h2>
+
+    <div class="risk-item">
+      <strong>Blocos LOCKED esquecidos:</strong> humano edita sem marcar LOCKED, IA sobrescreve na re-ingestao. <em>Mitigacao:</em> safety net via git diff (edicao humana detectada sempre prevalece).
+    </div>
+    <div class="risk-item">
+      <strong>Acumulo de conflitos:</strong> alertas CONFLICT nao revisados. <em>Mitigacao:</em> relatorio de re-ingestao com contagem de conflitos pendentes.
+    </div>
+    <div class="risk-item">
+      <strong>Dessincronia entre repos:</strong> <code>.beta.md</code> evolui mas promocao para <code>.md</code> atrasa. <em>Mitigacao:</em> promocao sob demanda controlada por tags/releases. Nao ha cadencia fixa &mdash; o Curador decide quando os <code>.beta.md</code> estao prontos.
+    </div>
+    <div class="risk-item">
+      <strong>Temporalidade incorreta:</strong> <code>valid_from</code>/<code>valid_until</code> preenchidos errado. <em>Mitigacao:</em> validacao de schema no pipeline de promocao.
+    </div>
+    <div class="risk-item">
+      <strong>Complexidade do merge:</strong> re-ingestao com diff pode gerar falsos positivos. <em>Mitigacao:</em> humano sempre tem a palavra final.
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- 6. IMPLEMENTACAO -->
+    <h1 id="implementacao">6. Implementacao (alto nivel)</h1>
+    <p>Alinhado com o rollout do CLAUDE.md:</p>
+
+    <div class="phase-card">
+      <span class="phase-label">Fase 1 &mdash; MVP</span>
+      <h3>Estrutura base</h3>
+      <p>Estrutura dos 2 repos, templates basicos, pipeline de captura de fontes para geracao de <code>.beta.md</code>, gate de <code>conversion_quality</code> basico.</p>
+    </div>
+    <div class="phase-card">
+      <span class="phase-label">Fase 2 &mdash; Metadados</span>
+      <h3>Front matter e edicao humana</h3>
+      <p>Front matter leve validado, blocos LOCKED funcionais, edicao humana via Obsidian configurada, pipeline de mineracao com multiplas rodadas.</p>
+    </div>
+    <div class="phase-card">
+      <span class="phase-label">Fase 3 &mdash; Knowledge Graph</span>
+      <h3>Promocao e temporalidade</h3>
+      <p>Pipeline de promocao (beta &rarr; md) com front matter rico, PR automatico, QA score como gate, temporalidade (<code>valid_from</code>/<code>valid_until</code>, DocumentFamily).</p>
+    </div>
+    <div class="phase-card">
+      <span class="phase-label">Fase 4 &mdash; GraphRAG Corporativo</span>
+      <h3>Merge e observabilidade</h3>
+      <p>Re-ingestao com merge completo, diff inteligente, resolucao de conflitos, dashboards de cobertura e maturidade do conhecimento.</p>
+    </div>
+    <p>Para plano de implementacao detalhado: ver <strong>DOC-I03</strong> (Plano de Implementacao Pipeline)</p>
+
+    <hr class="section-divider">
+
+    <!-- 7. REFERENCIAS -->
+    <h1 id="referencias">7. Referencias</h1>
+
+    <h2>ADRs relacionados</h2>
+    <table>
+      <thead>
+        <tr><th>ADR</th><th>Titulo</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>ADR-002</strong></td><td>Soberania de Dados (roteamento por <code>confidentiality</code>, Track A/B)</td></tr>
+        <tr><td><strong>ADR-003</strong></td><td>Modelo de Dados da Base Vetorial (DocumentFamily, SUPERSEDES)</td></tr>
+        <tr><td><strong>ADR-005</strong></td><td>Front Matter como Contrato de Metadados (2 niveis, schemas)</td></tr>
+        <tr><td><strong>ADR-006</strong></td><td>Pipeline de Ingestao (Fase 4, 7 etapas de ingestao)</td></tr>
+        <tr><td><strong>ADR-007</strong></td><td>Retrieval Hibrido (consome a Base Vetorial com filtros temporais)</td></tr>
+        <tr><td><strong>ADR-009</strong></td><td>Selecao de Modelos de Embedding</td></tr>
+        <tr><td><strong>ADR-010</strong></td><td>Git Flow (releases e tags)</td></tr>
+        <tr><td><strong>ADR-011</strong></td><td>Segregacao de KBs (estrutura de pastas, regras por KB)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Documentos de processo extraidos deste ADR</h2>
+    <table>
+      <thead>
+        <tr><th>Documento</th><th>Titulo</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>DOC-A01</strong></td><td>Guia de Estrutura de Pastas (estrutura dos 2 repos, convencoes)</td></tr>
+        <tr><td><strong>SPEC-B05</strong></td><td>Conversao de Formatos RAW (sinais por formato, formula, gates)</td></tr>
+        <tr><td><strong>SPEC-B06</strong></td><td>Politica de Temporalidade (3 camadas, vigencia, DocumentFamily)</td></tr>
+        <tr><td><strong>RNB-B07</strong></td><td>Edicao de Arquivos Beta (blocos LOCKED, regras, exemplos)</td></tr>
+        <tr><td><strong>RNB-E05</strong></td><td>Reingestao com Merge (diff, analise de impacto, conflitos)</td></tr>
+        <tr><td><strong>DOC-I03</strong></td><td>Plano de Implementacao Pipeline (faseamento, responsaveis)</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+
+  <!-- PAGE FOOTER -->
+  <div class="page-footer">
+    Banco Patria &mdash; ADR-001 &mdash; Pipeline de Geracao de Conhecimento em 4 Fases &mdash; Confidencial Interno
+  </div>
+
+</div>
+
+</body>
+</html>

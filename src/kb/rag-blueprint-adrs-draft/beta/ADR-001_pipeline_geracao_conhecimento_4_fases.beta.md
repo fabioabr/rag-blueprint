@@ -1,0 +1,313 @@
+---
+id: BETA-001
+title: "Pipeline de Geracao de Conhecimento em 4 Fases"
+domain: arquitetura
+confidentiality: internal
+sources:
+  - type: txt
+    origin: "src/kb/rag-blueprint-adrs-draft/draft/ADR-001_pipeline_geracao_conhecimento_4_fases.txt"
+    captured_at: "2026-03-23"
+    conversion_quality: 95
+tags:
+  - pipeline geracao conhecimento
+  - 4 fases
+  - beta md
+  - rag corporativo
+  - base vetorial
+  - mineracao preparacao
+  - fonte da verdade
+  - md final
+  - repositorios separados
+  - rag workspace
+  - rag knowledge base
+  - blocos locked
+  - edicao humana
+  - curadoria humana
+  - front matter leve
+  - front matter rico
+  - conversion quality
+  - gate de qualidade
+  - qa score
+  - temporalidade conhecimento
+  - valid from
+  - valid until
+  - document family
+  - supersedes
+  - re-ingestao merge
+  - diff inteligente
+  - locked conflict
+  - segregacao acesso
+  - wikilinks segregados
+  - obsidian
+  - pipeline promocao
+  - release tag
+  - service account
+  - pr aprovacao
+  - pilares pipeline
+  - segregacao responsabilidades
+  - desacoplamento etapas
+  - observabilidade governanca
+  - clareza informacao
+  - versionamento git
+  - rastreabilidade origem
+  - reprodutibilidade
+  - bronze prata ouro
+  - selecao insumos
+  - manifesto ingestao
+  - confidentiality
+  - rollout faseado
+  - mvp metadados knowledge graph graphrag
+  - compliance regulatorio
+  - bacen lgpd
+  - auditabilidade
+  - enriquecimento ia
+  - fonte bruta
+aliases:
+  - "ADR-001"
+  - "Pipeline 4 Fases"
+status: draft
+last_enrichment: "2026-03-23"
+last_human_edit: "2026-03-23"
+---
+
+## Cabecalho
+
+| Campo | Valor |
+|-------|-------|
+| **Status** | proposed |
+| **Data** | 21/03/2026 |
+| **Revisao** | 23/03/2026 (reescrita para separar decisao de processo) |
+| **Decisor** | Fabio A. B. Rodrigues |
+| **Escopo** | RAG Corporativo — Pipeline completo de geracao de conhecimento |
+| **Relaciona-se** | ADR-002 (Soberania de Dados), ADR-003 (Modelo de Dados), ADR-005 (Front Matter), ADR-006 (Pipeline de Ingestao), ADR-011 (Segregacao de KBs) |
+
+## 1. Sumario
+
+Decidimos adotar um pipeline de geracao de conhecimento em **4 fases** com camada intermediaria `.beta.md` (editavel por humanos e IA) e separacao fisica em **2 repositorios** (workspace editavel + knowledge-base imutavel). O `.md` final e a **fonte da verdade** para o RAG, gerado exclusivamente por pipeline automatizado e nunca editado manualmente.
+
+## 2. Contexto
+
+O projeto RAG Corporativo precisa transformar fontes diversas (PDFs, e-mails, Confluence, transcricoes, planilhas, etc.) em uma base de conhecimento estruturada para alimentar uma Base Vetorial (Neo4j com grafo + vetor).
+
+Um modelo anterior (Bronze/Prata/Ouro, inspirado em data lakehouse) definiu 3 camadas, mas nao enderecava lacunas criticas:
+
+1. **Edicao humana** — Como permitir que POs, analistas e especialistas enriquecam o conteudo gerado pela IA sem conflitos de sobrescrita.
+2. **Fonte da verdade** — Qual artefato e a referencia autoritativa para o RAG. Sem definicao clara, diferentes versoes do mesmo documento circulam sem controle.
+3. **Segregacao de acesso** — Como garantir que a fonte da verdade nao seja alterada manualmente, mantendo auditabilidade para ambientes regulados (BACEN, LGPD).
+4. **Temporalidade** — Como representar informacoes que mudam ao longo do tempo (leis, regulacoes, politicas internas) sem perder historico.
+5. **Re-ingestao** — Como lidar com atualizacoes de fontes sem destruir edicoes humanas ja validadas.
+
+### Pilares que guiam o pipeline
+
+| Pilar | Descricao |
+|-------|-----------|
+| **A** | Segregacao de responsabilidades (quem faz o que em cada etapa) |
+| **B** | Desacoplamento de etapas (falha em uma nao impacta outra) |
+| **C** | Metodo garantidor de qualidade (gates entre fases) |
+| **D** | Observabilidade e Governanca (rastreio, metricas, auditoria) |
+| **E** | Clareza da informacao (documentos autoexplicativos) |
+| **F** | Versionamento (controle de versao via Git) |
+| **G** | Rastreabilidade de origem (linhagem completa) |
+| **H** | Reprodutibilidade (mesmo input = mesmo output) |
+
+## 3. Decisao
+
+### 3.1. Pipeline em 4 fases sequenciais
+
+O pipeline e composto por 4 fases com fronteiras claras e gates de qualidade:
+
+**Fase 1 — Selecao dos Insumos**
+Definir quais fontes sao relevantes para o contexto de negocio. Disponibilizar arquivos para processamento com manifesto de ingestao (origem, formato, data, responsavel, confidencialidade). Fontes: externas (internet, documentacoes de fornecedores, leis), internas (Sharepoint, Confluence, Jira, e-mails, transcricoes, PDFs, planilhas), repositorios de codigo, wikis, post-mortems.
+
+**Fase 2 — Mineracao e Preparacao (.beta.md)**
+Pipeline de IA gera/atualiza `.beta.md` a partir dos insumos. Humanos editam via Obsidian (compativel, com front matter leve). Blocos `LOCKED` protegem edicoes humanas contra sobrescrita da IA. Multiplas rodadas de enriquecimento (IA + humano) ate consolidacao.
+
+**Fase 3 — Geracao da Origem Consolidada (.md final)**
+Pipeline promove `.beta.md` para `.md` final com front matter rico. O `.md` final **NUNCA** e editado manualmente — sempre gerado por pipeline. Aprovacao via PR no repositorio knowledge-base (PO + Arquiteto). Release com tag para controlar o que entra na Base Vetorial. Gate de qualidade: QA score >= 90%. Documentos com score 80-89% podem ser promovidos se motivos estiverem documentados em `qa_notes`. Abaixo de 80% e bloqueante.
+
+**Fase 4 — Geracao do RAG (Base Vetorial)**
+Pipeline de ingestao (ADR-006) constroi/atualiza banco vetorial, disparado por release tag no repositorio knowledge-base. Versao da release registrada no header dos dados na Base Vetorial.
+
+**Por que 4 fases e nao 3 (Bronze/Prata/Ouro):**
+- O modelo de 3 camadas nao previa edicao humana intermediaria
+- Sem camada beta, qualquer correcao exige reprocessamento completo
+- A fase 2 (beta) permite coexistencia de IA e curadoria humana
+- A separacao entre beta (editavel) e final (imutavel) garante que a fonte da verdade nunca e corrompida por edicao manual
+
+Para detalhamento de estrutura de pastas dos repositorios: ver DOC-A01 (Guia de Estrutura de Pastas)
+
+### 3.2. Dois repositorios fisicamente separados
+
+| Repositorio | Proposito | Quem edita |
+|-------------|-----------|------------|
+| `rag-workspace` | `.beta.md` em trabalho, fontes brutas, logs | Humanos (Obsidian) + IA (pipeline) |
+| `rag-knowledge-base` | `.md` finais (fonte da verdade), apresentacoes, releases | Pipeline apenas (service account) |
+
+**Por que 2 repos e nao 1 com branch protection:**
+- Branches podem confundir equipes nao-tecnicas
+- Risco de merge acidental em repositorio unico
+- Para ambiente regulado (BACEN, LGPD), separacao fisica e mais segura e auditavel do que separacao logica por branches
+- Obsidian com Git requer plugin; separacao fisica simplifica o setup
+
+Wikilinks sao segregados: `.beta.md` so navega para `.beta.md`, `.md` so navega para `.md`. Isso evita referencias cruzadas entre artefatos de maturidade diferente.
+
+Para detalhamento de estrutura de pastas: ver DOC-A01 (Guia de Estrutura de Pastas)
+
+### 3.3. Protecao de edicoes humanas (Blocos LOCKED)
+
+Humanos podem marcar trechos no `.beta.md` como protegidos contra sobrescrita da IA usando marcadores `LOCKED:START` / `LOCKED:END`.
+
+**Regras:**
+- IA pode adicionar conteudo novo fora dos blocos locked
+- IA **NUNCA** altera conteudo dentro de `LOCKED:START`/`LOCKED:END`
+- IA pode sugerir mudancas em blocos locked como comentario separado
+- Humano pode remover o lock a qualquer momento
+
+**Por que blocos inline e nao arquivos separados por autor:**
+- Separar em `.ai.beta.md` + `.human.beta.md` triplica arquivos
+- Merge entre dois arquivos e mais complexo que protecao inline
+- Blocos LOCKED sao granulares (protegem trechos, nao documentos inteiros)
+- Humano ve e edita um unico arquivo no Obsidian
+
+Para regras detalhadas de edicao de arquivos beta: ver RNB-B07 (Edicao de Arquivos Beta)
+
+### 3.4. Front matter em dois niveis (leve + rico)
+
+O `.beta.md` usa **front matter leve** (`id`, `title`, `domain`, `sources`, `tags`, `status`, `confidentiality`, `last_enrichment`, `last_human_edit`). O `.md` final usa **front matter rico** com governanca completa (`system`, `module`, `owner`, `team`, QA, temporalidade, linhagem).
+
+**Excecao:** `confidentiality` e incluido no front matter leve porque ADR-002 precisa dele para rotear pela trilha correta (cloud vs on-prem) desde a Fase 2. Seguranca nao pode esperar a Fase 3.
+
+Para schemas completos: ver ADR-005 (Front Matter como Contrato).
+
+### 3.5. conversion_quality como gate de automacao
+
+Cada fonte convertida para `.beta.md` recebe um score `conversion_quality` (0-100%) que expressa confianca na fidelidade da extracao. O score e calculado como media ponderada de sinais especificos por formato de origem.
+
+**Uso do score:**
+- **>= 80%:** ingestao automatica no `.beta.md`
+- **30-79%:** `.beta.md` gerado com `status: draft`, revisao humana obrigatoria
+- **< 30%:** fonte rejeitada, log de erro gerado
+
+Para detalhamento de sinais por formato: ver SPEC-B05 (Conversao de Formatos RAW)
+
+### 3.6. Temporalidade do conhecimento
+
+Modelo em 3 camadas para versionamento semantico de documentos:
+
+**Camada 1 — No `.md` (front matter):**
+`valid_from`, `valid_until` (null = vigente), `superseded_by`, `supersedes`.
+
+**Camada 2 — Na Base Vetorial (relacoes temporais):**
+- `(:Document)-[:SUPERSEDES]->(:Document)`
+- `(:Document)-[:VERSION_OF]->(:DocumentFamily)`
+- No `:DocumentFamily` com `family_id`, `title`, `current_version`
+
+**Camada 3 — No retrieval (filtro temporal):**
+Detectar contexto temporal na pergunta, filtrar por vigencia antes da busca vetorial, assumir data atual se nao houver contexto explicito.
+
+**Por que temporalidade explicita e nao versionamento implicito via Git:**
+- Git versiona **arquivos**, nao **vigencia** de regras de negocio
+- Uma lei pode ser vigente de 2024 a 2026 independente de commits
+- Retrieval precisa filtrar por data de consulta, nao por data de commit
+- DocumentFamily permite consultas "como era antes?"
+
+Para politica completa de temporalidade: ver SPEC-B06 (Politica de Temporalidade)
+
+### 3.7. Re-ingestao com merge (nao sobrescrita)
+
+Quando uma fonte e atualizada (ex: PDF v2), o pipeline faz **merge inteligente** em vez de sobrescrita total:
+
+1. **Diff de fontes** — comparar v1 com v2, gerar lista de mudancas
+2. **Analise de impacto** — classificar cada trecho do `.beta.md`:
+   - *Sem conflito* (nao editado por humano): atualizar automaticamente
+   - *Possivel conflito* (editado por humano E fonte mudou): alerta `CONFLICT`
+   - *Conflito em bloco locked*: nao alterar, registrar alerta `LOCKED-CONFLICT`
+3. **Relatorio** — quantos trechos atualizados, conflitos para revisao
+
+**Por que merge e nao sobrescrita:**
+- Sobrescrita destruiria edicoes humanas validadas
+- Blocos LOCKED seriam ignorados em sobrescrita total
+- Merge preserva trabalho humano e sinaliza conflitos para revisao
+- Humano sempre tem a palavra final
+
+Para procedimento completo de re-ingestao: ver RNB-E05 (Reingestao com Merge)
+
+## 4. Alternativas descartadas
+
+### 4.1. Modelo Bronze/Prata/Ouro (3 camadas)
+
+**Descartada:** nao preve edicao humana; mistura preparacao e verdade final na camada prata; sem temporalidade; sem re-ingestao com merge. Conceitos uteis (conversion_quality, linhagem, formatos suportados) foram absorvidos neste ADR.
+
+### 4.2. Pipeline direto sem camada beta (fontes -> .txt -> .md)
+
+**Descartada:** nao permite edicao humana antes da promocao; qualquer correcao exige reprocessamento completo; nao suporta fontes diversas (apenas .txt); insuficiente para cenario corporativo com curadoria humana.
+
+### 4.3. Repositorio unico com branch protection
+
+**Descartada:** branches confundem equipes nao-tecnicas; risco de merge acidental; para ambiente regulado (BACEN, LGPD), separacao fisica e mais segura e auditavel; Obsidian com Git requer plugin.
+
+### 4.4. Arquivos separados por autor (.ai.beta.md + .human.beta.md)
+
+**Descartada:** triplicacao de arquivos; merge nao-trivial entre dois arquivos; humano precisa saber qual arquivo editar; nao escala. Blocos LOCKED resolvem o conflito de forma mais simples e granular.
+
+## 5. Consequencias
+
+### Positivas
+
+- Edicao humana e enriquecimento por IA coexistem sem conflito
+- Fonte da verdade (`.md`) e imutavel e auditavel
+- Separacao fisica de repos garante compliance regulatorio
+- Temporalidade permite consultas historicas ("como era antes?")
+- Re-ingestao nao destroi trabalho humano
+- Pipeline e reprodutivel (pilar H) e rastreavel (pilar G)
+- Gate de qualidade (QA score) previne promocao de conteudo imaturo
+
+### Negativas / Trade-offs
+
+- Complexidade aumenta: 2 repos, 2 niveis de front matter, blocos LOCKED
+- Curva de aprendizado: equipes precisam entender o fluxo beta -> md
+- Pipeline de promocao (Fase 3) e mais complexo que conversao direta
+- Wikilinks segregados impede navegacao cross-repo no Obsidian
+
+### Riscos
+
+- **Blocos LOCKED esquecidos:** humano edita sem marcar LOCKED, IA sobrescreve na re-ingestao. *Mitigacao:* safety net via git diff (edicao humana detectada sempre prevalece).
+- **Acumulo de conflitos:** alertas CONFLICT nao revisados. *Mitigacao:* relatorio de re-ingestao com contagem de conflitos pendentes.
+- **Dessincronia entre repos:** `.beta.md` evolui mas promocao para `.md` atrasa. *Mitigacao:* promocao sob demanda controlada por tags/releases. Nao ha cadencia fixa — o Curador decide quando os `.beta.md` estao prontos.
+- **Temporalidade incorreta:** `valid_from`/`valid_until` preenchidos errado. *Mitigacao:* validacao de schema no pipeline de promocao.
+- **Complexidade do merge:** re-ingestao com diff pode gerar falsos positivos. *Mitigacao:* humano sempre tem a palavra final.
+
+## 6. Implementacao (alto nivel)
+
+Alinhado com o rollout do CLAUDE.md:
+
+- **Fase 1 (MVP):** Estrutura dos 2 repos, templates basicos, pipeline de captura de fontes para geracao de `.beta.md`, gate de `conversion_quality` basico
+- **Fase 2 (Metadados):** Front matter leve validado, blocos LOCKED funcionais, edicao humana via Obsidian configurada, pipeline de mineracao com multiplas rodadas
+- **Fase 3 (Knowledge Graph):** Pipeline de promocao (beta -> md) com front matter rico, PR automatico, QA score como gate, temporalidade (`valid_from`/`valid_until`, DocumentFamily)
+- **Fase 4 (GraphRAG Corporativo):** Re-ingestao com merge completo, diff inteligente, resolucao de conflitos, dashboards de cobertura e maturidade do conhecimento
+
+Para plano de implementacao detalhado: ver DOC-I03 (Plano de Implementacao Pipeline)
+
+## 7. Referencias
+
+### ADRs relacionados
+
+- **ADR-002:** Soberania de Dados (roteamento por `confidentiality`, Track A/B)
+- **ADR-003:** Modelo de Dados da Base Vetorial (DocumentFamily, SUPERSEDES)
+- **ADR-005:** Front Matter como Contrato de Metadados (2 niveis, schemas)
+- **ADR-006:** Pipeline de Ingestao (Fase 4, 7 etapas de ingestao)
+- **ADR-007:** Retrieval Hibrido (consome a Base Vetorial com filtros temporais)
+- **ADR-009:** Selecao de Modelos de Embedding
+- **ADR-010:** Git Flow (releases e tags)
+- **ADR-011:** Segregacao de KBs (estrutura de pastas, regras por KB)
+
+### Documentos de processo extraidos deste ADR
+
+- **DOC-A01:** Guia de Estrutura de Pastas (estrutura dos 2 repos, convencoes)
+- **SPEC-B05:** Conversao de Formatos RAW (sinais por formato, formula, gates)
+- **SPEC-B06:** Politica de Temporalidade (3 camadas, vigencia, DocumentFamily)
+- **RNB-B07:** Edicao de Arquivos Beta (blocos LOCKED, regras, exemplos)
+- **RNB-E05:** Reingestao com Merge (diff, analise de impacto, conflitos)
+- **DOC-I03:** Plano de Implementacao Pipeline (faseamento, responsaveis)
+
+<!-- conversion_quality: 95 -->

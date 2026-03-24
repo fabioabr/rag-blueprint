@@ -498,6 +498,18 @@ Todo conteúdo DEVE ser em **português brasileiro (pt-BR)**.
 
 ## Caminhos
 
-- **ADRs**: `kb/rag-blueprint-adrs-kb/1 - draft/`
-- **ADR-001 (referência incontestável)**: `kb/rag-blueprint-adrs-kb/1 - draft/ADR-001_pipeline_geracao_conhecimento_4_fases.txt`
-- **Schema de front matter**: `.claude/behavior/schema_front_matter.md`
+**NÃO hardcode paths.** Todos os caminhos são definidos centralmente em `src/assets/main/onboarding.md` (seção 11 — Paths do Projeto). Assets seguem herança definida em `src/assets/mapping.md`.
+
+Ao iniciar, a skill DEVE:
+1. Ler `src/assets/mapping.md` para entender a herança de assets
+2. Ler `src/assets/main/onboarding.md`
+3. Identificar o contexto ativo (seção `paths.contextos`)
+4. Resolver os paths de draft, beta, docs, presentation a partir do contexto
+5. Usar esses paths em todas as operações de leitura/escrita
+
+Exemplo: para o contexto `rag-blueprint-adrs`:
+- Draft: `kb/rag-blueprint-adrs-draft/draft/`
+- Beta: `kb/rag-blueprint-adrs-draft/beta/`
+- Docs: `kb/rag-blueprint-adrs-kb/docs/`
+- Presentation: `kb/rag-blueprint-adrs-kb/presentation/`
+- Assets: `src/assets/main/` (ou override conforme mapping.md)

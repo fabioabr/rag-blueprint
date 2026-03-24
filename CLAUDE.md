@@ -21,33 +21,36 @@ Premissa central:
 ./
 ├── CLAUDE.md                  # Este arquivo
 ├── c.bat                      # Atalho para iniciar Claude Code
+├── docs/                      # GitHub Pages — portal público de apresentações
+│   ├── index.html             # Portal de navegação (lista todos os HTMLs)
+│   ├── assets/                # Logos para o portal
+│   └── adrs/                  # Espelho dos HTMLs de presentation/
 ├── .claude/
 │   └── behavior/
 │       └── ui_ux/
 │           ├── design_system.md           # Design System padrão (cores, tipografia, componentes)
 │           └── template_relatorio_html.md # Template OBRIGATÓRIO para relatórios HTML
-└── Arquitetura/
-    └── rag-blueprint/                     # Blueprint da base de conhecimento GraphRAG
-        ├── 1 - draft/                    # Rascunhos (.txt) — escrita livre, iteração rápida
-        │   ├── blueprint_base_conhecimento_neo4j.txt
-        │   ├── blueprint_rag_corporativo_detalhado.txt
-        │   └── B00_introducao.txt … B16_roadmap_implementacao.txt  # Blueprint modularizado (17 docs)
-        ├── 2 - docs/                     # Documentação formal (.md) — base de conhecimento
-        ├── 3 - presentation/            # Apresentações (.html standalone) — visualização
-        ├── kb/                          # Knowledge Bases temáticas
-        │   ├── rag-blueprint-adrs-kb/           # ADRs como KB (draft .txt → docs .md)
-        │   ├── rag-ingestion-rules-kb/          # Regras do processo de ingestão
-        │   ├── financial-department-rules-kb/    # Regras do departamento financeiro
-        │   └── human-ressource-rules-kb/        # Regras de recursos humanos
-        └── pendings/                    # Itens pendentes de processamento
+└── kb/                                    # Knowledge Bases
+    ├── assets/                            # Assets compartilhados (logos, variáveis, onboarding)
+    │
+    ├── rag-blueprint-adrs-draft/          # PROCESSO — artefatos de trabalho
+    │   ├── draft/                         # Rascunhos (.txt) — escrita livre
+    │   └── beta/                          # Versões beta (.beta.md) — intermediárias
+    │
+    └── rag-blueprint-adrs-kb/             # ENTREGÁVEL — base de conhecimento final
+        ├── docs/                          # Documentação formal (.md)
+        └── presentation/                  # Apresentações (.html standalone)
 ```
 
-- A pasta `Arquitetura/` agrupa blueprints por tema (ex: `rag-blueprint/`), cada um com um pipeline de maturidade:
-  - `1 - draft/` — rascunhos em `.txt`, escrita livre e iteração rápida
-  - `2 - docs/` — documentos formais em `.md`, gerados a partir dos drafts — servem como **base de conhecimento**
-  - `3 - presentation/` — arquivos `.html` standalone gerados para **apresentações**
-  - `kb/` — Knowledge Bases temáticas, cada uma com seu próprio pipeline (`1 - draft/` .txt → `2 - docs/` .md)
-  - `pendings/` — itens pendentes de processamento
+- A pasta `kb/` separa **processo** (draft) de **entregável** (kb):
+  - `*-draft/` — artefatos de trabalho (rascunhos e versões intermediárias)
+    - `draft/` — rascunhos em `.txt`, escrita livre e iteração rápida
+    - `beta/` — versões intermediárias em `.beta.md`, com front matter leve
+  - `*-kb/` — base de conhecimento final (produto acabado)
+    - `docs/` — documentos formais em `.md`, gerados a partir dos betas
+    - `presentation/` — arquivos `.html` standalone para visualização
+  - `assets/` — logos, variáveis e onboarding compartilhados entre KBs
+- A pasta `docs/` (raiz do repo) é o espelho público para GitHub Pages — sincronizada pelo `/prs-writer`
 - A pasta `.claude/behavior/` contém diretrizes comportamentais (ex: design system em `ui_ux/`).
 
 ## Regras de Geração de Materiais
@@ -76,8 +79,8 @@ Consultar o Design System em `.claude/behavior/ui_ux/design_system.md` para core
 
 ## Blueprint Principal
 
-Arquivo original: `Arquitetura/rag-blueprint/1 - draft/blueprint_base_conhecimento_neo4j.txt`
-Versão modularizada: `Arquitetura/rag-blueprint/1 - draft/B0_introducao.txt` a `B9_referencias.txt`
+Arquivo original: `kb/rag-blueprint-adrs-draft/draft/blueprint_base_conhecimento_neo4j.txt`
+Versão modularizada: `kb/rag-blueprint-adrs-draft/draft/B0_introducao.txt` a `B9_referencias.txt`
 
 ### Arquitetura Macro
 
@@ -200,8 +203,11 @@ Para ambientes multi-tenant, considerar: `tenant_id`, `business_unit`, `data_sco
 ## Convenções para Contribuição
 
 - Documentos sempre em pt-BR
-- Novos documentos de arquitetura devem ir em `Arquitetura/<tema>/` (ex: `rag-blueprint/`)
-- Pipeline de maturidade: rascunhos `.txt` em `1 - draft/` → documentos `.md` em `2 - docs/` → apresentações `.html` em `3 - presentation/`
-- Usar front matter completo em qualquer `.md` corporativo (pasta `2 - docs/`)
+- Novas KBs seguem a separação processo/entregável:
+  - `kb/<nome>-draft/` — com subpastas `draft/` e `beta/`
+  - `kb/<nome>-kb/` — com subpastas `docs/` e `presentation/`
+- Pipeline de maturidade: `.txt` em `draft/` → `.beta.md` em `beta/` → `.md` em `docs/` → `.html` em `presentation/`
+- Usar front matter completo em qualquer `.md` corporativo (pasta `docs/`)
 - Ao criar novos blueprints, seguir o mesmo formato e nível de detalhe do blueprint principal
-- ADRs (`.md`) devem ir na pasta `2 - docs/` do tema correspondente
+- ADRs (`.md`) devem ir na pasta `docs/` da KB correspondente
+- Apresentações HTML geradas em `presentation/` devem ser espelhadas em `docs/adrs/` (GitHub Pages)

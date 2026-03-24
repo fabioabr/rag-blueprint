@@ -1,0 +1,250 @@
+================================================================================
+ADR-B05 -- Conversao de Formatos RAW para Markdown
+================================================================================
+Tipo:           ADR
+Origem:         ADR-001 (tabela de conversao de formatos)
+Data:           23/03/2026
+================================================================================
+
+1. VISAO GERAL
+================================================================================
+
+Na Fase 2 do pipeline (ADR-001), fontes diversas sao convertidas para
+.beta.md. Cada formato de origem possui caracteristicas proprias que
+afetam a qualidade da conversao e exigem estrategias diferentes.
+
+Este documento detalha como converter cada formato RAW para Markdown,
+quais sinais medem a qualidade da conversao e quais expectativas de
+fidelidade sao realistas.
+
+
+2. TABELA DE CONVERSAO POR FORMATO
+================================================================================
+
+2.1 MD nativo
+--------------------------------------------------------------------------------
+  Estrategia:    Sem conversao necessaria. Apenas validacao de YAML
+                 front matter e estrutura.
+  Qualidade:     100% (automatico)
+  Observacoes:   Formato ideal. Se a fonte ja e Markdown, o pipeline
+                 apenas valida e adiciona front matter leve.
+
+2.2 PDF texto (texto selecionavel)
+--------------------------------------------------------------------------------
+  Estrategia:    Extracao de texto via parser PDF (ex: PyMuPDF, pdfplumber).
+                 Reconstrucao de headings por analise de fonte/tamanho.
+                 Conversao de tabelas para formato Markdown.
+                 Resolucao de links internos.
+  Qualidade:     Tipicamente 80-95%
+  Sinais:
+    - % caracteres reconhecidos (peso 40%)
+    - Headings preservados (peso 30%)
+    - Tabelas convertidas corretamente (peso 20%)
+    - Links preservados (peso 10%)
+  Riscos:        Colunas duplas (layout de 2 colunas), headers/footers
+                 repetidos, tabelas complexas com merges, watermarks.
+
+2.3 PDF escaneado (OCR)
+--------------------------------------------------------------------------------
+  Estrategia:    OCR via Tesseract, Azure AI Vision ou similar.
+                 Pre-processamento de imagem (deskew, binarizacao).
+                 Pos-processamento linguistico para corrigir erros.
+  Qualidade:     Tipicamente 50-85% (depende da resolucao e qualidade)
+  Sinais:
+    - Confidence do OCR (peso 50%)
+    - Resolucao DPI -- minimo 300 DPI recomendado (peso 20%)
+    - % texto reconhecido vs area de imagem (peso 20%)
+    - Idioma detectado corretamente (peso 10%)
+  Riscos:        Baixa resolucao, documentos manuscritos, ruido na
+                 imagem, multiplos idiomas no mesmo documento.
+
+2.4 DOCX (Microsoft Word)
+--------------------------------------------------------------------------------
+  Estrategia:    Conversao deterministica via pandoc ou python-docx.
+                 Mapeamento de estilos Word para headings Markdown.
+                 Extracao de tabelas, imagens (com alt text).
+  Qualidade:     Tipicamente 90-100% (conversao mais confiavel)
+  Sinais:
+    - Conversao deterministica (peso 30%)
+    - Estilos preservados (peso 30%)
+    - Tabelas convertidas (peso 20%)
+    - Imagens com alt text (peso 20%)
+  Riscos:        Estilos customizados nao mapeados, text boxes,
+                 SmartArt, equacoes complexas, macros.
+
+2.5 XLSX (Microsoft Excel)
+--------------------------------------------------------------------------------
+  Estrategia:    Cada aba vira uma secao Markdown com tabela.
+                 Formulas sao registradas como comentarios ou notas.
+                 Celulas mescladas sao resolvidas (expandidas).
+  Qualidade:     Tipicamente 70-90%
+  Sinais:
+    - Tabelas convertidas corretamente (peso 40%)
+    - Formulas identificadas e documentadas (peso 20%)
+    - Merges resolvidos (peso 20%)
+    - Todas as abas processadas (peso 20%)
+  Riscos:        Formulas complexas, graficos (perdem-se), macros VBA,
+                 formatacao condicional, tabelas dinamicas.
+
+2.6 PPTX (Microsoft PowerPoint)
+--------------------------------------------------------------------------------
+  Estrategia:    Cada slide vira uma secao Markdown (heading + conteudo).
+                 Notas do apresentador sao preservadas como blockquotes.
+                 Imagens descritas por VLM (Vision Language Model).
+                 Ordem logica reconstruida.
+  Qualidade:     Tipicamente 60-85%
+  Sinais:
+    - Slides convertidos (peso 30%)
+    - Notas do apresentador extraidas (peso 25%)
+    - Imagens descritas (peso 25%)
+    - Ordem logica preservada (peso 20%)
+  Riscos:        Slides muito visuais (diagramas, infograficos),
+                 animacoes, slides ocultos, master slides com conteudo.
+
+2.7 Email
+--------------------------------------------------------------------------------
+  Estrategia:    Extracao de headers (From, To, Date, Subject).
+                 Conversao do corpo HTML para Markdown.
+                 Processamento de anexos (cada um como sub-fonte).
+                 Preservacao da thread (encadeamento de respostas).
+  Qualidade:     Tipicamente 75-90%
+  Sinais:
+    - Headers completos (peso 30%)
+    - Corpo HTML->MD com estrutura (peso 30%)
+    - Anexos processados (peso 25%)
+    - Thread preservada (peso 15%)
+  Riscos:        Emails com HTML complexo, imagens inline (base64),
+                 assinaturas confundidas com conteudo, threads longas
+                 com duplicacao de texto.
+
+2.8 Transcricao (audio/video)
+--------------------------------------------------------------------------------
+  Estrategia:    Speech-to-text (STT) via Whisper, Azure Speech, etc.
+                 Identificacao de falantes (diarization).
+                 Insercao de timestamps a cada N segundos ou por turno.
+                 Tratamento de sobreposicao de falas.
+  Qualidade:     Tipicamente 50-80% (muito dependente de audio)
+  Sinais:
+    - WER do STT -- Word Error Rate (peso 40%)
+    - Identificacao de falantes (peso 25%)
+    - Timestamps preservados (peso 15%)
+    - Sobreposicao tratada (peso 20%)
+  Riscos:        Ruido de fundo, multiplos falantes simultaneos,
+                 sotaques, jargao tecnico, audio de baixa qualidade,
+                 reunioes longas (>1h).
+
+2.9 Confluence
+--------------------------------------------------------------------------------
+  Estrategia:    Extracao via API ou export HTML.
+                 Conversao HTML->Markdown preservando estrutura.
+                 Expansao de macros Confluence (code blocks, info panels).
+                 Resolucao de links internos para referencias.
+  Qualidade:     Tipicamente 75-90%
+  Sinais:
+    - Estrutura HTML preservada (peso 30%)
+    - Macros expandidas (peso 25%)
+    - Links internos resolvidos (peso 25%)
+    - Anexos processados (peso 20%)
+  Riscos:        Macros customizadas, plugins de terceiros, paginas
+                 com iframes, conteudo dinamico, restricoes de acesso.
+
+2.10 Web (paginas da internet)
+--------------------------------------------------------------------------------
+  Estrategia:    Extracao de conteudo principal (readability).
+                 Remocao de navegacao, sidebar, footer, ads.
+                 Conversao HTML->Markdown.
+                 Resolucao de links relativos para absolutos.
+  Qualidade:     Tipicamente 70-90%
+  Sinais:
+    - HTML->MD com estrutura preservada (peso 35%)
+    - Navegacao/chrome removido (peso 25%)
+    - Imagens com alt text (peso 20%)
+    - Links resolvidos (peso 20%)
+  Riscos:        SPAs (Single Page Applications), conteudo carregado
+                 via JavaScript, paywalls, captchas, sites com
+                 estrutura nao-semantica.
+
+2.11 JSON / Ticket (Jira, ClickUp)
+--------------------------------------------------------------------------------
+  Estrategia:    Extracao de campos estruturados (titulo, descricao,
+                 status, prioridade, assignee, labels).
+                 Preservacao de historico de mudancas.
+                 Extracao de comentarios com autor e data.
+                 Processamento de anexos.
+  Qualidade:     Tipicamente 85-95% (dados estruturados)
+  Sinais:
+    - Campos extraidos completamente (peso 40%)
+    - Historico preservado (peso 25%)
+    - Comentarios extraidos (peso 20%)
+    - Anexos processados (peso 15%)
+  Riscos:        Custom fields nao mapeados, rich text em descricoes,
+                 workflows customizados, limites de API.
+
+2.12 CSV
+--------------------------------------------------------------------------------
+  Estrategia:    Deteccao de delimitador (virgula, ponto-e-virgula, tab).
+                 Deteccao de encoding (UTF-8, Latin-1, etc.).
+                 Conversao para tabela Markdown.
+                 Inferencia de tipos de dados.
+  Qualidade:     Tipicamente 80-95%
+  Sinais:
+    - Headers identificados (peso 30%)
+    - Tipos inferidos (peso 25%)
+    - Encoding correto (peso 25%)
+    - Delimitador detectado (peso 20%)
+  Riscos:        Campos com quebra de linha, encoding misto, CSVs
+                 sem header, delimitadores ambiguos, arquivos muito
+                 grandes (> 10MB).
+
+2.13 Image
+--------------------------------------------------------------------------------
+  Estrategia:    OCR para texto em imagens.
+                 Descricao por VLM (Vision Language Model) para diagramas
+                 e infograficos.
+                 Validacao de resolucao minima.
+  Qualidade:     Tipicamente 40-75%
+  Sinais:
+    - OCR confidence (peso 50%)
+    - Descricao por VLM (peso 30%)
+    - Resolucao suficiente (peso 20%)
+  Riscos:        Imagens de baixa resolucao, diagramas complexos,
+                 screenshots de codigo, textos curvos ou rotacionados.
+
+2.14 Manual (humano)
+--------------------------------------------------------------------------------
+  Estrategia:    Score definido pelo humano (100% do peso).
+                 O autor escreve diretamente em Markdown e atribui
+                 manualmente o score de qualidade.
+  Qualidade:     Definida pelo autor (tipicamente 90-100%)
+  Sinais:
+    - Julgamento humano (peso 100%)
+  Riscos:        Subjetividade, inflacao de score, falta de calibracao.
+
+
+3. GATES DE QUALIDADE (THRESHOLDS)
+================================================================================
+
+  Score       | Acao
+  ------------|--------------------------------------------------------------
+  >= 80%      | Ingestao automatica. .beta.md gerado sem intervencao humana.
+  30% a 79%   | Revisao humana obrigatoria. .beta.md gerado com flag.
+  < 30%       | Rejeicao. .beta.md NAO gerado. Fonte rejeitada.
+
+Thresholds configuraveis por organizacao.
+
+
+4. BOAS PRATICAS PARA MAXIMIZAR QUALIDADE
+================================================================================
+
+  - Preferir fontes em formato nativo (MD, DOCX) sempre que possivel
+  - Para PDFs, preferir PDFs com texto selecionavel (nao escaneados)
+  - Para transcricoes, usar microfones de qualidade e gravar em ambientes
+    silenciosos
+  - Para imagens, garantir resolucao minima de 300 DPI
+  - Para CSVs, usar UTF-8 como encoding padrao
+  - Documentar manualmente conversion_quality quando a fonte e "manual"
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

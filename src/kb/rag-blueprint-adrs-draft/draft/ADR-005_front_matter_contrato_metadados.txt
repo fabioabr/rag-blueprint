@@ -1,0 +1,259 @@
+================================================================================
+ADR-005 — Front Matter como Contrato de Metadados
+================================================================================
+
+Status:         proposed
+Data:           21/03/2026
+Revisao:        23/03/2026 (reescrita para separar decisao de especificacao)
+Decisor:        Fabio A. B. Rodrigues
+Escopo:         RAG Corporativo — Contrato de metadados entre autores e pipeline
+Depende de:     ADR-001 (Pipeline 4 Fases), ADR-004 (Seguranca e Classificacao)
+
+================================================================================
+1. SUMARIO
+================================================================================
+
+Decidimos adotar front matter YAML como contrato de metadados obrigatorio,
+em dois niveis (leve para .beta.md e rico para .md final), com schema de
+validacao executavel que rejeita documentos invalidos com mensagem explicita.
+O front matter e compativel com Obsidian e segue o padrao da industria.
+
+================================================================================
+2. CONTEXTO
+================================================================================
+
+No pipeline de 4 fases (ADR-001), o front matter YAML conecta o trabalho
+humano (edicao de .beta.md no Obsidian) ao trabalho automatizado (pipeline
+de ingestao que alimenta a Base Vetorial).
+
+Sem front matter valido, o pipeline nao sabe:
+  - O que e o documento (tipo, dominio, sistema)
+  - Quem e responsavel por ele
+  - Qual o nivel de confidencialidade (ADR-004)
+  - Se esta vigente ou foi substituido
+  - De onde veio a informacao (linhagem)
+  - Qual a qualidade da conversao da fonte original
+
+O front matter e um CONTRATO entre 5 atores:
+  - Autores (humanos que editam .beta.md no Obsidian)
+  - Pipeline de Mineracao (IA que enriquece .beta.md na Fase 2)
+  - Pipeline de Promocao (automacao que transforma .beta.md em .md na Fase 3)
+  - Pipeline de Ingestao (automacao que ingere .md na Base Vetorial, ADR-006)
+  - Sistema de Retrieval (agentes que buscam na Base Vetorial, ADR-007)
+
+Se qualquer parte do contrato for violada, o pipeline DEVE rejeitar o
+documento com erro explicito — nunca aceitar silenciosamente dados incompletos.
+
+================================================================================
+3. DECISAO
+================================================================================
+
+3.1. DOIS NIVEIS DE FRONT MATTER (LEVE + RICO)
+
+  Nivel 1 — FRONT MATTER LEVE (.beta.md, repositorio rag-workspace):
+    Contem apenas campos essenciais para edicao humana e enriquecimento pela IA.
+    Intencionalmente simples para nao sobrecarregar autores.
+    Campos: id, title, domain, sources, tags, status, confidentiality,
+    last_enrichment, last_human_edit, aliases.
+
+  Nivel 2 — FRONT MATTER RICO (.md final, repositorio rag-knowledge-base):
+    Contrato completo com governanca, classificacao, temporalidade, QA e
+    linhagem. Gerado automaticamente pelo pipeline de promocao (Fase 3)
+    com enriquecimento dos campos leves.
+    Campos organizados em 8 grupos: Identificacao, Classificacao,
+    Status/Governanca, Temporal, QA, Descoberta, Linhagem, Timestamps.
+
+  Por que 2 niveis e nao 1:
+    - Front matter unico sobrecarregaria autores com campos que nao sabem
+      preencher (system, module, qa_score)
+    - Aumentaria taxa de erros de preenchimento
+    - O .beta.md deve ser SIMPLES para encorajar contribuicao
+    - Campos de governanca preenchidos por humanos podem estar incorretos
+      (ex: classificar PUBLIC algo que deveria ser RESTRICTED)
+
+  Para schema completo campo a campo:
+    ver SPEC-B01 (Schema Front Matter Leve)
+    ver SPEC-B02 (Schema Front Matter Rico)
+
+3.2. CONFIDENTIALITY NO FRONT MATTER LEVE (EXCECAO)
+
+  O campo confidentiality e uma EXCECAO ao principio de "governanca so no
+  .md final". Ele existe desde o .beta.md porque:
+    - ADR-002 usa confidentiality para ROTEAR pela trilha correta (cloud vs
+      on-prem). Sem ele, dados restricted poderiam ir para APIs cloud.
+    - ADR-004 exige classificacao ANTES de qualquer processamento automatizado.
+    - Seguranca nao pode esperar a Fase 3 — risco de vazamento desde a
+      primeira interacao com o documento.
+
+3.3. VALIDACAO BLOQUEANTE COM SCHEMA EXECUTAVEL
+
+  O schema nao e apenas documentacao — e executavel. O pipeline valida
+  automaticamente e REJEITA documentos invalidos.
+
+  Campos bloqueantes: documento rejeitado se ausente ou invalido.
+  Campos nao-bloqueantes: warning emitido, documento aceito.
+
+  Por que bloqueante e nao best-effort:
+    - Em ambiente regulado, "best-effort" nao e aceitavel
+    - Warning sem rejeicao = warning ignorado (experiencia empirica)
+    - Melhor rejeitar e corrigir do que aceitar e descobrir no retrieval
+
+  Documento rejeitado: registrado no log, alerta para governanca, NAO bloqueia
+  demais documentos, pode ser corrigido e re-ingerido na proxima release.
+
+  Para regras de validacao detalhadas:
+    ver SPEC-B03 (Regras de Validacao Front Matter)
+
+3.4. RASTREABILIDADE DE LINHAGEM COMPLETA
+
+  O front matter rico garante rastreabilidade da fonte ate o chunk:
+    - source_format: formato da fonte principal
+    - source_repo: repositorio de origem
+    - source_path: caminho do .beta.md
+    - source_beta_ids: IDs dos .beta.md de origem
+    - conversion_pipeline: qual pipeline gerou o .md
+    - conversion_quality: score de qualidade da conversao (0-100)
+
+  O campo sources no .beta.md registra CADA fonte individual com tipo,
+  origem e data de captura. Permite saber exatamente de onde veio a
+  informacao e quando foi capturada.
+
+3.5. CONVERSION_QUALITY COMO GATE DE AUTOMACAO
+
+  Score de 0-100 calculado por formato de origem. Determina o nivel de
+  intervencao humana necessario:
+    - 90-100%: promocao automatica (confianca alta)
+    - 80-89%: promocao com revisao humana obrigatoria
+    - <80%: rejeicao — requer retrabalho na fonte
+
+  No .beta.md: score POR FONTE (dentro de sources[]).
+  No .md final: score CONSOLIDADO (min das fontes — pior qualidade determina
+  confianca geral).
+
+  Para metricas e sinais por formato:
+    ver SPEC-B04 (Metricas de Conversao)
+
+3.6. TEMPORALIDADE (VALID_FROM / VALID_UNTIL)
+
+  Documentos tem vigencia temporal:
+    - valid_from: data de inicio de vigencia
+    - valid_until: data fim (null = vigente indefinidamente)
+    - supersedes / superseded_by: cadeia de substituicao entre documentos
+
+  Permite consultas historicas: "como funcionava o processo em janeiro?"
+  O retriever filtra por valid_from <= data_consulta AND
+  (valid_until >= data_consulta OR valid_until IS NULL).
+
+3.7. COMPATIBILIDADE COM OBSIDIAN
+
+  Front matter YAML entre marcadores --- e 100% compativel com Obsidian:
+    - Exibido no painel de propriedades
+    - Tags aparecem na busca de tags
+    - Aliases habilitam quick switcher e wikilinks
+    - Nenhuma configuracao adicional necessaria
+
+  O formato YAML e padrao da industria (Hugo, Jekyll, Docusaurus). Se
+  Obsidian for descontinuado, qualquer editor com suporte a YAML funciona.
+
+  Para guia detalhado de uso:
+    ver DOC-A04 (Guia de Uso com Obsidian)
+
+================================================================================
+4. ALTERNATIVAS DESCARTADAS
+================================================================================
+
+4.1. Front matter unico (mesmo schema para .beta.md e .md)
+  Descartada: sobrecarrega autores, aumenta erros, campos de governanca
+  preenchidos por humanos podem estar incorretos.
+
+4.2. Metadados em arquivo separado (sidecar .meta.yaml)
+  Descartada: duplica arquivos, risco de dessincronizacao, Obsidian nao
+  reconhece, front matter YAML e padrao da industria.
+
+4.3. Metadados apenas na Base Vetorial (sem front matter)
+  Descartada: perde rastreabilidade, pipeline precisa inferir metadados,
+  impossivel validar antes da ingestao, viola "documento autoexplicativo".
+
+4.4. JSON em vez de YAML no front matter
+  Descartada: JSON nao suportado pelo Obsidian como front matter, YAML
+  mais legivel, YAML e padrao da industria.
+
+4.5. Schema de validacao opcional (best-effort)
+  Descartada: inaceitavel em ambiente regulado, warning ignorado na pratica,
+  poluicao da Base Vetorial.
+
+================================================================================
+5. CONSEQUENCIAS
+================================================================================
+
+Positivas:
+  - Contrato claro entre autores e pipeline, sem ambiguidade
+  - Dois niveis respeitam maturidade do documento
+  - Validacao executavel garante qualidade minima
+  - Rejeicao explicita evita poluicao da Base Vetorial
+  - 100% compativel com Obsidian (zero config)
+  - Rastreabilidade completa da fonte ate o chunk
+  - conversion_quality habilita automacao inteligente
+  - Campos temporais habilitam consultas historicas
+
+Negativas / Trade-offs:
+  - Curva de aprendizado para autores (mitigado por templates Obsidian)
+  - Campos bloqueantes podem frustrar (mitigado pelo front matter leve)
+  - Manutencao de enums (doc_type, source_format) ao surgir novos tipos
+  - Dois schemas e mais complexo que um
+
+Riscos:
+  - Mudanca de regras bloqueando ingestao em massa: mitigacao via
+    versionamento do schema e migracao automatica
+  - conversion_quality subjetivo: mitigacao via calibracao periodica
+  - Obsidian descontinuado: formato YAML e padrao, funciona em qualquer editor
+
+================================================================================
+6. IMPLEMENTACAO (ALTO NIVEL)
+================================================================================
+
+  Fase 1 (MVP):
+    Schema leve definido, validador basico, template Obsidian para .beta.md
+
+  Fase 2 (Metadados):
+    Schema rico definido, validador completo, enums centralizados,
+    conversion_quality implementado
+
+  Fase 3 (Knowledge Graph):
+    Pipeline de promocao (leve → rico), sugestao automatica de governanca,
+    QA automatizado (qa_score, qa_status)
+
+  Fase 4 (GraphRAG Corporativo):
+    Temporalidade completa, schema versionado com migracao, dashboard de
+    cobertura, auditoria periodica de classificacao
+
+================================================================================
+7. REFERENCIAS
+================================================================================
+
+ADRs relacionados:
+  - ADR-001: Pipeline de Geracao de Conhecimento em 4 Fases
+  - ADR-002: Soberania de Dados (roteamento por confidentiality)
+  - ADR-003: Modelo de Dados da Base Vetorial (campos geram nos/relacoes)
+  - ADR-004: Seguranca e Classificacao (politica de confidentiality)
+  - ADR-006: Pipeline de Ingestao (Etapa 2 consome o front matter)
+  - ADR-007: Retrieval Hibrido (filtros pre-retrieval usam front matter)
+  - ADR-009: Selecao de Modelos de Embedding
+  - ADR-010: Git Flow (campo release_version)
+  - ADR-011: Segregacao de KBs (regras de front matter por KB)
+
+Documentos de processo extraidos deste ADR:
+  - SPEC-B01: Schema Front Matter Leve (campos, tipos, validacoes)
+  - SPEC-B02: Schema Front Matter Rico (8 grupos, campos completos)
+  - SPEC-B03: Regras de Validacao Front Matter (bloqueante vs nao-bloqueante)
+  - SPEC-B04: Metricas de Conversao (sinais por formato, gates)
+  - DOC-A04: Guia de Uso com Obsidian (compatibilidade, plugins)
+
+Externas:
+  - YAML Specification 1.2: https://yaml.org/spec/1.2.2/
+  - Obsidian Properties: https://help.obsidian.md/Editing+and+formatting/Properties
+  - Hugo Front Matter: https://gohugo.io/content-management/front-matter/
+
+================================================================================
+FIM DO DOCUMENTO — ADR-005
+================================================================================

@@ -18,7 +18,7 @@ Seu papel é revisar, estruturar e organizar arquivos `.txt` na pasta `1 - draft
 
 ## Sua Responsabilidade
 
-Você cuida **exclusivamente** dos arquivos `.txt` em `Arquitetura/rag-blueprint/1 - draft/`.
+Você cuida **exclusivamente** dos arquivos `.txt` em o path de **draft** definido no onboarding.
 Você NÃO gera `.md` nem `.html` — isso é papel de outros writers.
 
 ## Argumentos
@@ -212,7 +212,7 @@ Todo draft deve terminar com uma seção `📎 DOCUMENTOS RELACIONADOS` listando
 2. Determinar o código B{NN} correto (sequencial ou conforme a série)
 3. Criar com a estrutura completa
 4. Garantir que o conteúdo esteja alinhado com o CLAUDE.md e o blueprint principal
-5. Salvar em `Arquitetura/rag-blueprint/1 - draft/B{NN}_{slug}.txt`
+5. Salvar em `{paths.draft}/B{NN}_{slug}.txt`
 
 ### 8. Ao revisar um draft existente
 
@@ -231,4 +231,4 @@ Todo conteúdo DEVE ser em **português brasileiro (pt-BR)**.
 
 ## Caminho base
 
-`Arquitetura/rag-blueprint/1 - draft/`
+o path de **draft** definido no onboarding

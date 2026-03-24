@@ -1,0 +1,475 @@
+---
+id: BETA-E01
+title: "Pipeline de Ingestao Detalhado (7 Etapas)"
+domain: arquitetura
+confidentiality: internal
+sources:
+  - type: txt
+    origin: "src/kb/rag-blueprint-adrs-draft/draft/ADR-E01_pipeline_ingestao_detalhado.txt"
+    captured_at: "2026-03-23"
+    conversion_quality: 95
+tags:
+  - pipeline de ingestao
+  - etapas do pipeline
+  - descoberta de documentos
+  - parse de markdown
+  - chunking semantico
+  - embeddings
+  - persistencia de dados
+  - indexacao vetorial
+  - observabilidade
+  - hash sha-256
+  - idempotencia
+  - front matter
+  - validacao de schema
+  - hierarquia de headings
+  - breadcrumb
+  - links internos
+  - blocos de codigo
+  - heranca de metadados
+  - faixa de tokens
+  - chunking por heading
+  - upsert
+  - neo4j
+  - base vetorial
+  - indice hnsw
+  - full-text index
+  - constraints de unicidade
+  - metricas de execucao
+  - recall at 10
+  - golden set
+  - verificacao de consistencia
+  - log de execucao
+  - contadores por etapa
+  - latencia de embedding
+  - throughput
+  - tratamento de erros
+  - retry com backoff
+  - transacionalidade
+  - batching transacional
+  - checkpoint
+  - release version
+  - manifesto de release
+  - classificacao de documentos
+  - remocao de orfaos
+  - chunks parcialmente falhados
+  - deteccao de entidades
+  - wikilinks
+  - doc type
+  - estrategia de chunking
+  - monitoramento
+  - pipeline run id
+aliases:
+  - "ADR-E01"
+  - "Pipeline 7 Etapas"
+status: draft
+last_enrichment: "2026-03-23"
+last_human_edit: "2026-03-23"
+---
+
+## Sumario
+
+Este documento extrai e detalha as 7 etapas do pipeline de ingestao definido na ADR-006. Cada etapa possui responsabilidade unica, entrada e saida bem definidas, e pode ser monitorada independentemente.
+
+Por que 7 etapas e nao menos: separar em 7 etapas permite isolar falhas, medir gargalos, evoluir independentemente e testar isoladamente. Unificar etapas criaria acoplamento desnecessario e dificultaria debug em producao.
+
+Fluxo macro:
+
+```
+[Repo knowledge-base] --> release tag -->
+  [1.Descoberta] --> [2.Parse] --> [3.Chunking] -->
+  [4.Embeddings] --> [5.Persistencia] --> [6.Indexacao] -->
+  [7.Observabilidade] --> [Metricas]
+```
+
+## Etapa 1 -- Descoberta
+
+Objetivo: Identificar quais documentos .md precisam ser processados nesta execucao do pipeline.
+
+### Procedimento
+
+1. Recebe a versao da release (ex: v1.3.0) via parametro de execucao.
+
+2. Le o manifesto da release (releases/v1.3/manifest.json) que lista todos os .md incluidos.
+
+3. Para cada arquivo .md no manifesto:
+   - Calcula o hash SHA-256 do conteudo.
+   - Captura metadados do Git: path, branch, commit, last_modified.
+   - Consulta a Base Vetorial para verificar se ja existe um no Document com o mesmo document_id.
+   - Compara o hash armazenado com o hash calculado.
+
+4. Classifica cada documento em uma de 4 categorias:
+
+   - **NEW** — Documento nao existe na Base Vetorial. Acao: processar todas as etapas seguintes.
+   - **UPDATED** — Documento existe mas o hash mudou. Acao: re-processar todas as etapas, substituindo chunks antigos.
+   - **UNCHANGED** — Documento existe e o hash e identico. Acao: pular completamente. Este e o mecanismo central de idempotencia.
+   - **DELETED** — Documento existe na Base Vetorial mas nao esta no manifesto. Acao: remover o no Document e todos os seus chunks.
+
+5. Gera relatorio de descoberta com totais por categoria.
+
+### Por que o hash e critico para idempotencia
+
+O hash SHA-256 e uma funcao deterministica. Se o pipeline roda 2 vezes sobre os mesmos documentos, na segunda execucao todos serao UNCHANGED. Resultado: zero processamento, zero alteracoes.
+
+### Alternativas descartadas
+
+- Data de modificacao (git clone reseta timestamps)
+- Numero de versao no front matter (depende do autor)
+- Tamanho do arquivo (colisoes obvias)
+
+### Saida
+
+Lista de documentos com classificacao, hash, path e metadados Git. Apenas NEW e UPDATED seguem para a Etapa 2.
+
+## Etapa 2 -- Parse
+
+Objetivo: Extrair conteudo estruturado de cada documento .md, separando metadados (front matter) de conteudo (corpo).
+
+### Procedimento para cada documento classificado como NEW ou UPDATED
+
+1. **Extracao do front matter:**
+   - Le o bloco YAML entre delimitadores `---`.
+   - Converte em objeto estruturado com campos conforme ADR-005 (Front Matter como Contrato de Metadados).
+
+2. **Validacao contra o schema (ADR-005):**
+   - Verifica presenca de campos obrigatorios.
+   - Verifica tipos de dados.
+   - Verifica consistencia entre campos.
+   - Se qualquer validacao falha, o documento e REJEITADO.
+
+3. **Extracao da hierarquia de headings:**
+   - Identifica `# H1`, `## H2`, `### H3`.
+   - Constroi arvore hierarquica.
+   - Cada heading recebe um breadcrumb path. Exemplo: "Modulo de Cobranca > Fluxo de Boleto > Regras de Validacao"
+
+4. **Extracao de links internos:**
+   - Detecta wikilinks `[[DOC-000456|titulo]]`.
+   - Detecta links Markdown `[texto](caminho)`.
+   - Registra origem, destino e texto para relacoes REFERENCES.
+
+5. **Identificacao de blocos de codigo:**
+   - Detecta blocos delimitados por triple backticks.
+   - Registra linguagem declarada.
+   - Recebem tratamento especial no chunking (nunca divididos).
+
+6. **Deteccao de referencias a entidades:**
+   - Sistemas, modulos, termos de glossario mencionados no texto.
+   - Alimentam criacao de relacoes na etapa de Persistencia.
+
+### Validacao bloqueante
+
+Um documento sem front matter valido nao pode ser indexado corretamente. Em producao, o documento rejeitado e:
+- Registrado no log.
+- Gera alerta.
+- Nao bloqueia demais documentos do mesmo batch.
+- Pode ser corrigido na proxima release.
+
+### Saida
+
+Para cada documento, objeto com:
+- `front_matter`
+- `headings` (arvore hierarquica)
+- `internal_links`
+- `code_blocks`
+- `entity_references`
+- `raw_content`
+- `validation_status`
+
+## Etapa 3 -- Chunking
+
+Objetivo: Dividir o conteudo em fragmentos semanticos (chunks) individualmente indexaveis e pesquisaveis.
+
+### Por que nao indexar o documento inteiro
+
+Modelos de embedding geram vetores mais precisos para textos curtos e focados. Um documento longo sobre multiplos temas gera um vetor "medio" que nao representa bem nenhum tema individualmente. Chunks menores permitem:
+- Vetores mais precisos
+- Contexto mais relevante para o LLM
+- Melhor ranking
+- Rastreabilidade precisa
+
+### Estrategia primaria: divisao por headings
+
+Cada secao delimitada por um heading forma um candidato a chunk.
+- Se excede 800 tokens: subdivide em paragrafos.
+- Se tem menos de 300 tokens: mescla com a secao seguinte.
+
+### Faixa de tokens: 300 a 800 tokens por chunk
+
+- **300 minimo:** Chunks muito curtos nao carregam contexto suficiente para embeddings significativos.
+- **800 maximo:** Chunks muito longos diluem o foco semantico.
+- A faixa 300-800 acomoda tanto glossarios (termos curtos) quanto documentos arquiteturais (secoes densas).
+
+### Interacao com limite do modelo de embedding (ADR-009)
+
+A faixa 300-800 foi definida para coerencia semantica, nao por limitacao do modelo. O BGE-M3 suporta ate 8192 tokens. Porem, na configuracao operacional recomendada (GTX 1070, 512 max_seq_length), o pipeline deve ajustar o limite superior para ~450 tokens.
+
+Regra obrigatoria: `(chunk_tokens + breadcrumb_tokens) <= max_seq_length`
+
+### Heranca de metadados
+
+Cada chunk herda TODOS os metadados do documento pai: `document_id`, `doc_type`, `system`, `module`, `domain`, `owner`, `team`, `confidentiality`, `tags`, `valid_from`, `valid_until`.
+
+Critico porque o chunk e a unidade de busca e filtros pre-retrieval sao aplicados diretamente nos chunks.
+
+### Breadcrumb (caminho de headings)
+
+Cada chunk recebe `heading_path`. Exemplo: "Modulo de Cobranca > Boleto > Regras de Validacao". Incluido no texto para dar contexto ao embedding.
+
+### Estrategia por tipo de documento (doc_type)
+
+- **architecture-doc:** Chunking por heading, faixa padrao. Diagramas ASCII e tabelas preservados inteiros.
+- **adr:** Chunks menores e mais precisos. Cada secao estrutural (Contexto, Decisao, Alternativas, Consequencias) gera exatamente 1 chunk.
+- **runbook:** Chunk por procedimento/passo operacional. Cada passo numerado gera chunk independente.
+- **glossary:** Chunk quase atomico. Cada termo = 1 chunk.
+- **task-doc:** Chunks por secao logica (Contexto, Escopo, Decisoes tecnicas, Criterios de aceite).
+
+### Regras especiais
+
+- Blocos de codigo nunca divididos no meio.
+- Tabelas Markdown nunca divididas no meio. Se muito longas: divididas em grupos de linhas mantendo cabecalho.
+- Listas longas divididas em grupos tematicos.
+
+### Chunking hierarquico (decisao adiada)
+
+Nao implementar agora. Motivos:
+- Aumenta armazenamento.
+- Requer resumos por LLM.
+- Breadcrumb ja fornece contexto suficiente para MVP.
+
+Reconsiderar quando:
+- Recall@10 cair abaixo de 70%.
+- Volume ultrapassar 10.000 documentos.
+
+### Saida
+
+Lista de chunks por documento, cada um com:
+- `chunk_id` (`{document_id}_chunk_{N}`)
+- `content`
+- `heading_path`
+- `token_count`
+- `chunk_index`
+- Metadados herdados do documento pai
+
+## Etapa 4 -- Embeddings
+
+Objetivo: Gerar vetor de embedding para cada chunk, transformando texto em representacao numerica pesquisavel por similaridade.
+
+### Procedimento
+
+1. Para cada chunk, prepara texto de entrada: `"[heading_path]\n\n[content]"`
+2. Envia para o modelo de embedding em lotes (batch de 100 chunks).
+3. Recebe vetor de embedding (array de floats).
+4. Armazena no campo `chunk.embedding`.
+
+### Escolha do modelo de embedding (conforme ADR-002)
+
+**Track A — Cloud (OpenAI):**
+- Modelo: text-embedding-3-small
+- Dimensoes: 1536
+- Custo: ~$0.02/1M tokens
+- Latencia: ~100ms/batch
+
+**Track B — On-premises:**
+- Modelo: BGE-M3 (BAAI)
+- Dimensoes: 1024
+- Custo: zero (local)
+- Latencia: ~200-500ms/batch em GPU
+
+O pipeline suporta ambos os tracks sem alteracao de codigo (apenas configuracao).
+
+### Registro de modelo e versao
+
+Cada chunk armazena:
+- `embedding_model`
+- `embedding_model_version`
+- `embedding_dimensions`
+- `embedded_at`
+
+Critico porque vetores de modelos diferentes nao sao compativeis no mesmo indice.
+
+### Processamento em lotes
+
+Batches de 100 chunks por eficiencia, rate limiting e tolerancia a falha. Tamanho configuravel.
+
+### Tratamento de erros
+
+Retry com backoff exponencial: 1s, 2s, 4s, 8s, max 60s. Apos 3 retries, batch marcado como FAILED. Chunks sem embedding nao sao persistidos.
+
+### Chunks parcialmente falhados
+
+- Chunks com sucesso sao persistidos normalmente.
+- Chunks falhados vao para fila de retry (max 3 tentativas: 30s, 60s, 120s).
+- Documento so e marcado como ingerido com sucesso quando TODOS os chunks tem embedding.
+- Documentos "incomplete" sao reprocessados do zero na proxima execucao.
+- Se permanece "incomplete" por 3+ execucoes: alerta critico.
+
+### Saida
+
+Chunks enriquecidos com vetor de embedding e metadados do modelo.
+
+## Etapa 5 -- Persistencia
+
+Objetivo: Gravar (ou atualizar) os dados na Base Vetorial, criando nos, relacoes e removendo dados obsoletos.
+
+### Upsert de Document
+
+- **NEW:** Cria novo no `:Document` com propriedades do front matter. Registra `release_version`, `file_hash`, `file_path`, `git_commit`.
+- **UPDATED:** Atualiza propriedades do no existente. `document_id` e imutavel.
+
+Padrao upsert (e nao delete + create) preserva relacoes externas enriquecidas manualmente ou por outros pipelines.
+
+### Gerenciamento de chunks
+
+**UPDATED:**
+1. Deleta todos os chunks antigos (via relacao PART_OF).
+2. Cria novos chunks.
+3. Cria relacoes `(:Chunk)-[:PART_OF]->(:Document)`.
+
+**NEW:**
+1. Cria chunks.
+2. Cria relacoes `(:Chunk)-[:PART_OF]->(:Document)`.
+
+### Criacao/atualizacao de relacoes
+
+Baseado em front matter e deteccoes do Parse:
+
+- `(:Document)-[:BELONGS_TO]->(:Module)` via `front_matter.module`
+- `(:Module)-[:BELONGS_TO]->(:System)` via `front_matter.system`
+- `(:Document)-[:OWNED_BY]->(:Owner)` via `front_matter.owner`
+- `(:Owner)-[:MEMBER_OF]->(:Team)` via `front_matter.team`
+- `(:Document)-[:REFERENCES]->(:Document)` via links internos (se destino existe)
+- `(:Document)-[:USES_TERM]->(:GlossaryTerm)` via termos detectados (se existem)
+- `(:Document)-[:RELATES_TO_TASK]->(:Task)` via `front_matter.task_id`
+- `(:Document)-[:SUPERSEDES]->(:Document)` via `front_matter.supersedes`
+- `(:Document)-[:VERSION_OF]->(:DocumentFamily)` para docs com versionamento
+
+Nos inexistentes (System, Module, Owner, Team) sao criados automaticamente com propriedades basicas.
+
+### Remocao de orfaos
+
+Para documentos DELETED:
+1. Remove chunks (via PART_OF).
+2. Remove relacoes do Document.
+3. Remove o no Document.
+
+Sem limpeza, a Base Vetorial acumula "conhecimento fantasma" — chunks de documentos que nao existem mais no repositorio, poluindo resultados de busca.
+
+### Transacionalidade
+
+Toda a etapa roda dentro de uma transacao. Se qualquer operacao falha: rollback completo.
+
+### Transacoes em releases grandes (>1000 documentos)
+
+Batching transacional em lotes de 100 documentos:
+- Cada lote e uma transacao independente.
+- Checkpoint apos cada lote bem-sucedido.
+- Se o pipeline crashar, retoma do ultimo checkpoint.
+- Release so e marcada completa quando todos os lotes sucederem.
+- Tamanho do lote e configuravel.
+
+### Saida
+
+Base Vetorial atualizada com nos, chunks, relacoes e limpeza de orfaos. Contadores de operacoes (criados, atualizados, deletados).
+
+## Etapa 6 -- Indexacao
+
+Objetivo: Criar e manter indices para buscas eficientes.
+
+1. **Vector index** no campo `Chunk.embedding`: Indice vetorial HNSW para busca por similaridade coseno. Sem indice, busca seria O(n). Com HNSW, e O(log n).
+
+2. **Full-text index** no campo `Chunk.content`: Busca por palavras-chave com suporte a portugues (stemming, stopwords). Complementa busca vetorial para termos exatos (codigos, siglas, nomes proprios). Ver ADR-007 para busca hibrida.
+
+3. **Indices compostos** para filtros frequentes:
+   - `Chunk.system`
+   - `Chunk.module`
+   - `Chunk.confidentiality`
+   - `Chunk.doc_type`
+   - `Chunk.domain`
+   - `Document.status`
+   Filtros pre-retrieval precisam ser rapidos.
+
+4. **Constraints de unicidade:**
+   - `Document.document_id` (chave primaria)
+   - `Chunk.chunk_id` (chave primaria)
+
+5. **Indices auxiliares:**
+   - `Document.file_path`
+   - `Document.release_version`
+   - `Document.updated_at`
+   Para queries administrativas e de auditoria.
+
+### Saida
+
+Todos os indices criados/verificados. Indices existentes nao sao recriados (operacao no-op, CREATE IF NOT EXISTS).
+
+## Etapa 7 -- Observabilidade
+
+Objetivo: Registrar metricas, logs e verificacoes de consistencia para cada execucao do pipeline.
+
+### Log de execucao
+
+- `pipeline_run_id` (identificador unico da execucao)
+- `release_version`
+- Timestamps de inicio e fim
+- Duracao total
+- Trigger (webhook, manual, retry)
+- Status final: `success`, `partial_failure`, `failure`
+
+### Contadores por etapa
+
+| Etapa | Contadores |
+|-------|-----------|
+| Descoberta | NEW / UPDATED / UNCHANGED / DELETED |
+| Parse | validados / rejeitados |
+| Chunking | total de chunks, media por documento |
+| Embeddings | vetores gerados, batches ok / falhados |
+| Persistencia | nos criados / atualizados / deletados |
+| Indexacao | indices criados vs. existentes |
+
+### Metricas de performance
+
+- Tempo por etapa
+- Latencia media de embedding
+- Latencia de write na Base Vetorial
+- Throughput (chunks/segundo)
+- Tamanho do indice
+
+### Rastreamento de erros
+
+- Documentos falhados por etapa
+- Motivo do erro
+- Stack trace
+- Classificacao: transiente vs. permanente
+
+### Verificacao de consistencia pos-execucao
+
+- Todo documento no manifesto tem no Document correspondente.
+- Todo Document tem >= 1 chunk.
+- Todo chunk tem embedding.
+- Nenhum chunk orfao (sem Document pai).
+- Todos os chunks usam o mesmo modelo de embedding.
+
+### Metricas de saude
+
+- Total de documentos na Base Vetorial
+- Total de chunks
+- Total de relacoes
+- Tamanho do indice vetorial
+- Data/hora da ultima execucao
+- Cobertura: % de documentos no repo com correspondente na Base Vetorial
+
+### Metricas de qualidade de retrieval (sanity check pos-ingestao)
+
+- Golden set de 50-100 perguntas curadas.
+- Busca vetorial top-10 para cada pergunta.
+- Calculo do Recall@10 medio.
+- Threshold: >= 70%.
+- Se cai abaixo do threshold: alerta para o time (nao bloqueia ingestao).
+- Tendencia entre releases consecutivas para detectar degradacao.
+- Ver ADR-007 para metricas completas de retrieval.
+
+### Saida
+
+Registro completo em tabela de auditoria, metricas publicadas para dashboard, Recall@10 registrado para tendencia historica.
+
+<!-- conversion_quality: 95 -->

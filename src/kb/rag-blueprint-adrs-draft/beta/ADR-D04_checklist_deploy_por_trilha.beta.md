@@ -1,0 +1,557 @@
+---
+id: BETA-D04
+title: "Checklist de Deploy por Trilha"
+domain: arquitetura
+confidentiality: internal
+sources:
+  - type: txt
+    origin: "src/kb/rag-blueprint-adrs-draft/draft/ADR-D04_checklist_deploy_por_trilha.txt"
+    captured_at: "2026-03-23"
+    conversion_quality: 95
+tags:
+  - checklist deploy
+  - deploy trilha cloud
+  - deploy trilha on-premise
+  - deploy trilha hibrida
+  - pre-requisitos deploy
+  - base vetorial managed
+  - base vetorial self-hosted
+  - docker compose
+  - neo4j community edition
+  - neo4j docker
+  - constraints indices
+  - vector index criacao
+  - pipeline ingestao
+  - embedding openai
+  - embedding bge-m3
+  - llm claude deploy
+  - llm ollama deploy
+  - llm vllm deploy
+  - reranking cohere deploy
+  - reranking bge-reranker deploy
+  - validacao pos-deploy
+  - golden set queries
+  - latencia p95
+  - api keys vault
+  - billing configuracao
+  - tier volume
+  - rede firewall
+  - tls certificados
+  - gpu drivers cuda
+  - nvidia container toolkit
+  - nvidia-smi verificacao
+  - air-gapped servidor
+  - cross-instancia integracao
+  - merge resultados scores
+  - controle acesso permissoes
+  - pre-retrieval filter
+  - rollback base vetorial
+  - rollback modelo llm
+  - rollback modelo embedding
+  - re-indexacao chunks
+  - fases implementacao
+  - mvp fase 1
+  - reranking fase 2
+  - trilha b fase 3
+  - hibrida fase 4
+  - definition of done
+  - precision at 10 melhoria
+  - system prompt citacao
+  - portugues brasileiro
+  - backup restore
+  - neo4j admin dump
+  - tensor parallel size
+  - gpu memory utilization
+  - awq quantizacao
+  - gguf quantizacao
+  - flagembedding python
+  - fastapi uvicorn
+  - prometheus metricas
+  - temperatura alertas
+  - disco alertas
+  - dns firewall saida
+aliases:
+  - "ADR-D04"
+  - "Checklist Deploy Trilha"
+status: draft
+last_enrichment: "2026-03-23"
+last_human_edit: "2026-03-23"
+---
+
+## 1. Introducao
+
+Runbook de deploy e validacao para cada trilha do pipeline RAG, conforme definido na ADR-002. Cobre checklists pre-deploy, procedimentos de instalacao, configuracao de componentes e validacao pos-deploy.
+
+Cada trilha possui seu proprio checklist completo. A Trilha Hibrida requer a execucao de AMBOS os checklists (A e B) mais validacoes adicionais de integracao.
+
+## 2. Trilha A (Cloud) — Checklist de Deploy
+
+### 2.1 Pre-requisitos
+
+- [ ] Contas criadas nos provedores:
+  - [ ] OpenAI — conta ativa com billing configurado
+  - [ ] Anthropic — conta ativa com billing configurado
+  - [ ] Cohere — conta ativa com billing configurado
+  - [ ] Provedor de base vetorial — conta ativa
+
+- [ ] API keys geradas e armazenadas em vault seguro:
+  - [ ] `OPENAI_API_KEY`
+  - [ ] `ANTHROPIC_API_KEY`
+  - [ ] `COHERE_API_KEY`
+  - [ ] `NEO4J_URI` (ou equivalente do provedor)
+  - [ ] `NEO4J_USER`
+  - [ ] `NEO4J_PASSWORD`
+
+- [ ] Tier contratado suporta volume estimado:
+  - [ ] OpenAI: verificar TPM e RPM do tier
+  - [ ] Anthropic: verificar limites de tokens/minuto
+  - [ ] Cohere: verificar limites de buscas/minuto
+
+- [ ] Rede e conectividade:
+  - [ ] Acesso HTTPS para APIs externas liberado no firewall
+  - [ ] DNS resolvendo corretamente endpoints dos provedores
+  - [ ] Certificados TLS validos
+
+### 2.2 Deploy — Base Vetorial Managed
+
+- [ ] Instancia provisionada no provedor cloud
+- [ ] Regiao selecionada (preferencialmente proxima aos usuarios)
+- [ ] Credenciais de acesso configuradas
+- [ ] Constraints criados:
+  - [ ] `CONSTRAINT unique_document_id ON (d:Document) ASSERT d.document_id IS UNIQUE`
+  - [ ] `CONSTRAINT unique_chunk_id ON (c:Chunk) ASSERT c.chunk_id IS UNIQUE`
+- [ ] Indices criados:
+  - [ ] `INDEX idx_doc_path FOR (d:Document) ON (d.path)`
+  - [ ] `INDEX idx_doc_type FOR (d:Document) ON (d.doc_type)`
+  - [ ] `INDEX idx_doc_system FOR (d:Document) ON (d.system)`
+  - [ ] `INDEX idx_doc_module FOR (d:Document) ON (d.module)`
+  - [ ] `INDEX idx_doc_confidentiality FOR (d:Document) ON (d.confidentiality)`
+- [ ] Vector index criado:
+  - [ ] `CREATE VECTOR INDEX chunk_embedding FOR (c:Chunk) ON (c.embedding) OPTIONS {indexConfig: {vector.dimensions: 1536, vector.similarity_function: 'cosine'}}`
+- [ ] Backup automatizado habilitado
+- [ ] Teste de conexao bem-sucedido
+
+### 2.3 Deploy — Pipeline de Ingestao (Trilha A)
+
+- [ ] Pipeline configurado para filtrar `confidentiality = public | internal`
+- [ ] Endpoint de embedding apontando para OpenAI text-embedding-3-small
+- [ ] Dimensao do embedding = 1536
+- [ ] Teste de ingestao com 10 documentos de amostra:
+  - [ ] Front matter parseado corretamente
+  - [ ] Chunks gerados dentro da faixa 300-800 tokens
+  - [ ] Embeddings gerados com 1536 dimensoes
+  - [ ] Nodes Document e Chunk criados na base
+  - [ ] Relacao PART_OF criada entre Chunk e Document
+  - [ ] Metadados do chunk incluem `embedding_model` e `embedding_date`
+
+### 2.4 Deploy — LLM (Claude)
+
+- [ ] API key Anthropic configurada no servico de geracao
+- [ ] Modelo selecionado:
+  - [ ] Claude Sonnet para respostas RAG
+  - [ ] Claude Opus para mineracao complexa (Fases 2/3)
+- [ ] System prompt configurado com instrucoes de citacao de fontes
+- [ ] Teste de geracao:
+  - [ ] Enviar query de teste
+  - [ ] Resposta gerada em < 5s
+  - [ ] Resposta cita fontes (document_id, titulo)
+  - [ ] Resposta em portugues brasileiro
+
+### 2.5 Deploy — Reranking (Cohere)
+
+- [ ] API key Cohere configurada
+- [ ] Endpoint apontando para Rerank v3
+- [ ] Teste de reranking:
+  - [ ] Enviar 50 candidatos com query de teste
+  - [ ] Resultado reordenado retornado em < 200ms
+  - [ ] Ordem dos resultados e diferente da busca vetorial pura
+  - [ ] precision@10 melhora >= 15% com reranking (medir com golden set)
+
+### 2.6 Validacao Pos-Deploy — Trilha A
+
+- [ ] Busca vetorial retorna resultados corretos para 10 queries do golden set
+- [ ] LLM gera respostas com citacao de fontes
+- [ ] Nenhum documento restricted/confidential foi ingerido (verificar logs)
+- [ ] Latencia end-to-end p95 < 3s
+- [ ] Metricas de custo sendo coletadas
+- [ ] Alertas de rate-limiting configurados
+- [ ] Dashboard operacional acessivel
+
+## 3. Trilha B (On-Premise) — Checklist de Deploy
+
+### 3.1 Pre-requisitos de Hardware
+
+- [ ] Servidor provisionado:
+  - [ ] CPU: 8+ cores
+  - [ ] RAM: 64GB+ DDR5
+  - [ ] Storage: NVMe 1TB+
+  - [ ] Fonte: 1000W+ (80+ Gold)
+
+- [ ] GPUs instaladas:
+  - [ ] GPU 1: RTX 4090 24GB (ou equivalente) — para LLM
+  - [ ] GPU 2: RTX 4090 24GB (ou equivalente) — para LLM (segunda GPU)
+  - [ ] (Opcional) GPU 3: RTX 3060 8GB — dedicada para embedding/reranker
+
+- [ ] Drivers e runtime:
+  - [ ] NVIDIA Driver instalado (versao 535+ recomendada)
+  - [ ] CUDA Toolkit instalado (12.x)
+  - [ ] nvidia-smi retorna informacoes de ambas as GPUs
+  - [ ] Docker instalado com NVIDIA Container Toolkit
+  - [ ] nvidia-docker funcional (`docker run --gpus all nvidia/cuda nvidia-smi`)
+
+- [ ] Rede:
+  - [ ] Servidor NAO possui acesso a internet (air-gapped para dados confidential)
+  - [ ] Rede interna acessivel para usuarios autorizados
+  - [ ] Firewall bloqueando trafego de saida
+
+### 3.2 Deploy — Base Vetorial Self-Hosted (Docker)
+
+**Procedimento:**
+
+1. Criar diretorio de dados:
+
+```bash
+mkdir -p /opt/neo4j/data /opt/neo4j/logs /opt/neo4j/conf
+```
+
+2. Docker Compose para base vetorial:
+
+```yaml
+# docker-compose-neo4j.yml
+version: '3.8'
+services:
+  neo4j:
+    image: neo4j:5.18-community
+    container_name: neo4j-rag-onprem
+    ports:
+      - "7474:7474"   # HTTP / Browser
+      - "7687:7687"   # Bolt
+    volumes:
+      - /opt/neo4j/data:/data
+      - /opt/neo4j/logs:/logs
+      - /opt/neo4j/conf:/conf
+    environment:
+      - NEO4J_AUTH=neo4j/SenhaSeguraAqui123!
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_server_memory_heap_initial__size=4g
+      - NEO4J_server_memory_heap_max__size=8g
+      - NEO4J_server_memory_pagecache_size=4g
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    restart: unless-stopped
+```
+
+3. Subir container:
+
+```bash
+docker compose -f docker-compose-neo4j.yml up -d
+```
+
+4. Verificar:
+
+```bash
+docker logs neo4j-rag-onprem --tail 50
+# Deve mostrar "Started." sem erros
+```
+
+**Checklist pos-instalacao:**
+- [ ] Container rodando e saudavel (`docker ps`)
+- [ ] Porta 7474 acessivel (browser)
+- [ ] Porta 7687 acessivel (bolt)
+- [ ] Constraints e indices criados (mesmos da secao 2.2, exceto vector index com dimensao 1024 ao inves de 1536):
+  - [ ] `CREATE VECTOR INDEX chunk_embedding FOR (c:Chunk) ON (c.embedding) OPTIONS {indexConfig: {vector.dimensions: 1024, vector.similarity_function: 'cosine'}}`
+- [ ] Backup manual testado (`neo4j-admin dump`)
+
+### 3.3 Deploy — Modelo de Embedding (BGE-M3 via servico local)
+
+**Opcao A — Via script Python dedicado:**
+
+```python
+# Requer: pip install FlagEmbedding torch
+from FlagEmbedding import BGEM3FlagModel
+model = BGEM3FlagModel('BAAI/bge-m3', use_fp16=True)
+embeddings = model.encode(['texto de teste'])['dense_vecs']
+print(f"Dimensao: {embeddings.shape[1]}")  # Deve ser 1024
+```
+
+**Opcao B — Via API local (recomendado para producao):**
+Usar framework como FastAPI + uvicorn expondo endpoint `/embed`. Carregar modelo uma vez na inicializacao. Expor endpoint POST `/embed` que recebe textos e retorna vetores.
+
+**Checklist:**
+- [ ] Modelo BGE-M3 baixado (~2.4GB)
+- [ ] Modelo carregado na GPU (verificar nvidia-smi: ~4-6GB VRAM ocupada)
+- [ ] Teste de embedding:
+  - [ ] Enviar texto em portugues
+  - [ ] Retorna vetor de 1024 dimensoes
+  - [ ] Tempo < 50ms para texto unico
+- [ ] Servico de embedding acessivel na rede interna
+
+### 3.4 Deploy — LLM via Ollama (Desenvolvimento/Teste)
+
+**Procedimento:**
+
+1. Instalar Ollama:
+
+```bash
+curl -fsSL https://ollama.ai/install.sh | sh
+```
+
+2. Baixar modelo:
+
+```bash
+ollama pull llama3.1:70b-instruct-q4_K_M
+
+# Alternativa Qwen:
+# ollama pull qwen2.5:72b-instruct-q4_K_M
+```
+
+3. Verificar:
+
+```bash
+ollama list
+# Deve mostrar o modelo com ~40GB de tamanho
+```
+
+4. Testar:
+
+```bash
+ollama run llama3.1:70b-instruct-q4_K_M "Responda em portugues: o que e RAG?"
+```
+
+5. API local (padrao porta 11434):
+
+```bash
+curl http://localhost:11434/api/generate -d '{
+  "model": "llama3.1:70b-instruct-q4_K_M",
+  "prompt": "O que e GraphRAG?",
+  "stream": false
+}'
+```
+
+**Checklist Ollama:**
+- [ ] Ollama instalado e rodando como servico
+- [ ] Modelo 70B Q4 baixado
+- [ ] Ambas as GPUs sendo utilizadas (nvidia-smi mostra VRAM em uso)
+- [ ] Resposta gerada em < 30s para prompt medio
+- [ ] API acessivel em localhost:11434
+
+### 3.5 Deploy — LLM via vLLM (Producao)
+
+**Procedimento:**
+
+1. Docker Compose para vLLM:
+
+```yaml
+# docker-compose-vllm.yml
+version: '3.8'
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-rag-onprem
+    ports:
+      - "8000:8000"
+    volumes:
+      - /opt/models:/models
+    environment:
+      - CUDA_VISIBLE_DEVICES=0,1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 2
+              capabilities: [gpu]
+    command: >
+      --model /models/llama-3.1-70b-instruct-awq
+      --quantization awq
+      --tensor-parallel-size 2
+      --max-model-len 8192
+      --gpu-memory-utilization 0.90
+      --api-key token-local-seguro
+    restart: unless-stopped
+```
+
+2. Subir:
+
+```bash
+docker compose -f docker-compose-vllm.yml up -d
+```
+
+3. Verificar:
+
+```bash
+curl http://localhost:8000/v1/models
+# Deve listar o modelo carregado
+```
+
+4. Testar (API compativel com OpenAI):
+
+```bash
+curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" \
+  -H "Authorization: Bearer token-local-seguro" \
+  -d '{
+    "model": "llama-3.1-70b-instruct-awq",
+    "messages": [{"role": "user", "content": "O que e RAG?"}],
+    "max_tokens": 500
+  }'
+```
+
+**Checklist vLLM:**
+- [ ] Container vLLM rodando
+- [ ] Modelo carregado nas 2 GPUs (tensor parallel)
+- [ ] API compativel com OpenAI acessivel em :8000
+- [ ] Throughput: >= 15 tokens/s (medir com benchmark)
+- [ ] Batching funcional: multiplas requests simultaneas processadas
+- [ ] Metricas expostas em `/metrics` (Prometheus format)
+
+### 3.6 Deploy — Modelo de Reranking (BGE-Reranker-v2-m3)
+
+Procedimento similar ao embedding (secao 3.3):
+
+```python
+# Requer: pip install FlagEmbedding torch
+from FlagEmbedding import FlagReranker
+reranker = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True)
+scores = reranker.compute_score([
+    ['query de teste', 'passagem candidata 1'],
+    ['query de teste', 'passagem candidata 2']
+])
+print(scores)  # Lista de scores, maior = mais relevante
+```
+
+**Checklist:**
+- [ ] Modelo BGE-Reranker-v2-m3 baixado (~1.2GB)
+- [ ] Modelo carregado na GPU (~2-4GB VRAM)
+- [ ] Teste de reranking:
+  - [ ] 50 pares query-passagem
+  - [ ] Retorna scores em < 150ms
+  - [ ] Ordem faz sentido semanticamente
+- [ ] Servico acessivel na rede interna
+
+### 3.7 Validacao Pos-Deploy — Trilha B
+
+- [ ] GPU(s) instalada(s) e CUDA funcionando
+- [ ] Base vetorial self-hosted rodando via Docker
+- [ ] BGE-M3 carregado e gerando embeddings de 1024 dimensoes
+- [ ] Llama/Qwen servido via Ollama ou vLLM
+- [ ] BGE-Reranker carregado e funcionando
+- [ ] Pipeline de ingestao filtra `confidentiality = restricted | confidential`
+- [ ] Busca vetorial retorna resultados corretos para 10 queries do golden set
+- [ ] Nenhum dado restricted/confidential sai da rede local:
+  - [ ] Verificar logs de rede (nenhuma conexao externa)
+  - [ ] Verificar firewall (saida bloqueada)
+  - [ ] Verificar DNS (nao resolve dominios externos)
+- [ ] Latencia end-to-end p95 < 5s (busca + reranking + geracao)
+- [ ] Metricas de GPU sendo coletadas (nvidia-smi ou NVML)
+- [ ] Alertas de temperatura e disco configurados
+- [ ] Dashboard operacional acessivel
+
+## 4. Trilha Hibrida — Checklist Adicional
+
+Alem de completar TODOS os itens das secoes 2 e 3 acima:
+
+### 4.1 Integracao Cross-Instancia
+
+- [ ] Retriever configurado para buscar em AMBAS as instancias em paralelo
+- [ ] Timeout configurado para cada instancia (evitar bloqueio se uma cair)
+- [ ] Merge de resultados implementado:
+  - [ ] Resultados textuais (nao embeddings) mesclados
+  - [ ] Scores normalizados entre instancias (escalas diferentes)
+- [ ] Reranking local (BGE-Reranker) aplicado ao conjunto mesclado:
+  - [ ] Regra: se chunks restricted/confidential estao no conjunto, reranking DEVE ser local (Trilha B)
+  - [ ] Regra: se apenas chunks public/internal, reranking pode ser cloud (Cohere) ou local
+- [ ] LLM para geracao de resposta:
+  - [ ] Regra: se contexto inclui chunks restricted/confidential, LLM DEVE ser local (Llama/Qwen)
+  - [ ] Regra: se contexto e apenas public/internal, LLM pode ser cloud (Claude) ou local
+
+### 4.2 Controle de Acesso
+
+- [ ] Sistema de permissoes implementado:
+  - [ ] Usuario com nivel public: ve apenas resultados public
+  - [ ] Usuario com nivel internal: ve public + internal
+  - [ ] Usuario com nivel restricted: ve public + internal + restricted
+  - [ ] Usuario com nivel confidential: ve todos
+- [ ] Permissoes verificadas ANTES da busca (pre-retrieval filter)
+- [ ] Logs de acesso registrando usuario, nivel, queries e resultados
+
+### 4.3 Validacao Pos-Deploy — Hibrida
+
+- [ ] Busca cross-instancia retorna resultados de ambas as bases
+- [ ] Reranking local funciona com chunks de ambas as trilhas
+- [ ] Controle de acesso funcional (testar com usuarios de niveis diferentes)
+- [ ] Resposta final nao vaza dados restricted para usuarios sem permissao
+- [ ] Latencia end-to-end p95 < 5s (inclui busca paralela + merge + reranking)
+
+## 5. Procedimentos de Rollback
+
+### 5.1 Rollback — Base Vetorial
+
+**Cloud:**
+- Restaurar snapshot/backup automatico do provedor
+- Tempo estimado: 5-15 minutos
+
+**On-Premise:**
+- `neo4j-admin database load --from-path=/backups/neo4j-YYYYMMDD`
+- Tempo estimado: 10-30 minutos dependendo do volume
+
+### 5.2 Rollback — Modelo de LLM
+
+**Ollama:**
+
+```bash
+ollama rm llama3.1:70b-instruct-q4_K_M
+ollama pull llama3.1:70b-instruct-q4_K_M   # Re-download da versao anterior
+```
+
+**vLLM:**
+
+```bash
+# Alterar --model no docker-compose para versao anterior
+docker compose -f docker-compose-vllm.yml down
+docker compose -f docker-compose-vllm.yml up -d
+```
+
+### 5.3 Rollback — Modelo de Embedding
+
+> **ATENCAO:** trocar o modelo de embedding requer RE-INDEXAR todos os chunks, pois os vetores sao incompativeis entre versoes/modelos diferentes.
+
+**Procedimento:**
+1. Restaurar modelo anterior
+2. Limpar todos os embeddings na base (`DELETE c.embedding` para todos Chunks)
+3. Re-executar pipeline de ingestao completo
+4. Tempo estimado: proporcional ao numero de chunks (50K chunks ~= 15-30 min)
+
+## 6. Ordem de Implementacao (Fases)
+
+Conforme definido na ADR-002:
+
+**Fase 1 — MVP:**
+- Escopo: Trilha A apenas (public/internal)
+- Deploy: Base vetorial managed + OpenAI embedding + Claude LLM
+- Sem reranking
+- DOD: Busca vetorial retorna resultados corretos para 10 queries; LLM gera respostas com citacao de fonte
+
+**Fase 2 — Reranking + Qualidade:**
+- Escopo: Adicionar Cohere Rerank v3 na Trilha A
+- DOD: precision@10 melhora >= 15% com reranking
+
+**Fase 3 — Trilha B:**
+- Escopo: Provisionar hardware, instalar base vetorial self-hosted, BGE-M3, Llama/Qwen via Ollama/vLLM, BGE-Reranker
+- DOD: Checklist Trilha B completo; Nenhum dado restricted/confidential trafega por rede externa; Latencia < 2s
+
+**Fase 4 — Trilha Hibrida:**
+- Escopo: Retriever cross-instancia, merge de resultados, controle de acesso por usuario
+- DOD: Busca cross-instancia correta; Controle de acesso funcional; Reranking local com chunks de ambas as trilhas
+
+## 7. Referencias
+
+- ADR-002: Soberania de Dados — Cloud vs On-Premise
+- ADR-001: Pipeline de Geracao de Conhecimento em 4 Fases
+- ADR-003: Modelo de Dados da Base Vetorial (constraints e indices)
+- Neo4j Docker: <https://neo4j.com/docs/operations-manual/current/docker/>
+- Ollama: <https://ollama.ai>
+- vLLM Docker: <https://docs.vllm.ai/en/latest/serving/deploying_with_docker.html>
+- BGE-M3: <https://huggingface.co/BAAI/bge-m3>
+- BGE-Reranker-v2-m3: <https://huggingface.co/BAAI/bge-reranker-v2-m3>
+- NVIDIA Container Toolkit: <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/>
+
+<!-- conversion_quality: 95 -->

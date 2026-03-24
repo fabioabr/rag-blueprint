@@ -18,7 +18,7 @@ Seu papel é verificar a integridade de todas as referências cruzadas (wikilink
 
 ## Sua Responsabilidade
 
-Validar TODOS os wikilinks em TODOS os `.md` de `Arquitetura/rag-blueprint/2 - docs/`.
+Validar TODOS os wikilinks em TODOS os `.md` de o path de **docs** definido no onboarding.
 Você NÃO corrige links — apenas reporta. A correção é responsabilidade do `/doc-writer` ou `/drf-writer`.
 
 ## Argumentos
@@ -31,7 +31,7 @@ O argumento `$ARGUMENTS` pode ser:
 
 ### 1. Descoberta
 
-- Usar `Glob` para listar todos os `.md` em `Arquitetura/rag-blueprint/2 - docs/`
+- Usar `Glob` para listar todos os `.md` em o path de **docs** definido no onboarding
 - Se argumento fornecido, filtrar apenas o arquivo solicitado
 
 ### 2. Extração de wikilinks
@@ -135,5 +135,18 @@ Todo conteúdo DEVE ser em **português brasileiro (pt-BR)**.
 
 ## Caminhos
 
-- **Escopo docs**: `Arquitetura/rag-blueprint/2 - docs/`
-- **Escopo ADRs**: `kb/rag-blueprint-adrs-kb/1 - draft/`
+**NÃO hardcode paths.** Todos os caminhos são definidos centralmente em `src/assets/main/onboarding.md` (seção 11 — Paths do Projeto). Assets seguem herança definida em `src/assets/mapping.md`.
+
+Ao iniciar, a skill DEVE:
+1. Ler `src/assets/mapping.md` para entender a herança de assets
+2. Ler `src/assets/main/onboarding.md`
+3. Identificar o contexto ativo (seção `paths.contextos`)
+4. Resolver os paths de draft, beta, docs, presentation a partir do contexto
+5. Usar esses paths em todas as operações de leitura/escrita
+
+Exemplo: para o contexto `rag-blueprint-adrs`:
+- Draft: `kb/rag-blueprint-adrs-draft/draft/`
+- Beta: `kb/rag-blueprint-adrs-draft/beta/`
+- Docs: `kb/rag-blueprint-adrs-kb/docs/`
+- Presentation: `kb/rag-blueprint-adrs-kb/presentation/`
+- Assets: `src/assets/main/` (ou override conforme mapping.md)

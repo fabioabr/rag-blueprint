@@ -18,7 +18,7 @@ Seu papel é converter documentos `.md` da pasta `2 - docs/` em apresentações 
 
 ## Sua Responsabilidade
 
-Você converte documentos `.md` de `Arquitetura/rag-blueprint/2 - docs/` em apresentações `.html` em `Arquitetura/rag-blueprint/3 - presentation/`.
+Você converte documentos `.md` de o path de **docs** definido no onboarding em apresentações `.html` em o path de **presentation** definido no onboarding.
 Você NÃO cria/edita `.txt` nem `.md` — isso é papel de outros writers.
 
 ## Argumentos
@@ -46,9 +46,9 @@ O argumento `$ARGUMENTS` pode ser:
 
 5. **Ler o design system** — ler `.claude/behavior/ui_ux/design_system.md` para referência
 
-6. **Carregar variáveis globais** — ler `.claude/assets/variaveis.md` para obter dados de empresa, autor, footer, etc. Substituir todos os `{{PLACEHOLDER}}` correspondentes no HTML gerado
+6. **Carregar variáveis globais** — ler `src/assets/main/variaveis.md` (ou override conforme `src/assets/mapping.md`) para obter dados de empresa, autor, footer, etc. Substituir todos os `{{PLACEHOLDER}}` correspondentes no HTML gerado
 
-7. **Carregar logos** — ler `0 - assets/logo-dark-base64.txt` e `0 - assets/logo-light-base64.txt` da KB do contexto. Se não existirem, fallback para `.claude/assets/`. Inserir ambos no header com classes `.logo-dark` e `.logo-light` (CSS alterna visibilidade no toggle de tema)
+7. **Carregar logos** — ler `src/assets/main/logos/logo-dark-base64.txt` e `src/assets/main/logos/logo-light-base64.txt` (ou override conforme `src/assets/mapping.md`). Inserir ambos no header com classes `.logo-dark` e `.logo-light` (CSS alterna visibilidade no toggle de tema)
 
 8. **Buscar glossário relacionado** — usar `Glob` para encontrar `GLS-*.md` em `2 - docs/`. Se existirem termos de glossário relevantes ao documento, incluir como aba "Glossário"
 
@@ -61,7 +61,12 @@ O argumento `$ARGUMENTS` pode ser:
 
 10. **Gerar o HTML** — seguindo template do tipo, playground (componentes reais), design system, variáveis globais e regras de mapeamento
 
-11. **Salvar** em `Arquitetura/rag-blueprint/3 - presentation/{prefixo}_{slug}.html`
+11. **Salvar** em `{paths.presentation}/{prefixo}_{slug}.html`
+
+12. **Publicar no portal GitHub Pages** — copiar o HTML gerado para `docs/adrs/` na raiz do repositório (fora de `src/`). Este é o passo que mantém o portal público sincronizado com as apresentações.
+    - Caminho destino: `<raiz_repo>/docs/adrs/{prefixo}_{slug}.html`
+    - Se o arquivo já existir em `docs/adrs/`, sobrescrever
+    - Se `docs/adrs/` não existir, criar a pasta
 
 ### Sem argumento (descoberta)
 
@@ -386,12 +391,12 @@ O footer é um componente fixo. SEMPRE usar este HTML exato, substituindo apenas
 
 O projeto suporta **dois logos** — um para tema escuro, outro para tema claro. Ambos são inseridos no HTML e o CSS alterna a visibilidade automaticamente no toggle de tema.
 
-**Arquivos (buscar na `0 - assets/` da KB do contexto):**
+**Arquivos (resolver via `src/assets/mapping.md` — padrão: `src/assets/main/logos/`):**
 - `logo-dark-base64.txt` → logo para tema escuro (fundo escuro, logo claro)
 - `logo-light-base64.txt` → logo para tema claro (fundo claro, logo escuro)
 - `logo-dark.png` e `logo-light.png` → originais (para referência)
 
-**Fallback:** se os arquivos não existirem em `0 - assets/`, buscar em `.claude/assets/`.
+**Resolução:** buscar primeiro no asset set mapeado para o contexto, fallback para `src/assets/main/logos/`.
 
 **Ao gerar o HTML:**
 1. Ler o conteúdo de `logo-dark-base64.txt` e `logo-light-base64.txt`
@@ -430,7 +435,8 @@ Antes de entregar o HTML:
 - [ ] Todo conteúdo do .md preservado (nada omitido)
 - [ ] Conteúdo em pt-BR
 - [ ] Arquivo funciona offline (exceto fontes/ícones CDN)
-- [ ] Arquivo salvo em `Arquitetura/rag-blueprint/3 - presentation/B{NN}_{slug}.html`
+- [ ] Arquivo salvo em `{paths.presentation}/B{NN}_{slug}.html`
+- [ ] Arquivo copiado para `docs/adrs/` (portal GitHub Pages)
 
 ## Idioma
 
@@ -438,12 +444,18 @@ Todo conteúdo DEVE ser em **português brasileiro (pt-BR)**.
 
 ## Caminhos
 
-- **Origem (docs)**: `Arquitetura/rag-blueprint/2 - docs/`
-- **Origem (ADRs)**: `kb/rag-blueprint-adrs-kb/2 - docs/`
-- **Destino**: `Arquitetura/rag-blueprint/3 - presentation/`
-- **Template base**: `.claude/behavior/ui_ux/templates/template_relatorio_html.md`
-- **Templates por tipo**: `.claude/behavior/ui_ux/templates/template_{tipo}.html`
-- **Exemplos de referência**: `.claude/behavior/ui_ux/template-examples/exemplo_{tipo}.html`
-- **Design System**: `.claude/behavior/ui_ux/design_system.md`
-- **Playground**: `.claude/behavior/ui_ux/playground.html`
-- **Componentes JointJS**: `.claude/behavior/ui_ux/components/`
+**NÃO hardcode paths.** Todos os caminhos são definidos centralmente em `src/assets/main/onboarding.md` (seção 11 — Paths do Projeto). Assets seguem herança definida em `src/assets/mapping.md`.
+
+Ao iniciar, a skill DEVE:
+1. Ler `src/assets/mapping.md` para entender a herança de assets
+2. Ler `src/assets/main/onboarding.md`
+3. Identificar o contexto ativo (seção `paths.contextos`)
+4. Resolver os paths de draft, beta, docs, presentation a partir do contexto
+5. Usar esses paths em todas as operações de leitura/escrita
+
+Exemplo: para o contexto `rag-blueprint-adrs`:
+- Draft: `kb/rag-blueprint-adrs-draft/draft/`
+- Beta: `kb/rag-blueprint-adrs-draft/beta/`
+- Docs: `kb/rag-blueprint-adrs-kb/docs/`
+- Presentation: `kb/rag-blueprint-adrs-kb/presentation/`
+- Assets: `src/assets/main/` (ou override conforme mapping.md)

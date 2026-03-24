@@ -1,0 +1,337 @@
+---
+id: BETA-011
+title: "Segregacao de Bases de Conhecimento por Nivel de Confidencialidade"
+domain: arquitetura
+confidentiality: internal
+sources:
+  - type: txt
+    origin: "src/kb/rag-blueprint-adrs-draft/draft/ADR-011_segregacao_kbs_por_confidencialidade.txt"
+    captured_at: "2026-03-23"
+    conversion_quality: 96
+tags: [segregacao-fisica, confidencialidade, isolamento-infraestrutura, base-vetorial, mcp-server, seguranca, compliance, defesa-em-profundidade, filtro-pre-retrieval, kb-public-internal, kb-restricted, kb-confidential, trilha-a, trilha-b, on-premises, cloud, soberania-dados, lgpd, bacen, cvm, sox, iso-27001, controle-acesso, autenticacao, autorizacao, mfa, sso, just-in-time-access, rede-segmentada, criptografia, aes-256, tls, hsm, roteamento-pipeline, front-matter, wikilinks-cross-kb, orquestrador-cross-kb, rrf, busca-cross-kb, blast-radius, auditabilidade, perfis-acesso, analyst, manager, director, release-independente, pipeline-ingestao, row-level-security, prompt-injection, misconfiguration, escalacao-privilegios, data-leakage, fail-safe, backup, documentos-expirados]
+aliases:
+  - "ADR-011"
+  - "Segregacao por Confidencialidade"
+status: draft
+last_enrichment: "2026-03-23"
+last_human_edit: "2026-03-23"
+---
+
+## Identificacao
+
+- **ID:** ADR-011
+- **Status:** proposed
+- **Data:** 21/03/2026
+- **Revisao:** 23/03/2026 (reescrita para separar decisao de processo)
+- **Decisor:** Fabio A. B. Rodrigues
+- **Escopo:** RAG Corporativo -- Isolamento de dados sensiveis via KBs e Bases Vetoriais separadas por nivel de confidencialidade
+- **Depende de:** ADR-001 (Pipeline de Geracao de Conhecimento em 4 Fases), ADR-002 (Soberania e Residencia de Dados: Cloud vs. On-Premise), ADR-004 (Seguranca, Classificacao de Dados e Controle de Acesso)
+- **Relaciona:** ADR-006 (Pipeline de Ingestao), ADR-007 (Retrieval Hibrido), ADR-008 (Governanca e Ciclo de Vida), ADR-010 (Git Flow)
+- **Supersede:** ADR-001 secao 2.3 (estrutura de pastas) -- este ADR redefine a organizacao de pastas nos 2 repositorios, adicionando camada de segregacao por nivel de confidencialidade
+
+## Documentos Extraidos
+
+Documentos extraidos (processo/operacao):
+
+- **SPEC-H01:** Orquestrador Cross-KB (especificacao do agente orquestrador, regras de fusao, classificacao de resposta)
+- **DOC-H02:** Guia de Deploy Multi-KB (configuracao multi-instancia, Docker Compose/K8s, parametrizacao do pipeline)
+- **DOC-H03:** Politica de Backup (schedules, retencao, criptografia por KB)
+- **DOC-A01:** Guia de Estrutura de Pastas (compartilhado com ADR-001)
+
+## 1. Sumario
+
+Este ADR decide pela **segregacao FISICA** de Bases de Conhecimento (KBs) por nivel de confidencialidade. Em vez de confiar exclusivamente em filtro pre-retrieval (camada de software) para impedir acesso a dados sensiveis, o controle de acesso e movido para a camada de **INFRAESTRUTURA**: dados de niveis diferentes residem em Bases Vetoriais fisicamente separadas, com MCP Servers dedicados. O filtro pre-retrieval (ADR-004) permanece como camada **ADICIONAL** de defesa dentro de cada KB.
+
+O modelo define **3 KBs segregadas:**
+
+- **kb-public-internal** (PUBLIC + INTERNAL) -- Trilha A (cloud permitido)
+- **kb-restricted** (RESTRICTED) -- Trilha B (on-premises obrigatorio)
+- **kb-confidential** (CONFIDENTIAL) -- Trilha B (on-premises, reforcado)
+
+## 2. Contexto
+
+### 2.1. O problema: filtro pre-retrieval nao e suficiente
+
+O ADR-004 estabeleceu 4 niveis de confidencialidade (PUBLIC, INTERNAL, RESTRICTED, CONFIDENTIAL) e definiu o filtro pre-retrieval como INVIOLAVEL.
+
+Essa decisao esta correta como **PRINCIPIO**, mas apresenta fragilidade critica como **UNICO** mecanismo de protecao. O filtro pre-retrieval e um controle na camada de SOFTWARE, vulneravel a:
+
+- **(a) Bugs de implementacao** -- condicao WHERE mal formulada, operador logico invertido, campo nao indexado causando fallback sem filtro
+- **(b) Prompt injection** -- manipulacao da query para bypassar o filtro quando o MCP Server tem acesso a TODOS os dados na mesma Base Vetorial
+- **(c) Misconfiguration** -- deploy incorreto, variavel de ambiente errada, perfil permissivo demais (causa numero 1 de vazamento segundo Verizon DBIR)
+- **(d) Escalacao de privilegios** -- qualquer vulnerabilidade que permita acesso direto a Base Vetorial (SQL injection, credencial vazada) expoe TODOS os niveis de uma vez
+- **(e) Complexidade de auditoria** -- auditar filtro de query em todas as situacoes e exponencialmente mais dificil do que auditar se dois servidores estao em redes separadas
+
+### 2.2. Contexto regulatorio
+
+O projeto opera dentro de instituicao financeira regulada pelo BACEN, CVM e LGPD. O risco de vazamento de dados RESTRICTED/CONFIDENTIAL e regulatorio e legal:
+
+- **LGPD** (Lei 13.709/2018): multas de ate 2% do faturamento + indenizacao
+- **BACEN** (Resolucao 4.893/2021): controles proporcionais a sensibilidade; falhas podem resultar em sancoes e intervencao
+- **CVM** (Instrucao 400, Lei 6.385/1976): vazamento de informacao privilegiada pode configurar crime
+- **SOX** (se aplicavel): controles insuficientes sobre informacao financeira
+
+Reguladores esperam controles em **MULTIPLAS CAMADAS**, com isolamento fisico quando possivel. Confiar EXCLUSIVAMENTE em filtro de query e **INACEITAVEL** do ponto de vista de compliance.
+
+### 2.3. A tese: mover o controle da query para a infraestrutura
+
+> Se dados RESTRICTED estao em uma Base Vetorial **SEPARADA**, com um MCP Server **SEPARADO**, em uma rede **SEPARADA**, entao e **FISICAMENTE IMPOSSIVEL** que um usuario acessando o MCP publico consiga ver dados RESTRICTED.
+
+Isso e **SEGURANCA POR ISOLAMENTO DE INFRAESTRUTURA** -- em contraste com seguranca por filtro de software. O ADR-001 ja antecipou essa possibilidade ao definir KBs separadas; o ADR-002 reforca ao definir Trilha A (Cloud) e Trilha B (On-Premise).
+
+### 2.4. Por que agora
+
+Essa decisao precisa ser tomada **ANTES** da implementacao do pipeline de ingestao (ADR-006), porque o roteamento de documentos para a Base Vetorial correta depende da arquitetura de segregacao estar definida. Migrar depois implica re-ingestao completa, recriacao de indices, reconfiguracao de MCPs e agentes, e periodo de indisponibilidade.
+
+## 3. Decisao
+
+**DECISAO PRINCIPAL:**
+
+Adotar modelo de **segregacao fisica de Bases de Conhecimento (KBs) por nivel de confidencialidade**, com Base Vetorial dedicada e MCP Server dedicado para cada nivel. O campo `confidentiality` no front matter do documento determina para qual KB e Base Vetorial ele sera roteado pelo pipeline de ingestao. O filtro pre-retrieval (ADR-004) continua existindo como camada ADICIONAL de defesa, mas NAO e mais a unica barreira.
+
+> **NOTA** -- Filtro pre-retrieval como camada ADICIONAL: O filtro pre-retrieval NAO e eliminado. Ele permanece como camada de defesa DENTRO de cada KB para granularidade por DOMINIO de negocio. Exemplo: dentro da kb-restricted, o filtro restringe por dominio (Manager de financeiro nao ve documentos restricted de compliance). A segregacao fisica substitui o filtro como UNICA barreira entre niveis; o filtro permanece util DENTRO do mesmo nivel.
+
+### 3.1. Modelo de segregacao -- 3 niveis de KB
+
+**NIVEL 1: KB PUBLICA + INTERNA (acesso geral)**
+
+| Aspecto | Valor |
+|---------|-------|
+| Identificador | `kb-public-internal` |
+| Confidencialidade | PUBLIC + INTERNAL |
+| Base Vetorial | Instancia A |
+| MCP Server | `mcp-knowledge-public` |
+| Trilha (ADR-002) | Trilha A (Cloud) -- permitido |
+| Acesso | Todos os funcionarios autenticados, agentes de IA genericos, assistentes de onboarding |
+| Autenticacao | Token de servico ou SSO corporativo |
+| Autorizacao | Perfis Analyst, Manager, Director -- todos tem acesso |
+
+**NIVEL 2: KB RESTRITA (acesso por cargo/funcao)**
+
+| Aspecto | Valor |
+|---------|-------|
+| Identificador | `kb-restricted` |
+| Confidencialidade | RESTRICTED |
+| Base Vetorial | Instancia B (SEPARADA FISICAMENTE da Instancia A) |
+| MCP Server | `mcp-knowledge-restricted` |
+| Trilha (ADR-002) | Trilha B (On-Premise) -- OBRIGATORIO |
+| Acesso | Gestores (Manager), Diretoria (Director), agentes de IA com perfil explicito para RESTRICTED |
+| Autenticacao | SSO corporativo + MFA obrigatorio |
+| Autorizacao | Manager: restrito ao seu dominio de negocio; Director: acesso amplo a restricted |
+| Controles extras | Rede segmentada, firewall por IP, backup criptografado, SIEM, access review trimestral |
+
+**NIVEL 3: KB CONFIDENCIAL (acesso minimo)**
+
+| Aspecto | Valor |
+|---------|-------|
+| Identificador | `kb-confidential` |
+| Confidencialidade | CONFIDENTIAL |
+| Base Vetorial | Instancia C (ISOLADA -- rede separada) |
+| MCP Server | `mcp-knowledge-confidential` |
+| Trilha (ADR-002) | Trilha B (On-Premise) -- OBRIGATORIO, controles EXTRAS |
+| Acesso | Diretoria com justificativa, Compliance Officer, agentes dedicados com aprovacao documentada |
+| Autenticacao | SSO + MFA + aprovacao just-in-time (tempo limitado) |
+| Autorizacao | Agente IA: acesso NEGADO por padrao |
+| Controles extras | Rede fisicamente separada, VPN dedicada, AES-256 at-rest, TLS 1.3 in-transit, HSM, cofre de backup, SOC 24/7, retencao de logs minimo 5 anos (BACEN) |
+
+### 3.2. Vantagens do modelo
+
+- **(a) ELIMINACAO DE CLASSE INTEIRA DE VULNERABILIDADES** -- Qualquer vulnerabilidade na Base Vetorial A (bug, injection, misconfiguration, credencial vazada) NAO tem como acessar dados RESTRICTED. Eles nao existem naquele ambiente.
+- **(b) ZERO RISCO DE DATA LEAKAGE VIA QUERY** -- MCP publico se conecta APENAS a Base Vetorial A. Nao tem credencial ou endpoint para acessar B ou C. Contraste: filtro na query depende de codigo correto (pode falhar); segregacao fisica nao depende (nao falha).
+- **(c) AUDITABILIDADE SIMPLIFICADA** -- Basta verificar quem tem acesso a qual MCP. Nao precisa auditar queries individuais. Para reguladores: demonstravel de forma trivial.
+- **(d) SIMPLICIDADE CONCEITUAL** -- Controle de acesso = "qual MCP voce acessa?" (nao "qual filtro a query aplica?"). Simplifica desenvolvimento, teste, operacao e onboarding.
+- **(e) COMPLIANCE NATIVO** -- Atende NATIVAMENTE: BACEN (ambiente isolado), LGPD (acesso restrito e auditavel), CVM (informacoes privilegiadas isoladas), SOX (controles documentaveis), ISO 27001 (segmentacao e controle por nivel).
+- **(f) ALINHAMENTO COM ADR-002 (SOBERANIA)** -- Cada Base Vetorial reside na trilha correta por design, nao por configuracao.
+
+### 3.3. Decisoes complementares
+
+**BUSCA CROSS-KB**
+
+Usuarios com acesso a multiplos niveis necessitam de um agente orquestrador que consulte os MCPs autorizados em paralelo, funda resultados via RRF (ADR-007) e classifique a resposta pelo nivel mais alto de chunk utilizado. Cada chunk no contexto deve indicar sua classificacao (`[PUBLIC]`, `[RESTRICTED]`, etc.).
+
+Ver SPEC-H01 (Orquestrador Cross-KB) para especificacao detalhada.
+
+**DOCUMENTOS COM CONFIDENCIALIDADE MISTA**
+
+Documentos com secoes de niveis diferentes devem ser splitados na Fase 2 (`.beta.md`) em documentos separados por nivel, com `cross_ref` no front matter. Fallback: classificar pelo nivel MAIS ALTO.
+
+Na re-ingestao (ADR-001 secao 2.7), mudanca de classificacao de secoes gera alerta para revisao humana.
+
+**ROTEAMENTO NO PIPELINE DE INGESTAO**
+
+O campo `confidentiality` no front matter e o **UNICO** determinante do roteamento:
+
+| Valor | Destino | Base Vetorial |
+|-------|---------|---------------|
+| `public` | kb-public-internal | Base Vetorial A |
+| `internal` | kb-public-internal | Base Vetorial A |
+| `restricted` | kb-restricted | Base Vetorial B |
+| `confidential` | kb-confidential | Base Vetorial C |
+
+Se campo **AUSENTE** ou invalido: pipeline **REJEITA** o documento (fail-safe). NAO existe default -- ausencia de classificacao e **ERRO**.
+
+**WIKILINKS CROSS-KB**
+
+Wikilinks cross-KB sao **PROIBIDOS**. Motivo: link para documento restricted em documento publico revela EXISTENCIA de informacao restrita. Para referencias cruzadas, usar `cross_ref` no front matter (sem link navegavel). Pipeline valida: wikilink cross-KB = ERRO de ingestao.
+
+**DOCUMENTOS EXPIRADOS NAS KBs**
+
+Documentos expirados (`valid_until` ultrapassado) permanecem na Base Vetorial para consultas historicas. Cada MCP aplica filtro temporal individualmente. Documentos expirados sao marcados como `[EXPIRADO]` no retrieval.
+
+**ACESSO POR PERFIL (resumo)**
+
+| Perfil | Acesso |
+|--------|--------|
+| Analyst | `mcp-knowledge-public` apenas |
+| Manager | `mcp-knowledge-public` + `mcp-knowledge-restricted` (dominio) |
+| Director | todos os 3 MCPs |
+| Agente generico | `mcp-knowledge-public` apenas |
+| Agente de dominio | public + restricted (dominio especifico) |
+| Agente dedicado | `mcp-knowledge-confidential` (com aprovacao) |
+
+**RELEASES INDEPENDENTES POR KB (extensao do ADR-010)**
+
+Cada KB tem release tag independente (ex: `kb-restricted@v1.0.3`), ambiente de staging proprio e pipeline de deploy separado:
+
+- KB publica: deploy automatico (CI/CD)
+- KB restrita: aprovacao de Manager
+- KB confidencial: aprovacao de Director + Compliance
+
+Rollback e independente por KB (ADR-008).
+
+**MANUTENCAO DE MULTIPLAS INSTANCIAS**
+
+Pipeline parametrizado (`KB_TARGET`, `VECTOR_DB_HOST`, `VECTOR_DB_CREDENTIALS`, `MCP_ENDPOINT`) permite usar o mesmo pipeline (ADR-006) para as 3 KBs.
+
+Ver DOC-H02 (Guia de Deploy Multi-KB) para configuracao detalhada.
+Ver DOC-H03 (Politica de Backup) para schedules e retencao por KB.
+
+**ESTRUTURA DE PASTAS**
+
+A segregacao por confidencialidade adiciona camada de diretorio nos dois repositorios (`rag-workspace` e `rag-knowledge-base`), com subpastas por nivel (`public-internal/`, `restricted/`, `confidential/`).
+
+**NOTA:** Esta decisao **SUPERCEDE** a estrutura de pastas do ADR-001 (secao 2.3). Ver DOC-A01 (Guia de Estrutura de Pastas) para layout detalhado.
+
+## 4. Alternativas Descartadas
+
+### Alternativa A: Filtro pre-retrieval na query (modelo ADR-004 original)
+
+**Descricao:** Manter uma unica Base Vetorial com todos os niveis. Controle de acesso exclusivamente via filtro pre-retrieval na query.
+
+**Motivo da rejeicao:** Para instituicao financeira regulada, confiar EXCLUSIVAMENTE em filtro de query como mecanismo de protecao de dados RESTRICTED/CONFIDENTIAL e INACEITAVEL. Vulneravel a bugs, prompt injection, misconfiguration e escalacao de privilegios. Um unico bug expoe TODOS os niveis. NAO atende requisitos regulatorios de isolamento fisico (BACEN, LGPD). Viola principio de defesa em profundidade.
+
+### Alternativa B: Banco unico com Row-Level Security (RLS)
+
+**Descricao:** Unica Base Vetorial com RLS nativo do banco, aplicando politica de acesso por usuario conectado.
+
+**Motivo da rejeicao:** RLS e controle na camada de software do banco, nao na infraestrutura. Dados permanecem no mesmo disco, mesma memoria, mesmo processo -- admin do banco ve TUDO. Maturidade de RLS em bases vetoriais e limitada. Dependencia de vendor indesejavel. NAO atende requisito de isolamento fisico do BACEN para dados altamente sensiveis.
+
+### Alternativa C: Criptografia at-rest com decrypt por perfil
+
+**Descricao:** Todos os dados em unica Base Vetorial, com chunks de niveis superiores criptografados com chaves diferentes.
+
+**Motivo da rejeicao:** INCOMPATIVEL com busca vetorial -- embeddings criptografados nao podem ser comparados por similaridade. Embeddings em texto claro ja revelam informacao semantica (inversion attack possivel). Complexidade criptografica desproporcional quando segregacao fisica resolve o problema de forma mais simples e segura. Criptografia at-rest e boa pratica COMPLEMENTAR, nao substituta de isolamento.
+
+### Alternativa D: Segregacao por 4 KBs (uma por nivel)
+
+**Descricao:** 4 KBs separadas -- KB-public, KB-internal, KB-restricted, KB-confidential.
+
+**Motivo da rejeicao:** PUBLIC e INTERNAL tem perfis de acesso muito similares (todos os colaboradores autenticados). A diferenca e sobre disseminacao EXTERNA (pode sair da empresa?), nao sobre acesso INTERNO. Separar nao agrega seguranca significativa e gera complexidade operacional excessiva (4 Bases Vetoriais, 4 MCPs, 4 pipelines, 4 ambientes de staging).
+
+## 5. Consequencias
+
+### 5.1. Positivas
+
+- **(+)** Seguranca reforcada por isolamento fisico -- elimina classe inteira de vulnerabilidades relacionadas a filtro de query
+- **(+)** Compliance nativo com BACEN, LGPD, CVM -- isolamento fisico atende requisitos regulatorios sem controles adicionais complexos
+- **(+)** Auditoria simplificada -- "quem acessa qual MCP" e documentavel e verificavel de forma trivial
+- **(+)** Alinhamento com ADR-002 (soberania) -- cada KB na trilha de infraestrutura correta por design
+- **(+)** Blast radius limitado -- comprometimento de uma Base Vetorial nao afeta as demais
+- **(+)** Release independente -- cada KB com seu proprio ciclo, sem acoplamento
+- **(+)** Escalabilidade independente -- Base Vetorial A pode escalar sem afetar performance da B ou C
+- **(+)** Simplicidade conceitual -- controle de acesso e "qual MCP voce acessa"
+
+### 5.2. Negativas (com mitigacoes)
+
+- **(-)** Custo operacional maior -- 3 Bases Vetoriais para manter. **Mitigacao:** pipeline parametrizado, automacao, monitoring unificado.
+- **(-)** Complexidade de busca cross-KB -- precisa de agente orquestrador. **Mitigacao:** orquestrador bem definido; RRF (ADR-007) ja define fusao.
+- **(-)** Duplicacao potencial de chunks -- documento split em multiplos niveis. **Mitigacao:** `cross_ref` no front matter; orquestrador deduplica por `document_id` na fusao.
+- **(-)** Custo de infraestrutura maior -- 3 instancias em vez de 1. **Mitigacao:** KBs restricted e confidential tendem a ter MUITO menos documentos -- instancias menores sao suficientes.
+- **(-)** Latencia na busca cross-KB -- consultar 3 MCPs em paralelo. **Mitigacao:** queries em paralelo, timeout por MCP, resultado parcial.
+
+### 5.3. Riscos
+
+| # | Risco | Probabilidade | Impacto | Mitigacao |
+|---|-------|--------------|---------|-----------|
+| 1 | Classificacao incorreta de documento | MEDIA | ALTO | Quality gate na Fase 2 com revisao humana; validacao automatica por keywords sensiveis; scan trimestral; na duvida, classificar pelo nivel MAIS ALTO |
+| 2 | Orquestrador cross-KB com falha de seguranca | BAIXA | ALTO | Orquestrador roda com perfil do USUARIO (nao admin), sem credenciais proprias, stateless, com log completo e pen test especifico |
+| 3 | Drift de configuracao entre ambientes | MEDIA | MEDIO | Infrastructure as Code, configuracao no Git, drift detection automatica, alertas para desvios |
+| 4 | Documento sem classificacao entra no pipeline | MEDIA | ALTO | Pipeline REJEITA (fail-safe), pre-commit hook, quality gate na Fase 2, dashboard de documentos sem classificacao |
+
+## 6. Implementacao (alto nivel)
+
+A implementacao segue **3 fases incrementais:**
+
+### Fase 1 -- MVP (apenas kb-public-internal)
+
+- Base Vetorial A + MCP publico operacionais
+- Pipeline roteando public/internal para Base Vetorial A
+- Documentos restricted/confidential **REJEITADOS** pelo pipeline
+- Validacao do mecanismo de rejeicao por equipe de seguranca
+
+### Fase 2 -- Adicionar kb-restricted
+
+- Base Vetorial B em ambiente on-premises com rede segmentada
+- MCP restricted com SSO+MFA
+- Teste de penetracao confirmando isolamento (MCP publico NAO acessa B)
+- Controles de auditoria operacionais
+- Validacao de compliance (BACEN)
+
+### Fase 3 -- Adicionar kb-confidential + orquestrador cross-KB
+
+- Base Vetorial C em rede isolada com HSM
+- MCP confidential com SSO+MFA+JIT
+- Criptografia at-rest (AES-256) e in-transit (TLS 1.3)
+- Agente orquestrador cross-KB com fusao via RRF (ADR-007)
+- SOC 24/7, pen test completo, retencao de logs 5 anos
+- Aprovacao formal de Diretoria e Compliance
+
+Ver DOC-H02 (Guia de Deploy Multi-KB) para detalhamento de cada fase.
+
+## 7. Referencias
+
+### ADRs relacionados
+
+- **ADR-001:** Pipeline de Geracao de Conhecimento em 4 Fases
+- **ADR-002:** Soberania e Residencia de Dados -- Cloud vs. On-Premise
+- **ADR-004:** Seguranca, Classificacao de Dados e Controle de Acesso
+- **ADR-006:** Pipeline de Ingestao -- Da Fonte a Base Vetorial
+- **ADR-007:** Retrieval Hibrido e Agentes
+- **ADR-008:** Governanca, Ciclo de Vida e Rollback
+- **ADR-010:** Git Flow e Release
+
+### Documentos extraidos deste ADR
+
+- **SPEC-H01:** Orquestrador Cross-KB (especificacao do agente orquestrador, regras de fusao, classificacao de resposta)
+- **DOC-H02:** Guia de Deploy Multi-KB (configuracao multi-instancia, Docker Compose/K8s, parametrizacao do pipeline)
+- **DOC-H03:** Politica de Backup (schedules, retencao, criptografia por KB)
+- **DOC-A01:** Guia de Estrutura de Pastas (layout dos 2 repos com segregacao por confidencialidade -- compartilhado com ADR-001)
+
+### Regulacoes
+
+- LGPD -- Lei 13.709/2018
+- BACEN -- Resolucao 4.893/2021
+- BACEN -- Resolucao BCB 85/2021
+- CVM -- Instrucao CVM 400, Lei 6.385/1976
+- ISO 27001
+- Verizon DBIR
+
+### Conceitos
+
+- Defense in depth
+- Blast radius
+- Fail-safe
+- Just-in-time access
+- RRF (Reciprocal Rank Fusion)
+
+<!-- conversion_quality: 96 -->

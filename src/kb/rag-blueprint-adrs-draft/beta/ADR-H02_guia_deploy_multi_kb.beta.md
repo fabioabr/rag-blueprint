@@ -1,0 +1,287 @@
+---
+id: BETA-H02
+title: "Guia de Deploy Multi-KB"
+domain: arquitetura
+confidentiality: internal
+sources:
+  - type: txt
+    origin: "src/kb/rag-blueprint-adrs-draft/draft/ADR-H02_guia_deploy_multi_kb.txt"
+    captured_at: "2026-03-23"
+    conversion_quality: 95
+tags:
+  - deploy multi kb
+  - infraestrutura
+  - docker compose
+  - profiles
+  - neo4j
+  - instancia dedicada
+  - mcp server
+  - segregacao por confidencialidade
+  - rede isolada
+  - firewall
+  - volumes isolados
+  - pipeline parametrizado
+  - variaveis de ambiente
+  - secret manager
+  - autenticacao
+  - sso
+  - mfa
+  - jit
+  - cloud
+  - on premises
+  - staging
+  - producao
+  - release tag
+  - ci cd
+  - aprovacao de deploy
+  - monitoramento unificado
+  - checklist de validacao
+  - smoke test
+  - base vetorial
+  - vector index
+  - kb public internal
+  - kb restricted
+  - kb confidential
+  - orquestrador cross kb
+  - dimensionamento
+  - fase de rollout
+  - mvp
+  - ram
+  - disco
+  - chunks
+  - documentos
+  - criptografia
+  - aes 256
+  - tls
+  - hsm
+  - backup
+  - fail safe
+  - confidentiality
+  - front matter
+  - compliance officer
+  - manager
+  - director
+aliases:
+  - "ADR-H02"
+  - "Deploy Multi-KB"
+status: draft
+last_enrichment: "2026-03-23"
+last_human_edit: "2026-03-23"
+---
+
+## ADR-H02 -- Guia de Deploy Multi-KB
+
+**Tipo:** ADR
+**Origem:** ADR-011
+**Data:** 23/03/2026
+
+## 1. Objetivo
+
+Documentar a configuracao de infraestrutura para o modelo de segregacao em 3 Knowledge Bases (KBs) definido no ADR-011, incluindo instancias Neo4j dedicadas, MCP Servers por nivel, configuracao de rede e profiles de deploy.
+
+## 2. Visao Geral da Arquitetura Multi-Instancia
+
+O ADR-011 estabelece 3 KBs fisicamente separadas:
+
+| KB | Base Vetorial | MCP Server | Rede |
+|---|---|---|---|
+| kb-public-internal | Instancia A | mcp-knowledge-public | Cloud (A) |
+| kb-restricted | Instancia B | mcp-knowledge-restricted | On-Prem (B) |
+| kb-confidential | Instancia C | mcp-knowledge-confidential | On-Prem (C) |
+
+Cada KB opera como unidade autonoma: Base Vetorial propria, MCP Server proprio, volumes de dados isolados, rede segmentada.
+
+## 3. Configuracao Docker Compose -- Conceito
+
+O deploy utiliza Docker Compose com profiles para ativar cada KB independentemente. O mesmo pipeline de ingestao (ADR-006) e parametrizado para cada instancia.
+
+### 3.1 Profiles
+
+| Profile | Servicos Incluidos |
+|---|---|
+| public-internal | neo4j-public, mcp-public, monitoring-public |
+| restricted | neo4j-restricted, mcp-restricted, monitoring-restricted |
+| confidential | neo4j-confidential, mcp-confidential, monitoring-confidential |
+| orchestrator | orquestrador cross-kb (ADR-H01) |
+
+Para ativar apenas a KB publica (Fase 1 do rollout):
+```bash
+docker compose --profile public-internal up -d
+```
+
+Para ativar public + restricted (Fase 2):
+```bash
+docker compose --profile public-internal --profile restricted up -d
+```
+
+Para ativar tudo (Fase 3):
+```bash
+docker compose --profile public-internal --profile restricted \
+  --profile confidential --profile orchestrator up -d
+```
+
+### 3.2 Instancias Neo4j
+
+Cada instancia Neo4j roda em container dedicado com volumes isolados:
+
+| Servico | Porta | Volume de Dados | Volume de Logs |
+|---|---|---|---|
+| neo4j-public | 7474 | vol-neo4j-public-data | vol-neo4j-public-logs |
+| neo4j-restricted | 7475 | vol-neo4j-restr-data | vol-neo4j-restr-logs |
+| neo4j-confidential | 7476 | vol-neo4j-conf-data | vol-neo4j-conf-logs |
+
+Configuracoes por instancia:
+- NEO4J_AUTH: credenciais diferentes por instancia
+- NEO4J_PLUGINS: vector index habilitado em todas
+- NEO4J_dbms_memory_heap_max__size: dimensionado por volume esperado
+- Backups: agendados independentemente por instancia
+
+### 3.3 MCP Servers
+
+Cada MCP Server conecta-se EXCLUSIVAMENTE a sua instancia Neo4j:
+
+| Servico | Porta | Conecta em | Autenticacao |
+|---|---|---|---|
+| mcp-public | 8080 | neo4j-public:7474 | Token de servico / SSO |
+| mcp-restricted | 8081 | neo4j-restricted:7475 | SSO + MFA |
+| mcp-confidential | 8082 | neo4j-confidential:7476 | SSO + MFA + JIT |
+
+Variaveis de ambiente por MCP:
+- `KB_TARGET`: identificador da KB (ex: kb-public-internal)
+- `VECTOR_DB_HOST`: host da instancia Neo4j
+- `VECTOR_DB_CREDENTIALS`: credenciais (referencia a vault/secret manager)
+- `MCP_ENDPOINT`: URL de exposicao do MCP
+- `AUTH_MODE`: token | sso | sso+mfa | sso+mfa+jit
+- `LOG_LEVEL`: info (public) | debug (restricted/confidential)
+
+## 4. Configuracao de Rede
+
+### 4.1 Isolamento de Redes
+
+Cada KB opera em rede Docker separada:
+
+| Rede | Servicos | Acesso Externo |
+|---|---|---|
+| net-public | neo4j-public, mcp-public | Load balancer corp. |
+| net-restricted | neo4j-restricted, mcp-restricted | VPN corporativa |
+| net-confidential | neo4j-confidential, mcp-confidential | VPN dedicada + JIT |
+
+Regras fundamentais:
+- net-public NAO tem rota para net-restricted nem net-confidential.
+- net-restricted NAO tem rota para net-confidential.
+- O orquestrador cross-kb (quando ativado) tem acesso controlado por firewall: so pode acessar as portas dos MCPs, nunca as portas das instancias Neo4j diretamente.
+
+### 4.2 Regras de Firewall
+
+| Origem | Destino | Porta | Acao |
+|---|---|---|---|
+| mcp-public | neo4j-public | 7474 | ALLOW |
+| mcp-restricted | neo4j-restricted | 7475 | ALLOW |
+| mcp-confidential | neo4j-confidential | 7476 | ALLOW |
+| orchestrator | mcp-public | 8080 | ALLOW |
+| orchestrator | mcp-restricted | 8081 | ALLOW |
+| orchestrator | mcp-confidential | 8082 | ALLOW |
+| mcp-public | neo4j-restricted | * | DENY |
+| mcp-public | neo4j-confidential | * | DENY |
+| mcp-restricted | neo4j-confidential | * | DENY |
+| * | neo4j-* | * | DENY (default) |
+
+## 5. Pipeline Parametrizado
+
+O mesmo pipeline de ingestao (ADR-006) e reutilizado para as 3 KBs, parametrizado pelas seguintes variaveis:
+
+| Variavel | Descricao |
+|---|---|
+| KB_TARGET | Identificador da KB alvo |
+| VECTOR_DB_HOST | Host da instancia Neo4j correspondente |
+| VECTOR_DB_CREDENTIALS | Credenciais (via secret manager) |
+| MCP_ENDPOINT | Endpoint do MCP para validacao pos-ingestao |
+| EMBEDDING_MODEL | Modelo de embedding (pode variar por KB) |
+| BATCH_SIZE | Tamanho do lote de ingestao |
+
+O roteamento e determinado pelo campo "confidentiality" no front matter:
+- public -> KB_TARGET=kb-public-internal
+- internal -> KB_TARGET=kb-public-internal
+- restricted -> KB_TARGET=kb-restricted
+- confidential -> KB_TARGET=kb-confidential
+
+**FAIL-SAFE:** se o campo "confidentiality" estiver AUSENTE, o pipeline REJEITA o documento e notifica o responsavel. Nao existe default seguro.
+
+## 6. Ambientes por KB (Staging e Producao)
+
+Cada KB possui seus proprios ambientes de staging e producao:
+
+| KB | Staging | Producao |
+|---|---|---|
+| kb-public-internal | neo4j-public-staging | neo4j-public-prod |
+| kb-restricted | neo4j-restricted-staging | neo4j-restricted-prod |
+| kb-confidential | neo4j-conf-staging | neo4j-conf-prod |
+
+Release TAGs sao independentes por KB (ADR-011):
+- kb-public-internal@v1.2.0
+- kb-restricted@v1.0.3
+- kb-confidential@v1.0.1
+
+Pipeline de deploy por KB:
+- KB publica: deploy automatico (CI/CD) apos testes em staging
+- KB restrita: requer aprovacao de Manager antes do deploy
+- KB confidencial: requer aprovacao de Director + Compliance Officer
+
+## 7. Dimensionamento por Fase de Rollout
+
+**Fase 1 -- MVP (apenas kb-public-internal):**
+- 1 instancia Neo4j (Instancia A)
+- 1 MCP Server (mcp-knowledge-public)
+- Documentos RESTRICTED e CONFIDENTIAL rejeitados pelo pipeline
+- Estimativa: 20-100 documentos, 200-1.000 chunks, 2-10 MB
+- RAM Neo4j: 2-4 GB suficiente
+- Duracao estimada: 2-3 sprints
+
+**Fase 2 -- Adicionar kb-restricted:**
+- +1 instancia Neo4j (Instancia B) em ambiente on-premises
+- +1 MCP Server (mcp-knowledge-restricted) com SSO+MFA
+- Rede segmentada, validacao de isolamento
+- Estimativa KB restrita: 50-200 documentos iniciais
+- Duracao estimada: 3-4 sprints
+
+**Fase 3 -- Adicionar kb-confidential + orquestrador:**
+- +1 instancia Neo4j (Instancia C) em rede isolada
+- +1 MCP Server (mcp-knowledge-confidential) com SSO+MFA+JIT
+- Orquestrador cross-KB com fusao RRF
+- Criptografia at-rest (AES-256) e in-transit (TLS 1.3)
+- Chaves em HSM
+- Duracao estimada: 4-6 sprints
+
+## 8. Monitoramento Unificado
+
+Apesar do isolamento fisico, o monitoramento e centralizado:
+- Dashboard unico com visao de saude das 3 KBs
+- Metricas por KB: uptime, latencia, volume de chunks, uso de recursos
+- Alertas independentes por KB (falha em uma nao gera alerta nas demais)
+- Logs de acesso separados por KB (retencao conforme politica de backup)
+
+Para KB confidencial: monitoramento 24/7 com alertas para SOC.
+
+## 9. Checklist de Validacao de Deploy
+
+- [ ] Cada MCP conecta SOMENTE a sua instancia Neo4j
+- [ ] MCP publico NAO consegue acessar Base Vetorial B ou C
+- [ ] MCP restrito NAO consegue acessar Base Vetorial C
+- [ ] Firewall rules estao aplicadas e testadas
+- [ ] Volumes de dados sao isolados (nao compartilhados)
+- [ ] Credenciais sao diferentes por instancia
+- [ ] Backup automatizado esta configurado por KB
+- [ ] Pipeline de ingestao rejeita documentos sem "confidentiality"
+- [ ] Monitoramento esta recebendo metricas de todas as instancias
+- [ ] Smoke test de busca semantica passa em cada KB
+
+## 10. Referencias
+
+- ADR-011: Segregacao de KBs por Confidencialidade
+- ADR-006: Pipeline de Ingestao (7 etapas, idempotencia)
+- ADR-002: Soberania de Dados (Trilha A Cloud, Trilha B On-Prem)
+- ADR-004: Seguranca e Classificacao de Dados
+- ADR-010: Git Flow (releases independentes por KB)
+- ADR-H01: Orquestrador Cross-KB
+
+<!-- conversion_quality: 95 -->

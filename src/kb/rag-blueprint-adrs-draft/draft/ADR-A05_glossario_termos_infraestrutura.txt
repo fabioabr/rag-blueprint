@@ -1,0 +1,299 @@
+================================================================================
+ADR-A05 -- Glossario de Termos de Infraestrutura e Pipeline
+================================================================================
+Tipo:           ADR
+Origem:         ADR-002
+Data:           23/03/2026
+================================================================================
+
+1. SOBRE ESTE GLOSSARIO
+================================================================================
+
+Termos tecnicos controlados utilizados no projeto RAG Corporativo. Extraidos
+primariamente da ADR-002 (Soberania de Dados) e complementados por definicoes
+recorrentes nas demais ADRs do projeto.
+
+Objetivo: garantir que todos os envolvidos (POs, analistas, engenheiros,
+arquitetos) usem a mesma terminologia com o mesmo significado.
+
+
+2. TERMOS DE INFRAESTRUTURA E SOBERANIA
+================================================================================
+
+Trilha
+--------------------------------------------------------------------------------
+Conjunto de componentes (embedding, base vetorial, LLM, reranker) que processam
+dados de um determinado nivel de confidencialidade. O projeto define duas
+trilhas: Trilha A (Cloud) para dados public/internal e Trilha B (On-Premise)
+para dados restricted/confidential. A trilha e determinada pelo campo
+confidentiality no front matter do documento.
+
+Soberania de Dados
+--------------------------------------------------------------------------------
+Principio de que a organizacao mantem controle total sobre onde seus dados sao
+armazenados e processados. Em contexto regulado (BACEN, LGPD, CVM), soberania
+implica que dados restritos nao podem ser enviados para infraestrutura de
+terceiros, independentemente de termos de uso ou acordos contratuais.
+
+Trilha Hibrida
+--------------------------------------------------------------------------------
+Configuracao onde a organizacao opera ambas as trilhas simultaneamente:
+documentos public/internal pela Trilha A (Cloud) e documentos
+restricted/confidential pela Trilha B (On-Premise). E o cenario mais comum
+em organizacoes reguladas.
+
+DBaaS (Database as a Service)
+--------------------------------------------------------------------------------
+Banco de dados gerenciado na nuvem. No contexto do projeto, refere-se a
+instancia da base vetorial hospedada pelo provedor cloud (Trilha A), com
+backup automatizado e SLA definido.
+
+VRAM
+--------------------------------------------------------------------------------
+Memoria da GPU dedicada ao processamento de modelos de IA. Determina o tamanho
+maximo de modelo que pode ser carregado. Ex: GPU com 8GB VRAM comporta BGE-M3
+para embeddings; 2x GPU com 24GB VRAM comporta Llama 3.1 70B quantizado.
+
+Quantizacao (Q4, AWQ)
+--------------------------------------------------------------------------------
+Tecnica que reduz o tamanho de modelos de IA comprimindo pesos de 16 bits para
+4 bits, com perda minima de qualidade. Permite rodar modelos grandes (70B+) em
+hardware consumer. Q4 = quantizacao de 4 bits. AWQ = Activation-aware Weight
+Quantization (metodo especifico).
+
+
+3. TERMOS DO PIPELINE
+================================================================================
+
+Pipeline
+--------------------------------------------------------------------------------
+Sequencia automatizada de etapas que transforma dados de entrada em uma saida
+processada. No projeto RAG Corporativo, existem 3 pipelines principais:
+(1) Pipeline de mineracao -- gera .beta.md a partir de fontes brutas (Fase 2);
+(2) Pipeline de promocao -- transforma .beta.md em .md final (Fase 3);
+(3) Pipeline de ingestao -- alimenta a base vetorial a partir dos .md (Fase 4).
+
+Pipeline de Ingestao
+--------------------------------------------------------------------------------
+Pipeline especifico da Fase 4 que constroi/atualiza a base vetorial. Composto
+por 7 etapas: Descoberta, Parse, Chunking, Embeddings, Persistencia, Indexacao
+e Observabilidade. Triggered por release TAG no repositorio knowledge-base.
+Deve ser idempotente (mesmo input = mesmo output).
+
+Pipeline de Promocao
+--------------------------------------------------------------------------------
+Pipeline especifico da Fase 3 que transforma .beta.md editaveis em .md finais
+imutaveis. Remove marcadores LOCKED, enriquece front matter com campos de
+governanca, gera PR automatico no repositorio knowledge-base.
+
+Ingestao
+--------------------------------------------------------------------------------
+Processo de inserir dados processados (chunks + embeddings + metadados) na
+base vetorial. Inclui parse de front matter, chunking, geracao de embeddings
+e persistencia no banco.
+
+Chunk
+--------------------------------------------------------------------------------
+Fragmento semantico de um documento. Resultado do chunking (quebra de um
+documento em pedacos menores). Cada chunk herda metadados do documento pai,
+possui seu proprio embedding e e a unidade basica de busca na base vetorial.
+Faixa tipica: 300-800 tokens.
+
+Chunking
+--------------------------------------------------------------------------------
+Etapa do pipeline que quebra documentos em fragmentos semanticos (chunks).
+A estrategia de chunking varia por tipo de documento:
+- ADR: chunks menores e precisos
+- Runbook: chunk por procedimento/passo operacional
+- Documento arquitetural: chunk por modulo, fluxo ou decisao
+- Glossario: chunk quase atomico por termo
+- Documento de task: chunk por contexto, escopo, decisao e aceite
+
+Embedding
+--------------------------------------------------------------------------------
+Representacao vetorial densa de um trecho de texto. Um array de numeros
+(ex: 1024 ou 1536 dimensoes) que captura o significado semantico do texto.
+Permite busca por similaridade na base vetorial. Gerado por modelo de embedding
+(ex: OpenAI text-embedding-3-small na Trilha A, BGE-M3 na Trilha B).
+
+Bi-encoder
+--------------------------------------------------------------------------------
+Modelo que codifica query e documento separadamente em vetores independentes.
+Rapido (codifica uma vez, busca muitas vezes), mas menos preciso que
+cross-encoder. Usado para geracao de embeddings.
+
+Cross-encoder
+--------------------------------------------------------------------------------
+Modelo que codifica query e documento juntos em uma unica passagem. Lento
+(processa cada par query-documento), mas mais preciso que bi-encoder. Usado
+para reranking dos resultados da busca.
+
+
+4. TERMOS DA BASE VETORIAL
+================================================================================
+
+Base Vetorial
+--------------------------------------------------------------------------------
+Banco de dados especializado em armazenar e buscar vetores (embeddings). No
+projeto, utiliza-se banco com suporte a grafo + vetor + full-text (ex: Neo4j).
+Armazena chunks, embeddings, metadados e relacoes entre entidades.
+
+Knowledge Base (KB)
+--------------------------------------------------------------------------------
+Base de conhecimento. No contexto do projeto, refere-se a uma instancia logica
+que agrupa documentos de um mesmo nivel de confidencialidade. O projeto opera
+3 KBs: kb-public-internal (Nivel 1), kb-restricted (Nivel 2) e
+kb-confidential (Nivel 3). Cada KB possui sua propria base vetorial e MCP.
+
+Vector Index
+--------------------------------------------------------------------------------
+Indice especializado para busca por similaridade de vetores. Permite encontrar
+os chunks mais semanticamente proximos de uma query. Construido sobre os
+embeddings armazenados na base vetorial.
+
+Retrieval
+--------------------------------------------------------------------------------
+Processo de buscar e recuperar informacoes relevantes da base vetorial para
+responder a uma pergunta. Inclui busca vetorial (por similaridade), expansao
+por grafo (relacoes entre entidades) e reranking.
+
+Reranking
+--------------------------------------------------------------------------------
+Etapa pos-busca que reordena os resultados usando modelo mais preciso
+(cross-encoder). Melhora a precisao dos top-K resultados. No projeto:
+Cohere Rerank v3 (Trilha A) ou BGE-Reranker-v2-m3 (Trilha B).
+
+Filtro Pre-Retrieval
+--------------------------------------------------------------------------------
+Filtro aplicado ANTES da busca vetorial. No projeto, filtra por nivel de
+confidencialidade, dominio e contexto temporal. Diferente de filtro
+pos-retrieval (que filtra resultados ja retornados). E inviolavel: nunca
+confiar apenas em prompt para seguranca.
+
+RRF (Reciprocal Rank Fusion)
+--------------------------------------------------------------------------------
+Algoritmo para fundir resultados de multiplas fontes de busca. Combina
+rankings de diferentes MCPs/bases vetoriais em um unico ranking unificado.
+Usado pelo agente orquestrador na busca cross-KB.
+
+MCP (Model Context Protocol)
+--------------------------------------------------------------------------------
+Protocolo que define como agentes de IA acessam bases de conhecimento. No
+projeto, cada KB possui seu proprio MCP Server dedicado:
+- mcp-knowledge-public (KB Nivel 1)
+- mcp-knowledge-restricted (KB Nivel 2)
+- mcp-knowledge-confidential (KB Nivel 3)
+
+
+5. TERMOS DE GOVERNANCA E QUALIDADE
+================================================================================
+
+Front Matter
+--------------------------------------------------------------------------------
+Bloco de metadados YAML no inicio de um arquivo Markdown, delimitado por ---.
+No projeto, existem dois niveis: front matter leve (.beta.md, com campos
+essenciais) e front matter rico (.md final, com todos os campos de governanca).
+
+Bloco LOCKED
+--------------------------------------------------------------------------------
+Marcador HTML (<!-- LOCKED:START --> / <!-- LOCKED:END -->) que protege trechos
+de .beta.md contra sobrescrita pela IA. Permite que humanos marquem conteudo
+validado como intocavel durante re-ingestao ou enriquecimento automatico.
+
+QA Score
+--------------------------------------------------------------------------------
+Score de qualidade (0-100%) calculado pelo pipeline de QA. Determina se um
+documento pode ser promovido para .md final:
+- >= 90%: aprovado para promocao
+- 80-89%: aprovado com ressalva (requer qa_notes)
+- < 80%: bloqueado para promocao
+
+Conversion Quality
+--------------------------------------------------------------------------------
+Score de qualidade (0-100%) que expressa a confianca na fidelidade da conversao
+de uma fonte original para formato .beta.md. Calculado pelo pipeline na Fase 2.
+- >= 80%: ingestao automatica
+- 30-79%: revisao humana obrigatoria
+- < 30%: fonte rejeitada
+
+Release TAG
+--------------------------------------------------------------------------------
+Tag Git com versao semantica (vMAJOR.MINOR.PATCH) que marca um ponto de
+release. No workspace, a TAG dispara o pipeline de promocao. No knowledge-base,
+a TAG dispara o pipeline de ingestao na base vetorial.
+
+Curador
+--------------------------------------------------------------------------------
+Papel responsavel por gerenciar releases, criar TAGs, aprovar promocoes e
+decidir sobre rollbacks. Definido na ADR-008 (Governanca).
+
+
+6. TERMOS DE SEGURANCA
+================================================================================
+
+Confidencialidade
+--------------------------------------------------------------------------------
+Nivel de classificacao de dados atribuido a cada documento via campo
+confidentiality no front matter. Quatro niveis:
+- public: informacao publica, acesso livre
+- internal: uso interno, sem restricao legal de envio externo
+- restricted: restricao regulatoria ou contratual, on-premise obrigatorio
+- confidential: altamente confidencial, rede isolada obrigatoria
+
+Segregacao Fisica
+--------------------------------------------------------------------------------
+Separacao de dados em instancias diferentes de base vetorial, com MCP Server
+dedicado e rede separada. Garante que dados restritos sejam fisicamente
+inacessiveis a partir da infraestrutura publica, eliminando classe inteira
+de vulnerabilidades.
+
+Just-in-Time (JIT) Access
+--------------------------------------------------------------------------------
+Modelo de acesso onde permissoes sao concedidas sob demanda, com tempo limitado
+e justificativa registrada. Usado para KB confidential: acesso revogado
+automaticamente apos periodo configuravel.
+
+HSM (Hardware Security Module)
+--------------------------------------------------------------------------------
+Modulo de hardware dedicado ao armazenamento seguro de chaves criptograficas.
+Usado na KB confidential para protecao de chaves de criptografia at-rest.
+
+
+7. TERMOS DE VERSIONAMENTO
+================================================================================
+
+SemVer (Semantic Versioning)
+--------------------------------------------------------------------------------
+Padrao de versionamento no formato MAJOR.MINOR.PATCH:
+- MAJOR: mudanca estrutural (novo dominio, reestruturacao, migracao de modelo)
+- MINOR: novos documentos ou atualizacoes significativas (>30% do doc)
+- PATCH: correcoes pontuais (typos, ajustes de front matter, links quebrados)
+
+Release-Based Flow
+--------------------------------------------------------------------------------
+Modelo de branching adotado pelo projeto. Utiliza apenas 2 tipos de branch:
+release/vX.Y.Z/main (consolidacao) e release/vX.Y.Z/{user}/{task} (trabalho
+individual). Alternativa simplificada ao Git Flow tradicional.
+
+Rollback
+--------------------------------------------------------------------------------
+Re-implantacao de uma TAG anterior em producao. Rebuild completo da base
+vetorial (limpa dados, re-ingere, re-gera embeddings, re-cria relacoes).
+Preferido ao rollback parcial porque o pipeline e idempotente.
+
+
+8. REFERENCIAS
+================================================================================
+
+- ADR-002 (BETA-002) -- Soberania de Dados: Trilha Cloud vs. On-Premise
+  (fonte primaria do glossario de infraestrutura)
+- ADR-001 (BETA-001) -- Pipeline de Geracao de Conhecimento em 4 Fases
+  (termos de pipeline e fases)
+- ADR-004 (BETA-004) -- Seguranca e Classificacao de Dados
+  (termos de seguranca e confidencialidade)
+- ADR-005 (BETA-005) -- Front Matter como Contrato de Metadados
+  (termos de front matter e validacao)
+- ADR-010 (BETA-010) -- Git Flow da Base de Conhecimento
+  (termos de versionamento e branching)
+- ADR-011 (BETA-011) -- Segregacao de KBs por Confidencialidade
+  (termos de segregacao e KBs)

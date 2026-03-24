@@ -1,0 +1,261 @@
+================================================================================
+ADR-H03 -- Politica de Backup por KB
+================================================================================
+Tipo:           ADR
+Origem:         ADR-011
+Data:           23/03/2026
+================================================================================
+
+1. OBJETIVO
+
+Definir a politica de backup, retencao e restauracao para cada uma das 3
+Knowledge Bases (KBs) segregadas por nivel de confidencialidade, conforme
+estabelecido no ADR-011.
+
+A premissa fundamental (ADR-001) e que o Git e a fonte da verdade e a Base
+Vetorial e uma projecao regeneravel. Portanto, o backup da Base Vetorial
+serve para ACELERAR a recuperacao (evitando re-ingestao completa), nao como
+unica copia dos dados.
+
+--------------------------------------------------------------------------------
+2. POLITICA POR KB
+--------------------------------------------------------------------------------
+
+2.1 KB PUBLIC-INTERNAL (Instancia A)
+
+  Parametro               Valor
+  ----------------------  -------------------------------------------
+  Frequencia              Diario (01:00 UTC)
+  Retencao                30 dias
+  Criptografia            Opcional (dados public/internal)
+  Armazenamento           Storage padrao (cloud ou on-prem)
+  Teste de restore        Mensal (automatizado)
+  SLA de restauracao      4 horas
+  Responsavel             Operacoes (R), Arquiteto (A)
+
+  Justificativa:
+  - Dados public e internal tem baixo risco regulatorio.
+  - 30 dias de retencao cobrem ciclos de release tipicos.
+  - Re-ingestao a partir do Git e alternativa viavel se backup falhar.
+
+2.2 KB RESTRICTED (Instancia B)
+
+  Parametro               Valor
+  ----------------------  -------------------------------------------
+  Frequencia              Diario (02:00 UTC)
+  Retencao                1 ano (365 dias)
+  Criptografia            Obrigatoria (AES-256 at-rest)
+  Armazenamento           Storage dedicado em ambiente on-premises
+  Teste de restore        Trimestral (com validacao de integridade)
+  SLA de restauracao      2 horas
+  Responsavel             Operacoes (R), Compliance (A)
+
+  Justificativa:
+  - Dados restricted incluem politicas internas, relatorios de gestao,
+    auditorias internas e dados financeiros nao publicados.
+  - Retencao de 1 ano atende requisitos de auditoria interna.
+  - Criptografia obrigatoria por conter dados sensiveis.
+  - Teste trimestral alinhado com cadencia de curadoria (ADR-008).
+
+2.3 KB CONFIDENTIAL (Instancia C)
+
+  Parametro               Valor
+  ----------------------  -------------------------------------------
+  Frequencia              Diario (03:00 UTC)
+  Retencao                5 anos (1.825 dias)
+  Criptografia            Obrigatoria (AES-256 at-rest + TLS 1.3)
+  Chaves                  Gerenciadas em HSM (Hardware Security Module)
+  Armazenamento           Cofre fisico separado (off-site)
+  Teste de restore        Trimestral (com drill completo documentado)
+  SLA de restauracao      1 hora
+  Responsavel             Operacoes (R), Compliance (A), Director (I)
+
+  Justificativa:
+  - Dados confidenciais incluem contratos, M&A, processos judiciais,
+    vulnerabilidades de seguranca e dados regulatorios.
+  - Retencao de 5 anos atende BACEN (Resolucao 4.893/2021) para
+    retencao de logs e dados de sistemas criticos.
+  - Cofre fisico separado garante sobrevivencia a desastres que
+    afetem o data center principal.
+  - HSM impede extracao de chaves criptograficas.
+
+--------------------------------------------------------------------------------
+3. TIPOS DE BACKUP
+--------------------------------------------------------------------------------
+
+3.1 BACKUP DA BASE VETORIAL (NEO4J)
+
+  Tipo                    Descricao
+  ----------------------  -------------------------------------------
+  Full backup             Dump completo da instancia Neo4j
+  Incremental             Apenas transacoes desde o ultimo backup
+  Snapshot                Snapshot de volume (storage-level)
+
+  Recomendacao por KB:
+  - kb-public-internal:  Full diario + snapshot de volume
+  - kb-restricted:       Full diario + incremental a cada 6 horas
+  - kb-confidential:     Full diario + incremental a cada 4 horas
+                         + snapshot de volume
+
+3.2 BACKUP DO REPOSITORIO GIT
+
+  O repositorio Git (rag-knowledge-base) e a fonte da verdade.
+  Mesmo sem backup da Base Vetorial, e possivel reconstruir tudo
+  a partir do Git + pipeline de ingestao (ADR-006).
+
+  Backup do Git:
+  - Mirror clone automatico em storage secundario
+  - Frequencia: a cada push (webhook)
+  - Retencao: indefinida (Git ja e versionado)
+
+3.3 BACKUP DE CONFIGURACAO
+
+  - Docker Compose files, variaveis de ambiente, secrets
+  - Infrastructure as Code (IaC) versionado no Git
+  - Backup de configuracao do pipeline (schemas, templates)
+
+--------------------------------------------------------------------------------
+4. PROCEDIMENTO DE RESTAURACAO
+--------------------------------------------------------------------------------
+
+4.1 RESTAURACAO A PARTIR DE BACKUP (CAMINHO RAPIDO)
+
+  Passo   Acao                                              SLA
+  ------  ------------------------------------------------  --------
+  1       Identificar backup alvo (data/hora desejada)      15 min
+  2       Validar integridade do arquivo de backup           15 min
+  3       Parar MCP Server da KB afetada                    5 min
+  4       Restaurar instancia Neo4j a partir do backup      30-60 min
+  5       Iniciar instancia Neo4j e validar consistencia    15 min
+  6       Iniciar MCP Server                                5 min
+  7       Smoke test de busca semantica                     15 min
+  8       Notificar stakeholders                            5 min
+
+  Tempo total estimado: 1.5 a 2 horas
+
+4.2 RESTAURACAO A PARTIR DO GIT (CAMINHO COMPLETO)
+
+  Usado quando backup nao esta disponivel ou esta corrompido.
+
+  Passo   Acao                                              SLA
+  ------  ------------------------------------------------  --------
+  1       Identificar TAG de release desejada no Git        10 min
+  2       Provisionar nova instancia Neo4j (se necessario)  30 min
+  3       Executar pipeline de ingestao completo             Variavel*
+  4       Validar integridade (contagem de docs/chunks)     15 min
+  5       Executar golden set de testes (ADR-008)           15 min
+  6       Apontar MCP Server para nova instancia            5 min
+  7       Smoke test de busca semantica                     15 min
+  8       Notificar stakeholders                            5 min
+
+  *Tempo de re-ingestao depende do volume:
+    50 documentos   -> ~5 minutos
+    200 documentos  -> ~15 minutos
+    1.000 documentos -> ~30-45 minutos
+    10.000+ docs    -> ~4-8 horas
+
+4.3 RESTAURACAO POR KB (INDEPENDENCIA)
+
+  Cada KB pode ser restaurada INDEPENDENTEMENTE. Erro na KB publica
+  NAO afeta a KB restrita nem a confidencial (ADR-011).
+
+  Cenario: corrupcao na Instancia A (public-internal)
+    - Restaurar Instancia A a partir de backup
+    - Instancias B e C continuam operando normalmente
+    - Orquestrador cross-kb continua funcionando com resultado parcial
+      (aviso: "KB public-internal indisponivel temporariamente")
+
+--------------------------------------------------------------------------------
+5. TESTES DE RESTORE
+--------------------------------------------------------------------------------
+
+5.1 CADENCIA
+
+  KB                    Frequencia     Tipo de Teste
+  --------------------  -------------  --------------------------
+  kb-public-internal    Mensal         Automatizado (restore +
+                                       smoke test + validacao)
+  kb-restricted         Trimestral     Semi-automatizado (restore
+                                       + validacao + aprovacao)
+  kb-confidential       Trimestral     Drill completo documentado
+                                       (restore + validacao +
+                                       auditoria + relatorio)
+
+5.2 CRITERIOS DE SUCESSO DO TESTE
+
+  [ ] Backup restaurado sem erros
+  [ ] Contagem de documentos e chunks confere com manifesto
+  [ ] Indices vetoriais recriados e funcionais
+  [ ] Busca semantica retorna resultados corretos
+  [ ] Golden set (ADR-008) passa com Recall >= threshold
+  [ ] Tempo de restauracao dentro do SLA
+  [ ] Relatorio de teste gerado e arquivado
+
+5.3 REGISTRO
+
+  Cada teste de restore deve ser registrado com:
+  - Data/hora do teste
+  - KB testada
+  - Tipo de restauracao (backup ou Git)
+  - Backup utilizado (data, tamanho)
+  - Tempo de restauracao
+  - Resultado (sucesso/falha)
+  - Problemas encontrados e resolucao
+  - Responsavel pela execucao
+  - Aprovacao (para KB restricted e confidential)
+
+--------------------------------------------------------------------------------
+6. MONITORAMENTO DE BACKUPS
+--------------------------------------------------------------------------------
+
+Alertas configurados para:
+  - Backup nao executado na janela esperada
+  - Falha na execucao do backup
+  - Backup com tamanho anomalo (muito menor que o anterior)
+  - Storage de backup acima de 80% de capacidade
+  - Teste de restore atrasado (nao executado na cadencia)
+
+Metricas de acompanhamento:
+  - Taxa de sucesso de backups (meta: 100%)
+  - Tempo medio de backup por KB
+  - Tamanho do backup ao longo do tempo (tendencia de crescimento)
+  - Tempo medio de restauracao por KB
+  - Taxa de sucesso dos testes de restore
+
+--------------------------------------------------------------------------------
+7. MATRIZ DE RESPONSABILIDADES (RACI)
+--------------------------------------------------------------------------------
+
+  Atividade                  ARQ   ENG   OPS   CMP
+  -------------------------  ----  ----  ----  ----
+  Configurar backup          I     C     R     A
+  Executar backup diario     -     -     R     I
+  Testar restore             I     C     R     A
+  Restaurar em incidente     A     C     R     I
+  Auditar politica           I     -     C     A
+  Revisar retencao           C     -     I     A
+
+  R=Responsible  A=Accountable  C=Consulted  I=Informed
+
+--------------------------------------------------------------------------------
+8. CONFORMIDADE REGULATORIA
+--------------------------------------------------------------------------------
+
+- LGPD: backups contendo dados pessoais (mesmo anonimizados) devem
+  respeitar direitos de exclusao. Em caso de solicitacao de exclusao,
+  o dado deve ser removido de TODOS os backups ativos.
+- BACEN (Resolucao 4.893/2021): retencao minima de 5 anos para dados
+  de sistemas criticos (KB confidential).
+- ISO 27001: controle A.12.3 (backup de informacoes) exige politica
+  documentada, testes periodicos e criptografia.
+
+--------------------------------------------------------------------------------
+9. REFERENCIAS
+--------------------------------------------------------------------------------
+
+- ADR-011: Segregacao de KBs por Confidencialidade (politica de backup
+  por KB, cofre fisico, retencao)
+- ADR-008: Governanca (cenario D rollback completo, cadencia trimestral)
+- ADR-006: Pipeline de Ingestao (idempotencia, re-ingestao)
+- ADR-001: Pipeline 4 Fases (Git como fonte da verdade)
+- ADR-002: Soberania de Dados (Trilha A Cloud, Trilha B On-Prem)

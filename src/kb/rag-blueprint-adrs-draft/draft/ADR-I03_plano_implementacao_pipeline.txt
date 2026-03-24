@@ -1,0 +1,298 @@
+================================================================================
+ADR-I03 -- Plano de Implementacao do Pipeline
+================================================================================
+Tipo:           ADR
+Origem:         ADR-001
+Data:           23/03/2026
+================================================================================
+
+1. OBJETIVO
+
+Detalhar o plano de implementacao fase a fase do pipeline de geracao de
+conhecimento em 4 fases (ADR-001), incluindo entregas, dependencias,
+responsaveis e criterios de conclusao para cada etapa.
+
+O ADR-001 define o pipeline como:
+
+  FASE 1: Fontes diversas (selecao de insumos)
+  FASE 2: .beta.md (mineracao + edicao humana)
+  FASE 3: .md final (promocao via pipeline -- fonte da verdade)
+  FASE 4: Base Vetorial (ingestao)
+
+A implementacao e faseada em 6 etapas sequenciais, com dependencias
+explicitas entre elas.
+
+--------------------------------------------------------------------------------
+2. FASE 1 -- ESTRUTURA
+--------------------------------------------------------------------------------
+
+Entrega:
+  - Criar os 2 repositorios (rag-workspace e rag-knowledge-base)
+  - Configurar estrutura de pastas conforme ADR-001:
+      rag-workspace: sources/, beta/, process/, .pipeline/
+      rag-knowledge-base: docs/, presentations/, releases/
+  - Criar templates de .beta.md com front matter leve
+  - Criar schemas de validacao de front matter
+  - Configurar permissoes de acesso:
+      rag-workspace: read-write para times de conhecimento
+      rag-knowledge-base: read-only para todos, write via service account
+  - Configurar branch protection rules
+
+Dependencia: Nenhuma (ponto de partida)
+
+Responsaveis:
+  - Arquiteto: definicao de schemas, templates e estrutura
+  - Operacoes: criacao de repos, permissoes, service account
+
+Criterios de conclusao (DOD):
+  [ ] 2 repositorios criados e acessiveis
+  [ ] Estrutura de pastas criada
+  [ ] Templates de .beta.md disponiveis
+  [ ] Schemas de validacao configurados
+  [ ] Permissoes configuradas e testadas
+  [ ] Branch protection ativa
+
+Duracao estimada: 1 semana
+
+--------------------------------------------------------------------------------
+3. FASE 2 -- PIPELINE BETA
+--------------------------------------------------------------------------------
+
+Entrega:
+  - Implementar captura de fontes diversas para .beta.md
+  - Pipeline de IA que gera .beta.md a partir dos insumos:
+      Leitura da fonte -> parsing -> extracao de conteudo ->
+      geracao de .beta.md com front matter leve
+  - Implementar manifesto de ingestao (sources/manifesto.json):
+      origem, formato, data, responsavel, confidencialidade
+  - Implementar calculo de conversion_quality:
+      >= 80%: ingestao automatica
+      30-79%: draft com revisao humana obrigatoria
+      < 30%: fonte rejeitada com log de erro
+  - Suporte a formatos: MD nativo, PDF texto, PDF OCR, DOCX,
+    XLSX, e-mail, transcricao, JSON/ticket, web/Confluence
+  - Registrar campo sources no front matter do .beta.md
+
+Dependencia: Fase 1 (repositorios e templates existem)
+
+Responsaveis:
+  - Engenharia de dados: implementacao do pipeline de captura e conversao
+  - Arquiteto: definicao de formatos suportados, regras de conversion_quality
+
+Criterios de conclusao (DOD):
+  [ ] Pipeline gera .beta.md a partir de pelo menos 3 formatos de fonte
+  [ ] Manifesto de ingestao gerado automaticamente
+  [ ] conversion_quality calculado e registrado no front matter
+  [ ] Fontes com score < 30% rejeitadas com log
+  [ ] .beta.md gerado com front matter leve valido
+
+Duracao estimada: 2-3 semanas
+
+--------------------------------------------------------------------------------
+4. FASE 3 -- EDICAO HUMANA
+--------------------------------------------------------------------------------
+
+Entrega:
+  - Configurar Obsidian + plugin Git no rag-workspace
+  - Treinar equipe em:
+      Edicao de .beta.md via Obsidian
+      Uso de blocos LOCKED para proteger edicoes humanas
+      Fluxo de submissao para revisao (DRAFT -> IN-REVIEW)
+  - Implementar suporte a blocos LOCKED no pipeline:
+      IA NUNCA altera conteudo dentro de LOCKED:START/END
+      IA pode sugerir mudancas como comentario separado
+      Humano pode remover lock a qualquer momento
+  - Implementar mecanismo de re-ingestao com merge:
+      Diff de fontes (v1 vs v2)
+      Classificacao de trechos (sem conflito, possivel conflito,
+      conflito em bloco locked)
+      Alertas CONFLICT e LOCKED-CONFLICT inline
+      Relatorio de re-ingestao
+
+Dependencia: Fase 2 (pipeline beta funcional, .beta.md existem)
+
+Responsaveis:
+  - Arquiteto: definicao do fluxo de edicao e regras LOCKED
+  - POs / Analistas: edicao dos .beta.md, validacao de conteudo
+  - Engenharia de dados: implementacao de blocos LOCKED e re-ingestao
+
+Criterios de conclusao (DOD):
+  [ ] Obsidian configurado e acessivel para o time
+  [ ] Equipe treinada (pelo menos 2 sessoes de treinamento)
+  [ ] Blocos LOCKED respeitados pelo pipeline (teste automatizado)
+  [ ] Re-ingestao com merge funcional (teste com fonte atualizada)
+  [ ] Alertas CONFLICT gerados corretamente
+
+Duracao estimada: 1-2 semanas
+
+--------------------------------------------------------------------------------
+5. FASE 4 -- PIPELINE DE PROMOCAO
+--------------------------------------------------------------------------------
+
+Entrega:
+  - Implementar pipeline .beta.md -> .md final:
+      Leitura do .beta.md consolidado
+      Remocao de marcadores LOCKED (conteudo preservado, marcadores
+      removidos)
+      Enriquecimento de front matter (adicionar campos de governanca:
+      system, module, owner, team, QA score)
+      Geracao do .md final
+  - Implementar PR automatico no rag-knowledge-base:
+      Pipeline gera .md e cria PR automaticamente
+      PR requer aprovacao de PO + Arquiteto (2 aprovacoes)
+      Apos aprovacao: merge no main
+  - Implementar release com TAG:
+      TAG vX.Y.Z criada apos merge aprovado
+      Release notes geradas automaticamente (changelog)
+  - Gate de qualidade:
+      QA score >= 90%: promocao automatica
+      QA score 80-89%: promocao com qa_notes documentado no front matter
+      QA score < 80%: bloqueante, retorna para .beta.md
+
+Dependencia: Fase 3 (.beta.md editados e consolidados por humanos)
+
+Responsaveis:
+  - Engenharia de dados: implementacao do pipeline de promocao
+  - Arquiteto: definicao de front matter rico, gate de qualidade
+  - POs: aprovacao de PRs (conteudo)
+
+Criterios de conclusao (DOD):
+  [ ] Pipeline gera .md final com front matter rico
+  [ ] PR automatico criado no rag-knowledge-base
+  [ ] PR requer 2 aprovacoes antes do merge
+  [ ] TAG vX.Y.Z criada apos merge
+  [ ] Gate de qualidade funcional (score < 80% bloqueia)
+
+Duracao estimada: 2-3 semanas
+
+--------------------------------------------------------------------------------
+6. FASE 5 -- TEMPORALIDADE
+--------------------------------------------------------------------------------
+
+Entrega:
+  - Adicionar campos temporais ao front matter do .md final:
+      valid_from, valid_until, superseded_by, supersedes
+  - Implementar na Base Vetorial:
+      Relacao (:Document)-[:SUPERSEDES {effective_date}]->(:Document)
+      Relacao (:Document)-[:VERSION_OF]->(:DocumentFamily)
+      No :DocumentFamily com family_id, title, current_version
+  - Implementar filtro temporal no retrieval:
+      Detectar contexto temporal na pergunta
+      Filtrar por valid_from/valid_until antes da busca vetorial
+      Assumir data atual se nao houver contexto temporal explicito
+  - Agentes instruidos a citar vigencia e versoes anteriores
+
+Dependencia: Fase 4 (pipeline de promocao e .md finais existem)
+
+Responsaveis:
+  - Arquiteto: definicao do modelo temporal e filtros
+  - Engenharia de dados: implementacao dos campos e relacoes na
+    Base Vetorial
+  - Dev API/Consumo: implementacao do filtro temporal no retrieval
+
+Criterios de conclusao (DOD):
+  [ ] Campos temporais no front matter do .md
+  [ ] Relacoes SUPERSEDES e VERSION_OF na Base Vetorial
+  [ ] No DocumentFamily criado e populado
+  [ ] Filtro temporal funcional no retrieval (teste com perguntas
+      temporais)
+  [ ] Agentes citam vigencia nas respostas
+
+Duracao estimada: 2 semanas
+
+--------------------------------------------------------------------------------
+7. FASE 6 -- RE-INGESTAO
+--------------------------------------------------------------------------------
+
+Entrega:
+  - Implementar pipeline de re-ingestao completo:
+      Deteccao de fontes atualizadas (webhook ou polling)
+      Diff de fontes (comparacao v1 vs v2)
+      Analise de impacto: classificacao de trechos
+      Merge automatico (sem conflito) + alertas (com conflito)
+  - Implementar relatorio de re-ingestao:
+      Trechos atualizados automaticamente
+      Conflitos para revisao humana
+      Locks potencialmente desatualizados
+  - Safety net via git diff:
+      Edicao humana detectada sempre prevalece sobre IA
+      Mesmo que humano nao tenha usado LOCKED, o diff detecta
+      edicoes manuais e preserva
+
+Dependencia: Fase 4 (pipeline de promocao funcional)
+
+Responsaveis:
+  - Engenharia de dados: implementacao do diff, merge e relatorio
+  - Arquiteto: definicao de regras de conflito e priorizacao
+  - Curador: revisao de conflitos nao resolvidos automaticamente
+
+Criterios de conclusao (DOD):
+  [ ] Pipeline detecta fontes atualizadas
+  [ ] Diff de fontes gera lista de mudancas
+  [ ] Merge automatico preserva blocos LOCKED
+  [ ] Alertas CONFLICT e LOCKED-CONFLICT gerados
+  [ ] Relatorio de re-ingestao gerado
+  [ ] Safety net via git diff funcional
+
+Duracao estimada: 2-3 semanas
+
+--------------------------------------------------------------------------------
+8. RESUMO CONSOLIDADO
+--------------------------------------------------------------------------------
+
+  Fase  Entrega                     Dependencia   Responsavel     Duracao
+  ----  --------------------------  -----------   --------------  ----------
+  1     Estrutura (repos, pastas)   Nenhuma       ARQ + OPS       1 semana
+  2     Pipeline beta               Fase 1        ENG + ARQ       2-3 semanas
+  3     Edicao humana (Obsidian)    Fase 2        ARQ + POs       1-2 semanas
+  4     Pipeline promocao           Fase 3        ENG + ARQ       2-3 semanas
+  5     Temporalidade               Fase 4        ARQ + ENG + DEV 2 semanas
+  6     Re-ingestao                 Fase 4        ENG + ARQ       2-3 semanas
+
+  Total estimado: 10-14 semanas
+
+  Nota: Fases 5 e 6 podem ser executadas em paralelo (ambas dependem
+  apenas da Fase 4), reduzindo o total para 8-12 semanas.
+
+--------------------------------------------------------------------------------
+9. CRITERIOS DE TRANSICAO ENTRE FASES DO ROADMAP
+--------------------------------------------------------------------------------
+
+Alem das fases de implementacao acima, o projeto possui fases de
+maturidade (ADR-008 Pilar 4). Os criterios para avancar sao:
+
+  Fase 1 -> Fase 2 (MVP -> Metadados):
+    - 10 ingestoes consecutivas sem falha
+    - Golden set minimo: 20 pares pergunta/resposta, 3+ dominios
+    - Recall@10 >= 70%
+    - Front matter valido em 100% dos documentos
+    - Monitoramento basico com dashboard acessivel
+    - Aprovacao: Arquiteto + PO
+
+  Fase 2 -> Fase 3 (Metadados -> Knowledge Graph):
+    - Front matter validado (vocabularios controlados, 0 warnings)
+    - Golden set expandido: 50 pares, 5+ dominios
+    - Recall@10 >= 80%
+    - Filtros de confidencialidade testados (100% cobertura)
+    - Pelo menos 1 restore de backup bem-sucedido
+    - Aprovacao: Arquiteto + PO
+
+  Fase 3 -> Fase 4 (Knowledge Graph -> GraphRAG Corporativo):
+    - Knowledge graph com 5+ tipos de entidade
+    - Pelo menos 1 fonte nao-.md integrada
+    - Golden set robusto: 100 pares, 20 exigindo traversal
+    - Recall@10 >= 85%
+    - RBAC implementado (3+ papeis com escopos diferentes)
+    - Audit logging operacional (logs retidos 90+ dias)
+    - Aprovacao: Arquiteto + PO + Compliance Officer
+
+--------------------------------------------------------------------------------
+10. REFERENCIAS
+--------------------------------------------------------------------------------
+
+- ADR-001: Pipeline de Geracao de Conhecimento em 4 Fases (faseamento,
+  responsaveis, estrutura de pastas, blocos LOCKED, temporalidade,
+  re-ingestao)
+- ADR-008: Governanca (Pilar 4 criterios de transicao, papeis RACI)
+- ADR-006: Pipeline de Ingestao (7 etapas, idempotencia)
+- ADR-010: Git Flow (release, promocao, ambientes)

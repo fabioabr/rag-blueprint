@@ -1,0 +1,408 @@
+================================================================================
+ADR-B02 -- Schema do Front Matter Rico (.md final)
+================================================================================
+Tipo:           ADR
+Origem:         ADR-005 (Parte B -- Front Matter Rico)
+Data:           23/03/2026
+================================================================================
+
+1. VISAO GERAL
+================================================================================
+
+O front matter rico e o contrato COMPLETO que o .md final carrega no
+repositorio rag-knowledge-base. E gerado pelo pipeline de promocao (Fase 3)
+a partir do front matter leve com enriquecimento de campos de governanca,
+classificacao e qualidade.
+
+Os campos sao organizados em 8 GRUPOS LOGICOS.
+
+
+2. GRUPO 1 -- IDENTIFICACAO
+================================================================================
+
+2.1 id
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    DOC-{NNNNNN} (6 digitos, zero-padded)
+- Regex:      ^DOC-\d{6}$
+- Exemplo:    id: DOC-000042
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Identificador unico e definitivo na base de conhecimento. Permanente,
+  referenciado pela Base Vetorial, chunks, relacoes e agentes. Diferente
+  do BETA-{NNN} que e temporario no workspace.
+
+2.2 doc_type
+--------------------------------------------------------------------------------
+- Tipo:       string (enum)
+- Valores:    system-doc | adr | runbook | glossary | task-doc |
+              architecture-doc | policy | meeting-notes | onboarding |
+              postmortem
+- Exemplo:    doc_type: system-doc
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Determina a estrategia de chunking na ingestao, o template de resposta
+  do agente e o filtro de busca. Cada tipo tem comportamento diferente.
+
+2.3 title
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    herdado do front matter leve
+- Exemplo:    title: "Processo de conciliacao bancaria do modulo Cobranca"
+- Obrigatorio: sim (bloqueante)
+
+
+3. GRUPO 2 -- CLASSIFICACAO
+================================================================================
+
+3.1 system
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    nome do sistema corporativo (cadastrado)
+- Exemplo:    system: Cobranca
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Gera no :System na Base Vetorial. Permite filtro por sistema no
+  retrieval e organizacao do grafo de conhecimento.
+
+3.2 module
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    modulo funcional do sistema indicado
+- Exemplo:    module: Conciliacao
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Gera no :Module na Base Vetorial e relacao BELONGS_TO com System.
+
+3.3 domain
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    herdado do front matter leve (lowercase, sem espacos)
+- Exemplo:    domain: financeiro
+- Obrigatorio: sim (bloqueante)
+
+3.4 owner
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    usuario cadastrado (identificador unico)
+- Exemplo:    owner: maria.silva
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Gera no :Owner e relacao OWNED_BY na Base Vetorial. Permite
+  rastreabilidade de responsabilidade.
+
+3.5 team
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    time, squad, chapter ou diretoria (cadastrado)
+- Exemplo:    team: squad-pagamentos
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Gera no :Team e relacao MEMBER_OF na Base Vetorial. Permite filtro
+  por equipe e responsabilidade organizacional.
+
+
+4. GRUPO 3 -- STATUS E GOVERNANCA
+================================================================================
+
+4.1 status
+--------------------------------------------------------------------------------
+- Tipo:       string (enum)
+- Valores:    draft | in-review | approved | deprecated
+- Exemplo:    status: approved
+- Obrigatorio: sim (bloqueante)
+
+Diferenca do .beta.md: adiciona "deprecated" ao ciclo de vida.
+Regras:
+  - Somente "approved" e ingerido na Base Vetorial
+  - "deprecated" e mantido com ranking reduzido
+  - Quando deprecated, campo superseded_by e obrigatorio
+
+4.2 confidentiality
+--------------------------------------------------------------------------------
+- Tipo:       string (enum)
+- Valores:    public | internal | restricted | confidential
+- Formato:    herdado do front matter leve
+- Obrigatorio: sim (bloqueante)
+
+
+5. GRUPO 4 -- TEMPORAL
+================================================================================
+
+5.1 valid_from
+--------------------------------------------------------------------------------
+- Tipo:       string (data ISO 8601), formato AAAA-MM-DD
+- Exemplo:    valid_from: "2026-01-15"
+- Obrigatorio: sim (bloqueante)
+- Validacao:  data valida, nao futura (excecao: politicas programadas)
+
+Por que existe:
+  Permite consultas temporais no retrieval. Agentes podem filtrar
+  documentos vigentes em uma data especifica.
+
+5.2 valid_until
+--------------------------------------------------------------------------------
+- Tipo:       string (data ISO 8601) ou null
+- Exemplo:    valid_until: null (vigente indefinidamente)
+- Obrigatorio: nao
+
+Por que existe:
+  Define fim de vigencia. null = documento vigente sem prazo. Quando
+  preenchido, o documento deixa de ser retornado como vigente apos a data.
+
+5.3 supersedes
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    DOC-{NNNNNN} do documento anterior que este substitui
+- Exemplo:    supersedes: "DOC-000023"
+- Obrigatorio: nao
+
+Por que existe:
+  Gera relacao SUPERSEDES na Base Vetorial. Permite navegacao na cadeia
+  de versoes de um documento.
+
+5.4 superseded_by
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    DOC-{NNNNNN} do documento que substitui este
+- Exemplo:    superseded_by: "DOC-000456"
+- Obrigatorio: sim quando status = deprecated
+
+Por que existe:
+  Complemento do supersedes. Obrigatorio quando o documento e deprecado,
+  garantindo que sempre haja um ponteiro para a versao corrente.
+
+
+6. GRUPO 5 -- QA (QUALITY ASSURANCE)
+================================================================================
+
+6.1 qa_score
+--------------------------------------------------------------------------------
+- Tipo:       integer 0-100
+- Exemplo:    qa_score: 85
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Score de qualidade calculado pelo pipeline de QA. Determina se o
+  documento pode ser promovido.
+
+6.2 qa_date
+--------------------------------------------------------------------------------
+- Tipo:       string (data ISO 8601), formato AAAA-MM-DD
+- Exemplo:    qa_date: "2026-03-21"
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Data da ultima execucao do QA. Permite identificar documentos com QA
+  desatualizado.
+
+6.3 qa_status
+--------------------------------------------------------------------------------
+- Tipo:       string (enum)
+- Valores:    passed (>= 90%) | warning (80-89%) | not_reviewed
+- Exemplo:    qa_status: warning
+- Obrigatorio: sim (bloqueante)
+
+6.4 qa_notes
+--------------------------------------------------------------------------------
+- Tipo:       string (texto livre)
+- Exemplo:    qa_notes: "Score 85% -- inferencias sobre custos cloud nao
+              verificadas. Aprovado com ressalva pelo PO em 21/03/2026."
+- Obrigatorio: sim quando qa_status = warning
+
+Por que existe:
+  Documenta os motivos de um QA com ressalva e a decisao de promover
+  mesmo assim. Rastreabilidade de decisoes de qualidade.
+
+
+7. GRUPO 6 -- DESCOBERTA
+================================================================================
+
+7.1 tags
+--------------------------------------------------------------------------------
+- Tipo:       array de strings
+- Formato:    minimo 5 manuais + 50 semanticas (total ~55+), lowercase, sem acentos;
+              termos compostos separados por espaco (ex: "busca vetorial")
+- Ordenacao:  por relevancia decrescente — indice 0 = mais relevante ao contexto
+- Composicao: tags manuais do autor (primeiras posicoes) + 50 tags semanticas
+              geradas por IA na promocao .txt -> .beta.md e mantidas na promocao
+              .beta.md -> .md. As tags semanticas sao termos tecnicos e de dominio
+              extraidos do conteudo, ordenados por proximidade ao contexto.
+- Exemplo:    tags: [conciliacao, cobranca, bancaria, boleto, retorno, cnab,
+              pipeline ingestao, chunking semantico, front matter, neo4j, ...]
+- Obrigatorio: sim (bloqueante, minimo 5 manuais)
+
+7.2 aliases
+--------------------------------------------------------------------------------
+- Tipo:       array de strings
+- Formato:    minimo 5 aliases
+- Exemplo:    aliases: ["Conciliacao Bancaria", "Retorno CNAB",
+              "Arquivo de Retorno", "Conciliacao de Cobranca",
+              "Processamento CNAB 240"]
+- Obrigatorio: sim (bloqueante, minimo 5)
+
+Por que existe:
+  Permite busca e descoberta por multiplos nomes. No .md final, o
+  requisito e mais rigoroso (5+) para maximizar a descoberta na Base
+  Vetorial.
+
+
+8. GRUPO 7 -- LINHAGEM
+================================================================================
+
+8.1 source_format
+--------------------------------------------------------------------------------
+- Tipo:       string (enum)
+- Valores:    original | pdf | docx | xlsx | pptx | email | confluence |
+              sharepoint | jira | clickup | transcription | web | json |
+              csv | image | video | audio | manual | multiple
+- Exemplo:    source_format: pdf
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Formato principal da fonte. Permite analises de qualidade por formato
+  e estrategias de reconversao.
+
+8.2 source_repo
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    nome do repositorio Git de origem
+- Exemplo:    source_repo: rag-workspace
+- Obrigatorio: sim (bloqueante)
+
+8.3 source_path
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    caminho do .beta.md no workspace
+- Exemplo:    source_path: "beta/financeiro/conciliacao_bancaria.beta.md"
+- Obrigatorio: sim (bloqueante)
+
+8.4 source_beta_ids
+--------------------------------------------------------------------------------
+- Tipo:       array de strings
+- Formato:    BETA-{NNN} que originaram este .md
+- Exemplo:    source_beta_ids: ["BETA-042", "BETA-043"]
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Rastreabilidade completa: de qual(is) .beta.md este .md foi gerado.
+  Permite navegacao reversa.
+
+8.5 conversion_pipeline
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    identificador do pipeline que gerou o .md
+- Exemplo:    conversion_pipeline: promotion-pipeline-v1
+- Obrigatorio: sim (bloqueante, string nao vazia)
+
+8.6 conversion_quality
+--------------------------------------------------------------------------------
+- Tipo:       integer 0-100
+- Formato:    score consolidado via min(sources[].conversion_quality)
+- Exemplo:    conversion_quality: 82
+- Obrigatorio: sim (bloqueante)
+
+Por que existe:
+  Score consolidado de confianca na fidelidade da conversao. Usa a funcao
+  min() para garantir que a pior fonte determine o score final.
+
+8.7 converted_at
+--------------------------------------------------------------------------------
+- Tipo:       string (timestamp ISO 8601)
+- Formato:    AAAA-MM-DDTHH:MM:SSZ
+- Exemplo:    converted_at: "2026-03-21T14:30:00Z"
+- Obrigatorio: sim (bloqueante)
+
+
+9. GRUPO 8 -- DATAS E VERSIONAMENTO
+================================================================================
+
+9.1 created_at
+--------------------------------------------------------------------------------
+- Tipo:       string (data ISO 8601), formato AAAA-MM-DD
+- Exemplo:    created_at: "2026-03-21"
+- Obrigatorio: sim (bloqueante)
+- Validacao:  data valida
+
+9.2 updated_at
+--------------------------------------------------------------------------------
+- Tipo:       string (data ISO 8601), formato AAAA-MM-DD
+- Exemplo:    updated_at: "2026-03-21"
+- Obrigatorio: sim (bloqueante)
+- Validacao:  data valida, >= created_at
+
+9.3 release_version
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    semver vN.N.N
+- Exemplo:    release_version: "v1.3.0"
+- Obrigatorio: sim (preenchido automaticamente pelo pipeline de ingestao)
+
+Por que existe:
+  Versao da release que disparou a ingestao na Base Vetorial. Permite
+  rastrear qual versao do conhecimento esta ativa.
+
+
+10. EXEMPLO COMPLETO DE .md FINAL COM FRONT MATTER RICO
+================================================================================
+
+---
+# === IDENTIFICACAO ===
+id: DOC-000042
+doc_type: system-doc
+title: "Processo de conciliacao bancaria do modulo Cobranca"
+
+# === CLASSIFICACAO ===
+system: Cobranca
+module: Conciliacao
+domain: financeiro
+owner: maria.silva
+team: squad-pagamentos
+
+# === STATUS E GOVERNANCA ===
+status: approved
+confidentiality: internal
+
+# === TEMPORAL ===
+valid_from: "2026-01-15"
+valid_until: null
+supersedes: "DOC-000023"
+superseded_by: null
+
+# === QA ===
+qa_score: 85
+qa_date: "2026-03-21"
+qa_status: warning
+qa_notes: "Score 85% -- inferencias sobre custos cloud nao verificadas. Aprovado com ressalva pelo PO em 21/03/2026."
+
+# === DESCOBERTA ===
+tags: [conciliacao, cobranca, bancaria, boleto, retorno, cnab, financeiro, banco-do-brasil, arquivo-retorno, cnab-240]
+aliases: ["Conciliacao Bancaria", "Retorno CNAB", "Arquivo de Retorno", "Conciliacao de Cobranca", "Processamento CNAB 240"]
+
+# === LINHAGEM ===
+source_format: pdf
+source_repo: rag-workspace
+source_path: "beta/financeiro/conciliacao_bancaria.beta.md"
+source_beta_ids: ["BETA-042", "BETA-043"]
+conversion_pipeline: promotion-pipeline-v1
+conversion_quality: 82
+converted_at: "2026-03-21T14:30:00Z"
+
+# === DATAS E VERSIONAMENTO ===
+created_at: "2026-03-21"
+updated_at: "2026-03-21"
+release_version: "v1.3.0"
+---
+
+(corpo do documento aqui)
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

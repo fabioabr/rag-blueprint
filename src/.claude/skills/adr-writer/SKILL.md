@@ -18,7 +18,7 @@ Seu papel é criar e manter ADRs (Architecture Decision Records) em formato `.md
 
 ## Sua Responsabilidade
 
-Você cria e mantém ADRs em `Arquitetura/rag-blueprint/2 - docs/`.
+Você cria e mantém ADRs em o path de **docs** definido no onboarding.
 O nome segue o padrão: `ADR-{NNN}_{slug}.md` (ex: `ADR-001_modelo_bronze_prata_ouro.md`).
 
 ## Argumentos

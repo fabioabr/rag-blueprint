@@ -1,0 +1,195 @@
+================================================================================
+ADR-B03 -- Regras de Validacao do Front Matter
+================================================================================
+Tipo:           ADR
+Origem:         ADR-005 (Parte C -- Schema de Validacao)
+Data:           23/03/2026
+================================================================================
+
+1. VISAO GERAL
+================================================================================
+
+O schema de validacao e um componente EXECUTAVEL do pipeline -- nao apenas
+documentacao. Ele roda em dois momentos:
+
+  1. Na Fase 2 (enriquecimento): valida o front matter leve do .beta.md
+  2. Na Fase 3 (promocao): valida o front matter rico do .md final
+
+REGRA FUNDAMENTAL: rejeicao EXPLICITA, nunca skip silencioso.
+
+
+2. CLASSIFICACAO: BLOQUEANTE vs NAO-BLOQUEANTE
+================================================================================
+
+Bloqueante:
+  Documento e REJEITADO se o campo esta ausente ou invalido.
+  Pipeline para, registra erro, notifica responsavel.
+
+Nao-bloqueante (warning):
+  Documento e ACEITO, mas alerta e registrado no log.
+  Documento aparece em relatorio de "documentos com alertas".
+
+
+3. REGRAS DE VALIDACAO -- FRONT MATTER LEVE (.beta.md)
+================================================================================
+
+3.1 Campos bloqueantes
+--------------------------------------------------------------------------------
+
+  Campo             | Regra                                    | Regex/Formato                | Mensagem de erro
+  ------------------|------------------------------------------|------------------------------|------------------------------------------
+  id                | Presente, formato valido, unico          | ^BETA-\d{3,}$               | "Campo 'id' ausente ou formato invalido"
+  title             | Presente, 10-200 chars, nao generico     | len >= 10 AND len <= 200     | "Campo 'title' ausente ou muito curto"
+  domain            | Presente, >= 2 chars, lowercase, sem esp | ^[a-z][a-z0-9-]*$, len >= 2 | "Campo 'domain' ausente ou formato invalido"
+  sources           | Presente, array >= 1 elem, sub-campos ok | array, each: type+origin+cap | "Campo 'sources' ausente ou incompleto"
+  status            | Presente, enum valido                    | ^(draft|in-review|approved)$ | "Campo 'status' ausente ou valor invalido"
+  confidentiality   | Presente, enum valido                    | ^(public|internal|restricted|confidential)$ | "Campo 'confidentiality' ausente ou valor invalido"
+
+Validacao de sub-campos de sources[]:
+  - type: obrigatorio, deve ser um dos valores validos do enum source_type
+  - origin: obrigatorio, string nao vazia
+  - captured_at: obrigatorio, formato AAAA-MM-DD, data valida
+  - conversion_quality: opcional, se presente deve ser integer 0-100
+
+3.2 Campos com warning (nao-bloqueante)
+--------------------------------------------------------------------------------
+
+  Campo             | Regra                    | Warning
+  ------------------|--------------------------|--------------------------------------------------
+  tags              | Array >= 3 elementos     | "tags: menos de 3 tags. Adicione mais para melhor descoberta."
+  last_enrichment   | Data valida se presente  | "last_enrichment nao preenchido. Sera atualizado no proximo enriquecimento."
+  last_human_edit   | Data valida se presente  | "last_human_edit nao preenchido. Revisao humana recomendada."
+  aliases           | Array sem duplicatas     | (sem warning especifico, apenas validacao de formato)
+
+NOTA: tags com menos de 3 sao warning na Fase 2, mas BLOQUEANTE na Fase 3
+(promocao exige minimo 3 tags).
+
+
+4. REGRAS DE VALIDACAO -- FRONT MATTER RICO (.md final)
+================================================================================
+
+Todos os campos do front matter rico sao bloqueantes na promocao, exceto os
+marcados como "opcional, nao-bloqueante" na especificacao.
+
+4.1 Campos bloqueantes adicionais (alem dos herdados do leve)
+--------------------------------------------------------------------------------
+
+  Campo                | Regra
+  ---------------------|------------------------------------------------------
+  id                   | Formato DOC-{NNNNNN}, regex ^DOC-\d{6}$, unico
+  doc_type             | Enum valido (ver secao 6)
+  system               | Sistema cadastrado (string nao vazia)
+  module               | Modulo do sistema indicado (string nao vazia)
+  owner                | Usuario cadastrado (string nao vazia)
+  team                 | Time cadastrado (string nao vazia)
+  valid_from           | Data valida, nao futura*
+  tags                 | Array >= 5 elementos (mais restritivo que .beta.md)
+  aliases              | Array >= 5 elementos
+  source_format        | Enum valido (ver secao 6)
+  source_repo          | String nao vazia
+  source_path          | String nao vazia
+  source_beta_ids      | Array de strings formato BETA-{NNN}
+  conversion_pipeline  | String nao vazia
+  conversion_quality   | Integer 0-100
+  created_at           | Data valida
+  updated_at           | Data valida, >= created_at
+  converted_at         | Timestamp ISO 8601 valido
+  qa_score             | Integer 0-100
+  qa_date              | Data valida
+  qa_status            | Enum valido (ver secao 6)
+
+*valid_from pode ser futura para politicas programadas (excecao documentada).
+
+4.2 Campos condicionalmente obrigatorios
+--------------------------------------------------------------------------------
+
+  Campo             | Condicao                          | Regra
+  ------------------|-----------------------------------|----------------------------
+  superseded_by     | status = deprecated               | DOC-{NNNNNN} obrigatorio
+  qa_notes          | qa_status = warning               | String nao vazia obrigatoria
+
+
+5. COMPORTAMENTO QUANDO VALIDACAO FALHA
+================================================================================
+
+5.1 Campo BLOQUEANTE invalido
+--------------------------------------------------------------------------------
+  1. Documento e REJEITADO (nao processado)
+  2. Mensagem de erro registrada no log com:
+     - Identificador do documento
+     - Campo invalido
+     - Valor encontrado
+     - Valor esperado
+     - Sugestao de correcao
+  3. Notificacao enviada ao responsavel
+  4. Documento aparece em relatorio de "documentos pendentes"
+
+5.2 Campo com WARNING invalido
+--------------------------------------------------------------------------------
+  1. Documento e ACEITO (processamento continua)
+  2. Warning registrado no log
+  3. Documento aparece em relatorio de "documentos com alertas"
+
+5.3 Principio fundamental
+--------------------------------------------------------------------------------
+  NUNCA aceitar silenciosamente dados incompletos ou invalidos.
+  Se o campo e bloqueante, o pipeline PARA.
+  Se o campo e warning, o pipeline CONTINUA mas REGISTRA.
+  Em nenhum caso o pipeline ignora silenciosamente.
+
+
+6. VALORES VALIDOS PARA ENUMS
+================================================================================
+
+6.1 doc_type
+--------------------------------------------------------------------------------
+  system-doc | adr | runbook | glossary | task-doc | architecture-doc |
+  policy | meeting-notes | onboarding | postmortem
+
+6.2 status (.beta.md)
+--------------------------------------------------------------------------------
+  draft | in-review | approved
+
+6.3 status (.md final)
+--------------------------------------------------------------------------------
+  draft | in-review | approved | deprecated
+
+6.4 confidentiality
+--------------------------------------------------------------------------------
+  public | internal | restricted | confidential
+
+6.5 source_format
+--------------------------------------------------------------------------------
+  original | pdf | docx | xlsx | pptx | email | confluence | sharepoint |
+  jira | clickup | transcription | web | json | csv | image | video |
+  audio | manual
+
+6.6 qa_status
+--------------------------------------------------------------------------------
+  pending | passed | failed | skipped
+
+6.7 source type (array sources[] do .beta.md)
+--------------------------------------------------------------------------------
+  pdf | docx | xlsx | pptx | email | confluence | sharepoint | jira |
+  clickup | transcription | web | manual | md | json | csv | image |
+  video | audio
+
+
+7. REGEX PATTERNS -- RESUMO CONSOLIDADO
+================================================================================
+
+  Campo (leve)      | Pattern
+  ------------------|----------------------------------
+  id (.beta.md)     | ^BETA-\d{3,}$
+  id (.md final)    | ^DOC-\d{6}$
+  domain            | ^[a-z][a-z0-9-]*$ (minimo 2 chars)
+  status (.beta.md) | ^(draft|in-review|approved)$
+  status (.md)      | ^(draft|in-review|approved|deprecated)$
+  confidentiality   | ^(public|internal|restricted|confidential)$
+  captured_at       | ^\d{4}-\d{2}-\d{2}$ (validar como data real)
+  conversion_quality| ^\d{1,3}$ (0-100, validar range)
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

@@ -128,6 +128,7 @@ Após cada skill executar:
    - Rebaixar `qa_status` para "warning"
    - NÃO gerar HTML até links serem corrigidos
    - Listar links quebrados no log
+4. **Verificar sync com GitHub Pages** — após `/prs-writer`, confirmar que o HTML foi copiado para `docs/adrs/` na raiz do repositório. Se não foi, copiar manualmente.
 
 ### ETAPA 4 — Log de execução
 
@@ -165,6 +166,7 @@ Registrar TUDO em log estruturado:
   [4] /prs-writer
       Input:      {arquivo}.md (QA {NN}%)
       Output:     {arquivo}.html
+      Publicação: docs/adrs/{arquivo}.html (GitHub Pages)
       Resultado:  {gerado|bloqueado (QA < 90%)}
       Duração:    {tempo}
 
@@ -256,12 +258,18 @@ Todo conteúdo DEVE ser em **português brasileiro (pt-BR)**.
 
 ## Caminhos
 
-- **Assets do projeto**: `Arquitetura/rag-blueprint/kb/{context}/0 - assets/`
-- **Drafts**: `Arquitetura/rag-blueprint/kb/{context}/1 - draft/`
-- **Docs**: `Arquitetura/rag-blueprint/kb/{context}/2 - docs/`
-- **Presentations**: `Arquitetura/rag-blueprint/kb/{context}/3 - presentation/`
-- **ADRs (drafts)**: `kb/rag-blueprint-adrs-kb/1 - draft/`
-- **ADRs (docs)**: `kb/rag-blueprint-adrs-kb/2 - docs/`
-- **Onboarding (por projeto)**: `kb/{context}/0 - assets/onboarding.md`
-- **Onboarding (template)**: `.claude/behavior/onboarding_information.md`
-- **Regra de busca**: primeiro `0 - assets/` do contexto, depois fallback para `.claude/behavior/`
+**NÃO hardcode paths.** Todos os caminhos são definidos centralmente em `src/assets/main/onboarding.md` (seção 11 — Paths do Projeto). Assets seguem herança definida em `src/assets/mapping.md`.
+
+Ao iniciar, a skill DEVE:
+1. Ler `src/assets/mapping.md` para entender a herança de assets
+2. Ler `src/assets/main/onboarding.md`
+3. Identificar o contexto ativo (seção `paths.contextos`)
+4. Resolver os paths de draft, beta, docs, presentation a partir do contexto
+5. Usar esses paths em todas as operações de leitura/escrita
+
+Exemplo: para o contexto `rag-blueprint-adrs`:
+- Draft: `kb/rag-blueprint-adrs-draft/draft/`
+- Beta: `kb/rag-blueprint-adrs-draft/beta/`
+- Docs: `kb/rag-blueprint-adrs-kb/docs/`
+- Presentation: `kb/rag-blueprint-adrs-kb/presentation/`
+- Assets: `src/assets/main/` (ou override conforme mapping.md)

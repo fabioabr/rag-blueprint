@@ -1,0 +1,287 @@
+================================================================================
+ADR-B01 -- Schema do Front Matter Leve (.beta.md)
+================================================================================
+Tipo:           ADR
+Origem:         ADR-005 (Parte A -- Front Matter Leve)
+Data:           23/03/2026
+================================================================================
+
+1. VISAO GERAL
+================================================================================
+
+O front matter leve e o contrato de metadados para arquivos .beta.md no
+repositorio rag-workspace. Projetado para ser simples o suficiente para que
+analistas de negocio, POs e especialistas de dominio consigam preencher sem
+treinamento extenso, usando o Obsidian como editor.
+
+Filosofia: conter o MINIMO NECESSARIO para que o pipeline funcione. Tudo que
+pode ser inferido ou enriquecido depois fica fora -- reduzindo a carga
+cognitiva do autor humano.
+
+Formato: YAML entre marcadores --- no inicio do arquivo (compativel Obsidian).
+
+
+2. CAMPOS -- DEFINICAO COMPLETA
+================================================================================
+
+2.1 id (obrigatorio, bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       string
+- Formato:    BETA-{NNN} (numerico sequencial, 3+ digitos)
+- Regex:      ^BETA-\d{3,}$
+- Exemplos:   id: BETA-001 | id: BETA-042 | id: BETA-1337
+- Validacao:  obrigatorio (bloqueante), regex, unico no repositorio workspace
+- Mensagem:   "Campo 'id' ausente ou formato invalido"
+
+Por que existe:
+  Identificador unico do documento no workspace. Necessario para
+  rastreabilidade, referencia cruzada, historico de enriquecimento e
+  linkagem no Obsidian via [[BETA-001]].
+
+2.2 title (obrigatorio, bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       string, max 200 caracteres
+- Formato:    texto livre, min 10 chars, max 200 chars
+- Exemplo:    title: "Processo de conciliacao bancaria do modulo Cobranca"
+- Validacao:  obrigatorio (bloqueante), minimo 10 caracteres, maximo 200
+              caracteres, nao aceitar titulos genericos
+- Mensagem:   "Campo 'title' ausente ou muito curto"
+
+Por que existe:
+  Titulo legivel do documento. Usado para exibicao no Obsidian, contexto
+  para a LLM durante retrieval, identificacao humana rapida e resultado
+  de busca.
+
+2.3 domain (obrigatorio, bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       string, enum aberto (sem lista fixa, com recomendacoes)
+- Formato:    lowercase, sem espacos (usar hifen), minimo 2 caracteres
+- Exemplos:   domain: "financeiro" | domain: "tecnologia" | domain: "rh"
+- Validacao:  obrigatorio (bloqueante), minimo 2 caracteres, lowercase,
+              sem espacos (usar hifen)
+- Mensagem:   "Campo 'domain' ausente ou formato invalido"
+
+Por que existe:
+  Dominio de negocio ao qual o documento pertence. Fundamental para filtro
+  pre-retrieval (ADR-004), organizacao do conhecimento, roteamento de
+  agentes e responsabilidade por area.
+
+2.4 sources (obrigatorio, bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       array de objetos
+- Formato:    YAML array, minimo 1 elemento
+- Sub-campos:
+    - type (obrigatorio): formato da fonte original
+      Valores validos: pdf, docx, xlsx, pptx, email, confluence, sharepoint,
+      jira, clickup, transcription, web, manual, md, json, csv, image,
+      video, audio
+    - origin (obrigatorio): caminho ou URL da fonte original. Formato livre.
+    - captured_at (obrigatorio): data de captura, formato AAAA-MM-DD.
+    - conversion_quality (opcional): score 0-100 calculado pelo pipeline
+      na Fase 2.
+- Exemplo:
+    sources:
+      - type: "pdf"
+        origin: "sharepoint://financeiro/docs/conciliacao_v3.pdf"
+        captured_at: "2026-03-15"
+        conversion_quality: 92
+      - type: "transcription"
+        origin: "teams://recordings/2026-03-12_reuniao.mp4"
+        captured_at: "2026-03-12"
+        conversion_quality: 67
+- Validacao:  obrigatorio (bloqueante), array >= 1, cada elemento deve ter
+              type, origin e captured_at validos
+- Mensagem:   "Campo 'sources' ausente ou incompleto"
+
+Por que existe:
+  Registra a linhagem de cada fonte que originou o documento. Permite
+  rastreabilidade completa e calculo de qualidade de conversao. No
+  .beta.md, conversion_quality e per-source (dentro de sources[]). No
+  .md final, e consolidado via min(sources[].conversion_quality).
+
+2.5 tags (obrigatorio, nao-bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       array de strings, minimo 3 manuais + 50 semanticas (total ~53+)
+- Formato:    cada tag lowercase, sem acentos; termos compostos separados
+              por espaco (ex: "busca vetorial", "filtro pre-retrieval")
+- Ordenacao:  por relevancia decrescente — indice 0 = mais relevante ao
+              contexto especifico do documento
+- Composicao:
+    a) Tags manuais (autor humano): minimo 3, inseridas pelo autor ou curador.
+       Focam em categorizacao de alto nivel e descoberta.
+    b) Tags semanticas (geradas por IA): exatamente 50 termos, gerados
+       automaticamente na promocao .txt -> .beta.md. Extraidos do conteudo
+       do documento, priorizando termos tecnicos e de dominio com maior
+       proximidade ao contexto especifico. Termos genericos (ex: "sistema",
+       "processo", "dados") devem ser evitados salvo quando centrais ao doc.
+- Exemplo:    tags: [pipeline ingestao, chunking semantico, neo4j, embedding,
+              busca vetorial, filtro pre-retrieval, front matter, upsert,
+              idempotencia, grafo conhecimento, ...]
+- Validacao:  warning se menos de 3 tags manuais,
+              minimo 3 tags para promocao (bloqueante na Fase 3),
+              tags semanticas geradas automaticamente (nao bloqueante)
+- Warning:    "tags: menos de 3 tags manuais. Adicione mais para descoberta."
+
+Por que existe:
+  Permite busca por facetas, categorizacao e descoberta no Obsidian e no
+  retrieval. As tags manuais capturam a intencao do autor; as 50 tags
+  semanticas formam um indice de relevancia que alimenta o grafo e melhora
+  a precisao do retrieval hibrido. A ordenacao por relevancia permite que
+  consumidores usem as top-N tags conforme necessidade (ex: top-10 para
+  preview, top-50 para indexacao completa).
+
+Regra de geracao das 50 tags semanticas:
+  1. Analisar o conteudo completo do documento
+  2. Identificar termos tecnicos, conceitos de dominio e nomes proprios
+  3. Incluir termos compostos quando o significado exige (ex: "base vetorial")
+  4. Ordenar por relevancia ao contexto especifico do documento
+  5. Descartar termos excessivamente genericos
+  6. Garantir exatamente 50 termos no array de tags semanticas
+  7. Manter as tags manuais do autor nas primeiras posicoes
+  8. Persistir em todos os formatos: .beta.md, .md, .html
+
+2.6 status (obrigatorio, bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       string (enum)
+- Valores:    draft | in-review | approved
+- Transicoes: draft -> in-review -> approved. Retorno: approved -> draft.
+- Validacao:  obrigatorio (bloqueante), deve ser um dos 3 valores validos
+- Mensagem:   "Campo 'status' ausente ou valor invalido"
+
+Por que existe:
+  Controla o ciclo de vida do .beta.md. Somente status "approved" pode
+  ser promovido a .md final.
+
+2.7 confidentiality (obrigatorio, bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       string (enum)
+- Valores:    public | internal | restricted | confidential
+- Default:    internal
+- Validacao:  obrigatorio (bloqueante), deve ser um dos 4 valores validos
+- Mensagem:   "Campo 'confidentiality' ausente ou valor invalido"
+
+Por que existe:
+  Nivel de classificacao de dados conforme ADR-004. Determina onde o
+  documento pode ser processado (cloud vs on-premise, conforme ADR-002)
+  e quem pode acessa-lo.
+
+  EXCECAO ao principio "governanca so no .md final": necessario desde a
+  Fase 2 porque ADR-002 usa confidentiality para rotear o documento pela
+  trilha correta e ADR-004 exige classificacao antes de qualquer
+  processamento automatizado.
+
+2.8 last_enrichment (opcional, nao-bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       string (data ISO 8601), formato AAAA-MM-DD
+- Exemplo:    last_enrichment: "2026-03-18"
+- Validacao:  data valida se presente
+- Warning:    "last_enrichment nao preenchido. Sera atualizado no proximo
+              enriquecimento."
+
+Por que existe:
+  Registra a data da ultima vez que o pipeline de IA enriqueceu o
+  documento. Permite identificar documentos que nunca foram enriquecidos
+  ou estagnados.
+
+2.9 last_human_edit (opcional, nao-bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       string (data ISO 8601), formato AAAA-MM-DD
+- Exemplo:    last_human_edit: "2026-03-20"
+- Validacao:  data valida se presente
+- Warning:    "last_human_edit nao preenchido. Revisao humana recomendada."
+
+Por que existe:
+  Registra a data da ultima edicao humana. Permite priorizar documentos
+  para revisao e medir engajamento humano na curadoria.
+
+2.10 aliases (opcional, nao-bloqueante)
+--------------------------------------------------------------------------------
+- Tipo:       array de strings
+- Formato:    cada alias de 3-100 caracteres, sem duplicatas
+- Exemplo:    aliases: ["Conciliacao Bancaria", "Retorno CNAB"]
+- Validacao:  opcional, se presente deve ser array de strings sem duplicatas
+
+Por que existe:
+  Nomes alternativos reconhecidos nativamente pelo Obsidian para busca e
+  descoberta (quick switcher via Ctrl+O).
+
+
+3. CAMPOS INTENCIONALMENTE AUSENTES
+================================================================================
+
+Os seguintes campos NAO estao no front matter leve:
+
+- system, module, owner, team:
+  Campos de governanca que exigem conhecimento da estrutura organizacional.
+  Preenchidos na Fase 3 pelo pipeline.
+
+- valid_from, valid_until, supersedes, superseded_by:
+  Campos temporais definidos na promocao.
+
+- qa_score, qa_date, qa_status:
+  QA so se aplica ao .md final.
+
+- doc_type:
+  Definido na promocao, pois o conteudo pode mudar de natureza durante
+  a elaboracao.
+
+
+4. EXEMPLO COMPLETO DE .beta.md COM FRONT MATTER LEVE
+================================================================================
+
+---
+id: BETA-042
+title: "Processo de conciliacao bancaria do modulo Cobranca"
+domain: "financeiro"
+confidentiality: internal
+sources:
+  - type: "pdf"
+    origin: "sharepoint://financeiro/docs/conciliacao_v3.pdf"
+    captured_at: "2026-03-15"
+  - type: "transcription"
+    origin: "teams://recordings/2026-03-12_reuniao_cobranca.mp4"
+    captured_at: "2026-03-12"
+tags: [conciliacao, cobranca, bancaria, boleto, retorno, cnab]
+aliases: ["Conciliacao Bancaria", "Retorno CNAB"]
+status: in-review
+last_enrichment: "2026-03-18"
+last_human_edit: "2026-03-20"
+---
+
+(corpo do documento aqui)
+
+
+5. TEMPLATE OBSIDIAN RECOMENDADO
+================================================================================
+
+---
+id: BETA-
+title: ""
+domain: ""
+confidentiality: internal
+sources:
+  - type: ""
+    origin: ""
+    captured_at: ""
+tags: []
+aliases: []
+status: draft
+last_enrichment:
+last_human_edit:
+---
+
+
+6. REGRAS DE COMPATIBILIDADE OBSIDIAN
+================================================================================
+
+- YAML entre marcadores --- no inicio do arquivo
+- Tags como array YAML (tags: [a, b, c]), NAO usar sintaxe #tag no front matter
+- No corpo do documento, tags #tag podem ser usadas normalmente
+- Wikilinks ([[BETA-001]]) apenas no CORPO, nunca no front matter
+- Campos personalizados sao exibidos no painel Properties sem config adicional
+- Nao e necessario plugin especial
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

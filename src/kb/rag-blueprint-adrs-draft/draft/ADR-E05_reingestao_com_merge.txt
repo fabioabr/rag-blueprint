@@ -1,0 +1,203 @@
+================================================================================
+ADR-E05 -- Re-ingestao com Merge de Chunks Existentes
+================================================================================
+Tipo:           ADR
+Origem:         ADR-001
+Data:           23/03/2026
+================================================================================
+
+SUMARIO
+-------
+Este documento detalha o procedimento de re-ingestao quando uma fonte e
+atualizada (ex: PDF v2 substitui PDF v1). O objetivo e incorporar as
+mudancas da nova versao sem destruir edicoes humanas realizadas no
+.beta.md intermediario. O procedimento se aplica a Fase 2 do pipeline
+de 4 fases definido na ADR-001.
+
+
+================================================================================
+1. CONTEXTO: POR QUE RE-INGESTAO COM MERGE
+================================================================================
+
+No pipeline de 4 fases (ADR-001), fontes externas sao convertidas em
+arquivos .beta.md que podem ser editados por humanos (Fase 2). Quando
+a fonte original muda (ex: nova versao de um PDF, atualizacao de pagina
+Confluence, nova versao de regulamento), o .beta.md correspondente
+precisa ser atualizado.
+
+O problema: se o .beta.md ja foi editado por humanos (correcoes, ajustes,
+complementos, blocos LOCKED), simplesmente sobrescrever o arquivo com a
+nova conversao destruiria todo o trabalho humano.
+
+Solucao: re-ingestao com merge -- um procedimento que identifica o que
+mudou na fonte, aplica as mudancas no .beta.md preservando edicoes humanas,
+e sinaliza conflitos para revisao manual.
+
+
+================================================================================
+2. PROCEDIMENTO EM 3 PASSOS
+================================================================================
+
+--- Passo 1: Diff de fontes ---
+
+  Comparar a versao anterior (v1) com a versao atualizada (v2) da fonte:
+
+    1. Recuperar a versao anterior da fonte (registrada no campo sources
+       do front matter do .beta.md, com captured_at e origin).
+
+    2. Obter a nova versao da fonte.
+
+    3. Gerar lista de mudancas entre v1 e v2:
+       - Trechos adicionados (presentes em v2, ausentes em v1).
+       - Trechos removidos (presentes em v1, ausentes em v2).
+       - Trechos modificados (presentes em ambos, mas com conteudo diferente).
+       - Trechos inalterados (identicos em v1 e v2).
+
+    4. Registrar o diff para auditoria e rastreabilidade.
+
+--- Passo 2: Analise de impacto ---
+
+  Para cada trecho do .beta.md existente, classificar o impacto da mudanca:
+
+  Categoria A -- Sem conflito:
+    Condicao: trecho NAO foi editado por humano E fonte mudou nesse trecho.
+    Acao: atualizar automaticamente. O conteudo gerado pela IA e substituido
+    pelo novo conteudo gerado a partir da fonte atualizada.
+    Risco: baixo (nenhum trabalho humano perdido).
+
+  Categoria B -- Possivel conflito:
+    Condicao: trecho FOI editado por humano E fonte mudou nesse mesmo trecho.
+    Acao: NAO sobrescrever. Inserir alerta inline no .beta.md:
+
+      <!-- CONFLICT -->
+      <!-- FONTE ATUALIZADA: [trecho novo da fonte v2] -->
+      <!-- VERSAO ATUAL: [trecho editado pelo humano] -->
+      <!-- CONFLICT:END -->
+
+    O humano deve revisar e decidir: aceitar a versao da fonte, manter sua
+    edicao, ou criar uma versao hibrida.
+
+  Categoria C -- Conflito em bloco LOCKED:
+    Condicao: trecho esta dentro de um bloco <!-- LOCKED:START --> e a fonte
+    mudou nesse trecho.
+    Acao: NAO alterar o conteudo do bloco LOCKED (respeitar a protecao).
+    Registrar alerta separado:
+
+      <!-- LOCKED-CONFLICT -->
+      <!-- O bloco LOCKED abaixo pode estar desatualizado em relacao a fonte. -->
+      <!-- Fonte atualizada em: [data] -->
+      <!-- Trecho da fonte v2: [resumo da mudanca] -->
+      <!-- LOCKED-CONFLICT:END -->
+
+    O humano decide se remove o lock e atualiza, ou mantem a versao locked.
+
+  Categoria D -- Conteudo novo:
+    Condicao: trecho existe em v2 mas nao em v1 (secao adicionada na fonte).
+    Acao: adicionar ao .beta.md em posicao logica (apos secao relacionada
+    ou ao final do documento). Marcar como novo:
+
+      <!-- NEW-FROM-SOURCE: [data] -->
+      [conteudo novo]
+      <!-- NEW-FROM-SOURCE:END -->
+
+  Categoria E -- Conteudo removido:
+    Condicao: trecho existe em v1 mas nao em v2 (secao removida da fonte).
+    Acao: NAO remover automaticamente do .beta.md. Inserir alerta:
+
+      <!-- SOURCE-REMOVED -->
+      <!-- Este trecho foi removido da fonte v2. Revisar se deve ser mantido. -->
+      <!-- SOURCE-REMOVED:END -->
+
+--- Passo 3: Relatorio de re-ingestao ---
+
+  Gerar relatorio com:
+
+    - Total de trechos atualizados automaticamente (Categoria A).
+    - Total de conflitos para revisao humana (Categoria B).
+    - Total de locks potencialmente desatualizados (Categoria C).
+    - Total de conteudos novos adicionados (Categoria D).
+    - Total de conteudos removidos da fonte sinalizados (Categoria E).
+
+  O relatorio serve para:
+    - Priorizar revisao humana (conflitos primeiro).
+    - Identificar .beta.md com muitos locks desatualizados.
+    - Medir o impacto de cada atualizacao de fonte.
+    - Auditoria do processo de re-ingestao.
+
+
+================================================================================
+3. DETECCAO DE EDICAO HUMANA
+================================================================================
+
+Para classificar corretamente os trechos nas categorias acima, o pipeline
+precisa distinguir entre conteudo gerado pela IA e conteudo editado por
+humano. Mecanismos:
+
+  1. Blocos LOCKED:
+     Trechos dentro de <!-- LOCKED:START --> / <!-- LOCKED:END --> sao
+     explicitamente protegidos. Deteccao direta.
+
+  2. Git diff como safety net:
+     Comparar a versao original gerada pela IA (commit de geracao) com a
+     versao atual (HEAD). Diferencas fora de blocos LOCKED indicam edicao
+     humana. Essa edicao humana SEMPRE prevalece sobre a re-geracao da IA.
+
+  3. Campo last_human_edit no front matter:
+     Se last_human_edit > last_enrichment, o .beta.md foi editado por
+     humano desde a ultima rodada de IA.
+
+
+================================================================================
+4. RESOLUCAO DE CONFLITOS
+================================================================================
+
+Conflitos (Categoria B e C) devem ser resolvidos por humanos. O pipeline
+NAO tenta resolver conflitos automaticamente. Motivos:
+
+  - Edicoes humanas podem conter contexto de negocio que a IA nao possui.
+  - Blocos LOCKED representam decisoes deliberadas de protecao.
+  - Resolucao automatica poderia destruir trabalho curado.
+
+Fluxo de resolucao:
+
+  1. Pipeline gera .beta.md com alertas inline (CONFLICT, LOCKED-CONFLICT).
+  2. Relatorio lista todos os conflitos pendentes.
+  3. Humano (PO, analista, curador) revisa cada conflito:
+     - Aceita versao da fonte: remove alerta, atualiza trecho.
+     - Mantém edicao humana: remove alerta, mantem trecho original.
+     - Cria versao hibrida: combina ambas versoes, remove alerta.
+  4. Se conflito esta em bloco LOCKED:
+     - Humano decide se remove o lock para atualizar.
+     - Ou mantém o lock e registra que esta ciente da desatualizacao.
+  5. Apos resolucao, atualizar last_human_edit no front matter.
+
+Prazo para resolucao:
+  Conflitos nao resolvidos nao bloqueiam o pipeline. Porem, documentos
+  com conflitos pendentes NAO devem ser promovidos para .md final (Fase 3).
+  O pipeline de promocao verifica ausencia de marcadores CONFLICT como
+  pre-condicao.
+
+
+================================================================================
+5. IMPACTO NA CADEIA DE INGESTAO
+================================================================================
+
+Apos a re-ingestao com merge no .beta.md (Fase 2), o fluxo normal segue:
+
+  1. .beta.md atualizado e revisado (conflitos resolvidos).
+  2. Promocao para .md final (Fase 3) quando aprovado.
+  3. Release tag criada no repositorio knowledge-base.
+  4. Pipeline de ingestao na Base Vetorial (Fase 4, ADR-006) processa
+     o .md atualizado:
+     - Etapa 1 (Descoberta): hash mudou -> classificado como UPDATED.
+     - Etapa 3 (Chunking): novos chunks gerados.
+     - Etapa 5 (Persistencia): chunks antigos removidos, novos persistidos.
+
+O merge na Fase 2 garante que a cadeia completa funciona sem perda de
+edicoes humanas, mantendo a rastreabilidade de origem e a integridade
+da Base Vetorial.
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

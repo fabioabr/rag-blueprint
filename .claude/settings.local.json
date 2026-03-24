@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for f:*)",
+      "Bash(do sed:*)",
+      "Bash(echo \"Updated $f\")",
+      "Bash(done)",
+      "Bash(cd:*)"
+    ]
+  }
+}

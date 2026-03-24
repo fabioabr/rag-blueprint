@@ -1,0 +1,271 @@
+================================================================================
+ADR-C03 — Runbook: Migracao de Autenticacao API Key para JWT
+================================================================================
+Tipo:           ADR
+Origem:         ADR-004
+Data:           23/03/2026
+================================================================================
+
+OBJETIVO
+--------
+Procedimento operacional para migrar a autenticacao do RAG Corporativo de
+API Keys (utilizada nas Fases 1 e 2) para JWT via IdP corporativo (OIDC/SAML),
+conforme definido no Pilar 3 (Autenticacao Evolutiva) da ADR-004.
+
+Este runbook deve ser executado na transicao para a Fase 3 do roadmap.
+
+
+================================================================================
+SECAO 1 — PRE-REQUISITOS
+================================================================================
+
+Antes de iniciar a migracao, todos os itens abaixo devem estar confirmados:
+
+[ ] 1.1  IdP corporativo configurado e operacional (Azure AD, Keycloak ou
+         equivalente) com suporte a OIDC ou SAML.
+
+[ ] 1.2  Aplicacao RAG registrada no IdP com:
+         - Client ID e Client Secret gerados
+         - Redirect URIs configurados
+         - Escopos definidos (openid, profile, email, groups)
+
+[ ] 1.3  Claims do JWT definidos e mapeados:
+         - sub (subject — identificador unico do usuario)
+         - name (nome do usuario)
+         - email (email corporativo)
+         - groups (grupos/papeis no IdP)
+         - department (departamento — para ABAC futuro)
+
+[ ] 1.4  Mapeamento de grupos do IdP para perfis RBAC do RAG:
+         - Grupo "rag-analyst"  -> perfil Analyst  (public, internal)
+         - Grupo "rag-manager"  -> perfil Manager  (public, internal, restricted)
+         - Grupo "rag-director" -> perfil Director  (public, internal, restricted, confidential)
+         - Grupo "rag-agent-*"  -> perfil AI_Agent (configuravel)
+
+[ ] 1.5  Ambiente de staging/homologacao disponivel para testes.
+
+[ ] 1.6  Lista completa de usuarios e agentes ativos com API Key,
+         incluindo: user_id, perfil atual, ultimo uso, agente ou humano.
+
+[ ] 1.7  Comunicacao enviada a todos os usuarios com pelo menos 30 dias
+         de antecedencia informando sobre a migracao.
+
+[ ] 1.8  Pipeline de ingestao e base vetorial estaveis (nenhuma migracao
+         ou re-indexacao em andamento).
+
+[ ] 1.9  Backup da configuracao atual de API Keys e mapeamentos.
+
+
+================================================================================
+SECAO 2 — FASE DE COEXISTENCIA (JWT EM PARALELO)
+================================================================================
+
+Nesta fase, ambos os metodos de autenticacao sao aceitos simultaneamente.
+Duracao estimada: 30 dias.
+
+----------------------------------------------------------------------
+Passo 2.1 — Implementar suporte a JWT no backend
+----------------------------------------------------------------------
+
+Responsavel:  Dev API/Consumo
+Atividades:
+  - Adicionar middleware de validacao de JWT (verificacao de assinatura,
+    expiracao, issuer, audience).
+  - Implementar extracao de claims do JWT para contexto de usuario.
+  - Mapear claim "groups" para perfis RBAC existentes.
+  - Manter middleware de API Key existente inalterado.
+  - Configurar ordem de verificacao: JWT primeiro, API Key como fallback.
+
+Validacao:
+  - Request com JWT valido -> aceito, perfil extraido dos claims.
+  - Request com API Key valida -> aceito, perfil extraido do mapeamento existente.
+  - Request sem credencial -> rejeitado (401).
+  - Request com JWT expirado -> rejeitado (401), nao fallback para API Key.
+
+----------------------------------------------------------------------
+Passo 2.2 — Configurar MCP Servers para JWT
+----------------------------------------------------------------------
+
+Responsavel:  Dev API/Consumo + Engenheiro de Pipeline
+Atividades:
+  - Cada MCP Server recebe service account no IdP com JWT e escopo limitado:
+    - Dominios permitidos (ex: apenas "financeiro", "tecnologia")
+    - Niveis de confidencialidade permitidos
+    - Rate limits especificos
+  - Manter API Keys dos MCP Servers ativas durante coexistencia.
+  - Configurar auditoria de cada query com agente de origem via JWT claims.
+
+----------------------------------------------------------------------
+Passo 2.3 — Migrar usuarios em ondas
+----------------------------------------------------------------------
+
+Responsavel:  Arquiteto (coordena) + Ops (executa)
+Atividades:
+
+  Onda 1 (Semana 1-2): Equipe interna / early adopters
+    - Provisionar usuarios no IdP com grupos corretos.
+    - Orientar troca de API Key por fluxo OIDC.
+    - Monitorar logs para erros de autenticacao.
+    - Coletar feedback.
+
+  Onda 2 (Semana 2-3): Todos os usuarios humanos restantes
+    - Provisionar e orientar.
+    - Desativar API Keys dos usuarios ja migrados (mas nao revogar ainda).
+
+  Onda 3 (Semana 3-4): Agentes de IA e automacoes
+    - Atualizar configuracao dos agentes para usar JWT (service accounts).
+    - Agentes que nao suportam OIDC mantem API Key (excecao documentada).
+    - Registrar excecoes com justificativa e data de revisao.
+
+----------------------------------------------------------------------
+Passo 2.4 — Monitorar coexistencia
+----------------------------------------------------------------------
+
+Responsavel:  Ops
+Metricas a acompanhar:
+  - Percentual de requests via JWT vs API Key (meta: >90% JWT ao fim dos 30 dias)
+  - Erros de autenticacao (JWT invalido, expirado, claims incorretos)
+  - Latencia adicionada pela validacao de JWT
+  - Usuarios que ainda nao migraram (lista nominal)
+
+
+================================================================================
+SECAO 3 — DEPRECACAO DE API KEYS
+================================================================================
+
+Apos 30 dias de coexistencia e com >90% dos requests via JWT.
+
+----------------------------------------------------------------------
+Passo 3.1 — Comunicar deprecacao
+----------------------------------------------------------------------
+
+Responsavel:  Arquiteto
+Atividades:
+  - Enviar comunicacao final a usuarios remanescentes com API Key.
+  - Definir data-limite para remocao (30 dias apos comunicacao).
+  - Listar explicitamente as excecoes aprovadas (agentes sem suporte OIDC).
+
+----------------------------------------------------------------------
+Passo 3.2 — Deprecar API Keys
+----------------------------------------------------------------------
+
+Responsavel:  Ops + Engenheiro
+Atividades:
+  - Marcar todas as API Keys como "deprecated" (ainda funcionais, mas
+    gerando warning no log).
+  - Adicionar header de resposta informando deprecacao:
+    "X-Auth-Warning: API Key authentication is deprecated. Migrate to JWT."
+  - Monitorar por 30 dias adicionais.
+
+----------------------------------------------------------------------
+Passo 3.3 — Revogar API Keys
+----------------------------------------------------------------------
+
+Responsavel:  Ops
+Atividades:
+  - Na data-limite, revogar todas as API Keys marcadas como deprecated.
+  - EXCECAO: API Keys de agentes sem suporte OIDC permanecem ativas com:
+    - Rotacao obrigatoria a cada 90 dias
+    - Rate limiting mais restritivo
+    - Monitoramento dedicado
+    - Revisao trimestral da excecao
+  - Remover middleware de API Key do backend (manter apenas JWT).
+  - Confirmar que nenhum request esta falhando por falta de API Key.
+
+
+================================================================================
+SECAO 4 — CONFIGURACAO DE REVOGACAO DE ACESSO (JWT)
+================================================================================
+
+Com JWT implementado, configurar os mecanismos de revogacao:
+
+----------------------------------------------------------------------
+4.1  Downgrade de perfil
+----------------------------------------------------------------------
+  - Alteracao de grupo no IdP tem efeito imediato no proximo token.
+  - Cache de resultados de busca NAO deve ser utilizado — cada query
+    deve verificar o perfil atual.
+
+----------------------------------------------------------------------
+4.2  Remocao de usuario
+----------------------------------------------------------------------
+  Procedimento:
+    1. Desativar usuario no IdP.
+    2. JWT existente invalidado via blocklist (TTL maximo de 15 minutos).
+    3. Purgar qualquer cache associado ao usuario.
+    4. Encerrar sessoes ativas.
+  SLA: usuario sem acesso em no maximo 15 minutos apos desativacao no IdP.
+
+----------------------------------------------------------------------
+4.3  Reclassificacao de documento
+----------------------------------------------------------------------
+  - Chunks sao atualizados no proximo ciclo de ingestao.
+  - Reclassificacoes urgentes (elevacao) acionam refresh imediato
+    na base vetorial — ver ADR-C02 para detalhes.
+
+
+================================================================================
+SECAO 5 — ROLLBACK DA MIGRACAO
+================================================================================
+
+Se a migracao apresentar problemas criticos, o procedimento de rollback e:
+
+----------------------------------------------------------------------
+5.1  Rollback durante fase de coexistencia
+----------------------------------------------------------------------
+  Impacto:  BAIXO — ambos os metodos ainda estao ativos.
+  Procedimento:
+    1. Reverter a ordem de verificacao: API Key primeiro, JWT como fallback.
+    2. Comunicar usuarios para voltar a usar API Key.
+    3. Investigar e corrigir problemas no fluxo JWT.
+    4. Reagendar migracao.
+
+----------------------------------------------------------------------
+5.2  Rollback apos deprecacao de API Keys (antes da revogacao)
+----------------------------------------------------------------------
+  Impacto:  MEDIO — API Keys existem mas estao marcadas como deprecated.
+  Procedimento:
+    1. Reativar API Keys (remover flag "deprecated").
+    2. Reativar middleware de API Key no backend.
+    3. Comunicar usuarios que API Key voltou a ser aceita.
+    4. Investigar causa raiz.
+
+----------------------------------------------------------------------
+5.3  Rollback apos revogacao de API Keys
+----------------------------------------------------------------------
+  Impacto:  ALTO — API Keys foram removidas.
+  Procedimento:
+    1. Gerar novas API Keys para todos os usuarios afetados.
+    2. Reimplementar middleware de API Key no backend (se removido).
+    3. Distribuir novas API Keys.
+    4. Este cenario indica falha grave no planejamento — exige RCA.
+
+  NOTA: este cenario deve ser evitado. A revogacao so deve acontecer quando
+  ha confianca total no funcionamento do JWT.
+
+
+================================================================================
+SECAO 6 — CHECKLIST POS-MIGRACAO
+================================================================================
+
+[ ] 6.1  100% dos usuarios humanos autenticando via JWT.
+[ ] 6.2  Agentes de IA usando JWT (ou excecao documentada com API Key).
+[ ] 6.3  Middleware de API Key removido (exceto para excecoes).
+[ ] 6.4  Mapeamento grupos IdP -> perfis RBAC validado e documentado.
+[ ] 6.5  Mecanismo de revogacao testado (downgrade, remocao, blocklist).
+[ ] 6.6  Auditoria funcionando com claims JWT (sub, groups, department).
+[ ] 6.7  MCP Servers usando service accounts com JWT.
+[ ] 6.8  Documentacao atualizada (ADR-004, runbooks, onboarding).
+[ ] 6.9  Metricas de autenticacao atualizadas no dashboard.
+[ ] 6.10 Comunicacao de conclusao enviada a todos os stakeholders.
+
+
+================================================================================
+REFERENCIAS
+================================================================================
+
+- ADR-004 — Estrategia de Seguranca e Classificacao de Dados (Pilar 3)
+- ADR-008 — Governanca: Papeis, Ciclo de Vida e Rollback
+- BACEN Resolucao 4.893/2021 (rastreabilidade e controle de acesso)
+- OIDC — OpenID Connect Core 1.0
+  https://openid.net/specs/openid-connect-core-1_0.html

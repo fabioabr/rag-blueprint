@@ -1,0 +1,250 @@
+================================================================================
+ADR-B06 -- Politica de Temporalidade do Conhecimento
+================================================================================
+Tipo:           ADR
+Origem:         ADR-001 (secao Temporalidade, 3 camadas)
+Data:           23/03/2026
+================================================================================
+
+1. VISAO GERAL
+================================================================================
+
+O conhecimento corporativo nao e estatico. Leis mudam, regulacoes sao
+atualizadas, politicas internas evoluem, sistemas sao substituidos. O
+pipeline de conhecimento precisa representar essa temporalidade de forma
+explicita.
+
+ADR-001 define um modelo em 3 CAMADAS para versionamento semantico do
+conhecimento, garantindo que agentes possam responder tanto sobre o
+estado atual quanto sobre estados historicos.
+
+
+2. CAMPOS TEMPORAIS NO FRONT MATTER (.md final)
+================================================================================
+
+2.1 valid_from
+--------------------------------------------------------------------------------
+  - Tipo:         string (data ISO 8601), formato AAAA-MM-DD
+  - Obrigatorio:  sim (bloqueante no .md final)
+  - Validacao:    data valida, nao futura (excecao: politicas programadas)
+  - Exemplo:      valid_from: "2026-01-01"
+
+  Define a data a partir da qual o documento passa a ser considerado
+  VIGENTE. Antes desta data, o documento existe mas nao deve ser
+  retornado como referencia valida.
+
+  Excecao: politicas programadas podem ter valid_from no futuro (ex:
+  nova regulamentacao que entra em vigor em data especifica).
+
+2.2 valid_until
+--------------------------------------------------------------------------------
+  - Tipo:         string (data ISO 8601) ou null
+  - Obrigatorio:  nao (null = vigente indefinidamente)
+  - Validacao:    se presente, data valida e > valid_from
+  - Exemplo:      valid_until: null
+  - Exemplo:      valid_until: "2026-12-31"
+
+  Define a data ate a qual o documento e considerado vigente. Apos esta
+  data, o documento nao deve ser retornado como referencia principal
+  (mas pode ser retornado como referencia historica se solicitado).
+
+  null significa que o documento e vigente por tempo indeterminado --
+  ate que seja explicitamente deprecado.
+
+2.3 supersedes
+--------------------------------------------------------------------------------
+  - Tipo:         string (DOC-{NNNNNN})
+  - Obrigatorio:  nao (apenas quando substitui outro documento)
+  - Validacao:    formato DOC-{NNNNNN}, documento referenciado deve existir
+  - Exemplo:      supersedes: "DOC-000023"
+
+  Identificador do documento ANTERIOR que este documento substitui.
+  Gera relacao SUPERSEDES na Base Vetorial.
+
+2.4 superseded_by
+--------------------------------------------------------------------------------
+  - Tipo:         string (DOC-{NNNNNN})
+  - Obrigatorio:  sim quando status = deprecated
+  - Validacao:    formato DOC-{NNNNNN}, documento referenciado deve existir
+  - Exemplo:      superseded_by: "DOC-000456"
+
+  Identificador do documento que SUBSTITUI este documento. Obrigatorio
+  quando o documento e deprecado, garantindo que sempre haja um ponteiro
+  para a versao corrente.
+
+  Regra: quando superseded_by e preenchido, status DEVE ser "deprecated"
+  e valid_until DEVE ser preenchido.
+
+
+3. AS 3 CAMADAS DE TEMPORALIDADE
+================================================================================
+
+3.1 CAMADA 1 -- No .md (front matter)
+--------------------------------------------------------------------------------
+
+  Onde:     Campos valid_from, valid_until, supersedes, superseded_by
+            no front matter YAML do .md final.
+
+  Exemplo:
+    valid_from: "2026-01-01"
+    valid_until: null
+    superseded_by: null
+    supersedes: "DOC-000123"
+
+  Responsabilidade:
+    - Pipeline de promocao (Fase 3) preenche estes campos
+    - Validacao automatica no schema de front matter rico
+    - Humano pode sugerir datas durante edicao do .beta.md
+
+3.2 CAMADA 2 -- Na Base Vetorial (relacoes temporais)
+--------------------------------------------------------------------------------
+
+  Onde:     Grafo Neo4j, relacoes e nos especificos.
+
+  Relacoes:
+    - (:Document)-[:SUPERSEDES {effective_date}]->(:Document)
+      Conecta versao nova a versao anterior com data de efeito.
+
+    - (:Document)-[:VERSION_OF]->(:DocumentFamily)
+      Conecta todas as versoes de um documento a uma "familia".
+
+  No especifico:
+    - :DocumentFamily
+      Atributos: family_id, title, current_version
+      Agrupa todas as versoes de um mesmo documento conceitual.
+
+  Responsabilidade:
+    - Pipeline de ingestao (Fase 4) cria estas relacoes
+    - Atualiza current_version no DocumentFamily quando nova versao
+      e ingerida
+
+3.3 CAMADA 3 -- No retrieval (filtro temporal)
+--------------------------------------------------------------------------------
+
+  Onde:     Logica do agente/retriever no momento da consulta.
+
+  Regras:
+    1. Detectar contexto temporal na pergunta do usuario
+       Ex: "como era o processo de cobranca em 2025?"
+       Ex: "qual a politica vigente de ferias?"
+
+    2. Filtrar por valid_from/valid_until ANTES da busca vetorial
+       (filtro pre-retrieval, nao pos-retrieval)
+
+    3. Se nao houver contexto temporal explicito, assumir DATA ATUAL
+       (retornar apenas documentos vigentes)
+
+    4. Agentes instruidos a citar vigencia e versoes anteriores
+       nas respostas
+
+  Exemplos de comportamento:
+    Pergunta: "qual a politica de ferias?"
+    -> Filtro: valid_from <= hoje AND (valid_until IS NULL OR valid_until >= hoje)
+    -> Retorna: versao vigente
+
+    Pergunta: "como era a politica de ferias em 2024?"
+    -> Filtro: valid_from <= 2024-12-31 AND (valid_until IS NULL OR valid_until >= 2024-01-01)
+    -> Retorna: versao vigente em 2024
+
+    Pergunta: "o que mudou na politica de ferias?"
+    -> Busca: DocumentFamily -> todas as versoes -> diff semantico
+    -> Retorna: comparacao entre versoes
+
+
+4. REGRAS DE DEPRECACAO
+================================================================================
+
+4.1 Quando deprecar
+--------------------------------------------------------------------------------
+  Um documento e deprecado quando:
+    - Uma nova versao do mesmo documento e criada (substitui)
+    - A politica/processo que ele descreve foi descontinuada
+    - A informacao se tornou obsoleta sem substituta
+
+4.2 Processo de deprecacao
+--------------------------------------------------------------------------------
+  1. Criar novo documento (.md final) com supersedes apontando para o antigo
+  2. No documento antigo, preencher:
+     - status: deprecated
+     - superseded_by: DOC-{NNNNNN} (novo documento)
+     - valid_until: data de efeito da deprecacao
+  3. Na Base Vetorial:
+     - Criar relacao SUPERSEDES entre novo e antigo
+     - Atualizar current_version no DocumentFamily
+     - Documento deprecated mantido com RANKING REDUZIDO (nao removido)
+
+4.3 Ranking de documentos deprecated
+--------------------------------------------------------------------------------
+  Documentos deprecated NAO sao removidos da Base Vetorial. Eles sao
+  mantidos com ranking reduzido para:
+    - Consultas historicas ("como era antes?")
+    - Rastreabilidade e auditoria
+    - Contexto para o agente ("isso mudou em tal data")
+
+  Na pratica: documentos deprecated recebem penalidade no reranking,
+  aparecendo abaixo de documentos vigentes. So sao priorizados quando
+  o contexto temporal da pergunta exige.
+
+
+5. CADEIA SUPERSEDES
+================================================================================
+
+A cadeia supersedes permite navegar toda a historia de um documento:
+
+  DOC-000001 (v1, deprecated)
+    superseded_by: DOC-000023
+      |
+      v
+  DOC-000023 (v2, deprecated)
+    supersedes: DOC-000001
+    superseded_by: DOC-000042
+      |
+      v
+  DOC-000042 (v3, approved, vigente)
+    supersedes: DOC-000023
+    superseded_by: null
+
+Na Base Vetorial, o DocumentFamily agrupa todos:
+
+  :DocumentFamily {
+    family_id: "FAM-001",
+    title: "Processo de Conciliacao Bancaria",
+    current_version: "DOC-000042"
+  }
+
+  DOC-000001 -[:VERSION_OF]-> FAM-001
+  DOC-000023 -[:VERSION_OF]-> FAM-001
+  DOC-000042 -[:VERSION_OF]-> FAM-001
+  DOC-000042 -[:SUPERSEDES {effective_date: "2026-01-15"}]-> DOC-000023
+  DOC-000023 -[:SUPERSEDES {effective_date: "2025-06-01"}]-> DOC-000001
+
+
+6. REGRAS DE VALIDACAO TEMPORAL
+================================================================================
+
+  Regra                                          | Tipo
+  -----------------------------------------------|-------------
+  valid_from obrigatorio no .md final             | Bloqueante
+  valid_from nao futura (exceto politicas)        | Bloqueante
+  valid_until > valid_from (se presente)          | Bloqueante
+  superseded_by obrigatorio se deprecated         | Bloqueante
+  supersedes referencia documento existente       | Bloqueante
+  valid_until preenchido se superseded_by presente| Bloqueante
+
+
+7. CAMPOS AUSENTES NO .beta.md
+================================================================================
+
+Os campos temporais (valid_from, valid_until, supersedes, superseded_by)
+NAO existem no front matter leve do .beta.md. Sao preenchidos
+exclusivamente na Fase 3 (promocao) pelo pipeline.
+
+Motivo: durante a elaboracao do .beta.md, o conteudo ainda esta em
+construcao e nao faz sentido definir vigencia. A temporalidade so e
+relevante quando o documento e promovido para .md final e passa a ser
+a "informacao verdade".
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

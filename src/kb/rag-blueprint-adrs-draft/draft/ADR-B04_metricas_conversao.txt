@@ -1,0 +1,255 @@
+================================================================================
+ADR-B04 -- Metricas de Conversao (conversion_quality)
+================================================================================
+Tipo:           ADR
+Origem:         ADR-005 (Parte D -- conversion_quality)
+Data:           23/03/2026
+================================================================================
+
+1. VISAO GERAL
+================================================================================
+
+O campo conversion_quality expressa a confianca na fidelidade da conversao
+da fonte original para o formato .md. Score de 0 a 100% calculado pelo
+pipeline de conversao na Fase 2 (ADR-001).
+
+Dois niveis de registro:
+  - No .beta.md: conversion_quality e PER-SOURCE (dentro de sources[])
+  - No .md final: conversion_quality e CONSOLIDADO via min(sources[].conversion_quality)
+
+
+2. FORMULA DE CALCULO
+================================================================================
+
+  conversion_quality = min(
+      media_ponderada(sinais_do_formato),
+      penalidade_por_erro_critico
+  )
+
+A funcao min() garante que um erro critico SEMPRE reduz o score, mesmo que
+os outros sinais sejam bons.
+
+Consolidacao para .md final:
+  conversion_quality_final = min(sources[].conversion_quality)
+
+Ou seja, o pior score entre todas as fontes determina o score final. Isso
+garante que uma fonte de baixa qualidade nao seja mascarada por outras de
+alta qualidade.
+
+
+3. SINAIS POR FORMATO DE ORIGEM
+================================================================================
+
+3.1 MD nativo
+--------------------------------------------------------------------------------
+  Score: 100% automatico (sem conversao, apenas validacao)
+  Sinais: nenhum -- nao ha conversao
+
+3.2 PDF texto
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  % caracteres reconhecidos      | 40%
+  Headings preservados           | 30%
+  Tabelas convertidas            | 20%
+  Links preservados              | 10%
+
+3.3 PDF escaneado (OCR)
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  Confidence do OCR              | 50%
+  Resolucao DPI                  | 20%
+  % texto reconhecido            | 20%
+  Idioma detectado corretamente  | 10%
+
+3.4 DOCX
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  Conversao deterministica       | 30%
+  Estilos preservados            | 30%
+  Tabelas convertidas            | 20%
+  Imagens com alt text           | 20%
+
+3.5 XLSX
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  Tabelas convertidas            | 40%
+  Formulas identificadas         | 20%
+  Merges resolvidos              | 20%
+  Abas processadas               | 20%
+
+3.6 PPTX
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  Slides convertidos             | 30%
+  Notas do apresentador          | 25%
+  Imagens descritas              | 25%
+  Ordem logica preservada        | 20%
+
+3.7 Email
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  Headers completos              | 30%
+  Corpo HTML->MD                 | 30%
+  Anexos processados             | 25%
+  Thread preservada              | 15%
+
+3.8 Transcricao (audio/video)
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  WER do STT (Word Error Rate)   | 40%
+  Identificacao de falantes      | 25%
+  Timestamps preservados         | 15%
+  Sobreposicao de falantes       | 20%
+
+3.9 Confluence
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  Estrutura HTML preservada      | 30%
+  Macros expandidas              | 25%
+  Links internos resolvidos      | 25%
+  Anexos processados             | 20%
+
+3.10 Web
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  HTML->MD com estrutura         | 35%
+  Navegacao removida             | 25%
+  Imagens com alt text           | 20%
+  Links resolvidos               | 20%
+
+3.11 JSON / Ticket (Jira, ClickUp)
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  Campos extraidos               | 40%
+  Historico preservado           | 25%
+  Comentarios extraidos          | 20%
+  Anexos processados             | 15%
+
+3.12 CSV
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  Headers identificados          | 30%
+  Tipos inferidos                | 25%
+  Encoding correto               | 25%
+  Delimitador detectado          | 20%
+
+3.13 Image
+--------------------------------------------------------------------------------
+  Sinal                          | Peso
+  -------------------------------|------
+  OCR confidence                 | 50%
+  Descricao por VLM              | 30%
+  Resolucao suficiente           | 20%
+
+3.14 Manual
+--------------------------------------------------------------------------------
+  Score definido pelo humano (100% do peso).
+  O autor atribui manualmente o score de qualidade.
+
+
+4. THRESHOLDS DE DECISAO (GATES)
+================================================================================
+
+4.1 Ingestao automatica (>= 80%)
+--------------------------------------------------------------------------------
+  Score:    >= 80%
+  Acao:     .beta.md gerado e processado sem intervencao humana
+  Status:   draft (no .beta.md)
+  Pipeline: continua automaticamente
+
+4.2 Revisao humana obrigatoria (30% a 79%)
+--------------------------------------------------------------------------------
+  Score:    30% a 79%
+  Acao:     .beta.md gerado com flag requires_human_review
+  Status:   draft (no .beta.md)
+  Pipeline: emite warning com sinais de score baixo
+  Humano:   deve revisar e validar antes de promover
+
+4.3 Rejeicao (< 30%)
+--------------------------------------------------------------------------------
+  Score:    < 30%
+  Acao:     .beta.md NAO gerado
+  Status:   fonte rejeitada
+  Pipeline: registra log com detalhes dos sinais
+  Humano:   deve providenciar fonte melhor ou conversao manual
+
+4.4 Configurabilidade
+--------------------------------------------------------------------------------
+  Os thresholds (80% e 30%) sao configuraveis por organizacao via config
+  do pipeline. Cada organizacao pode ajustar conforme seu nivel de
+  tolerancia a risco.
+
+
+5. RELACAO ENTRE CONVERSION_QUALITY E QA
+================================================================================
+
+  conversion_quality:
+    - Calculado na Fase 2 (conversao de fonte para .beta.md)
+    - Mede fidelidade da EXTRACAO (fonte original -> markdown)
+    - Per-source no .beta.md, consolidado no .md final
+
+  qa_score:
+    - Calculado na Fase 3 (promocao de .beta.md para .md)
+    - Mede qualidade do CONTEUDO (completude, clareza, estrutura)
+    - Aplicado ao documento como um todo
+
+Sao metricas complementares:
+  - Um documento pode ter conversion_quality alto (boa extracao) mas
+    qa_score baixo (conteudo incompleto ou mal estruturado)
+  - Um documento pode ter conversion_quality baixo (extracao ruim) mas
+    qa_score alto (humano corrigiu e enriqueceu tudo)
+
+
+6. EXEMPLOS PRATICOS
+================================================================================
+
+6.1 PDF texto de boa qualidade
+--------------------------------------------------------------------------------
+  sources:
+    - type: "pdf"
+      origin: "sharepoint://financeiro/manual_cobranca_v3.pdf"
+      captured_at: "2026-03-15"
+      conversion_quality: 92
+
+  Sinais: 95% chars reconhecidos, headings 100%, tabelas 85%, links 80%
+  Score: 0.95*0.4 + 1.0*0.3 + 0.85*0.2 + 0.80*0.1 = 0.38+0.30+0.17+0.08 = 93
+  Nenhum erro critico -> score final = 92 (arredondamento)
+  Gate: >= 80% -> ingestao automatica
+
+6.2 Transcricao de reuniao com ruido
+--------------------------------------------------------------------------------
+  sources:
+    - type: "transcription"
+      origin: "teams://recordings/2026-03-12_reuniao.mp4"
+      captured_at: "2026-03-12"
+      conversion_quality: 67
+
+  Sinais: WER 25% (ruim), falantes 80%, timestamps 90%, sobreposicao 40%
+  Score: 0.75*0.4 + 0.80*0.25 + 0.90*0.15 + 0.40*0.20 = 0.30+0.20+0.135+0.08 = 71.5
+  Penalidade por WER alto -> score final = 67
+  Gate: 30-79% -> revisao humana obrigatoria
+
+6.3 Consolidacao para .md final (multiplas fontes)
+--------------------------------------------------------------------------------
+  sources:
+    - type: "pdf"    -> conversion_quality: 92
+    - type: "transcription" -> conversion_quality: 67
+
+  conversion_quality_final = min(92, 67) = 67
+  A pior fonte determina o score consolidado.
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

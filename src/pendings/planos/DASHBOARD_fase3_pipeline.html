@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fase 3 — Dashboard Completo de Pipeline</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+
+:root {
+    --primary: #5BA4D9;
+    --primary-dark: #3182B1;
+    --primary-light: rgba(91, 164, 217, 0.12);
+    --secondary: #5BB8C4;
+    --success: #6ABF3B;
+    --success-light: rgba(106, 191, 59, 0.12);
+    --success-border: rgba(106, 191, 59, 0.3);
+    --warning: #F4AC00;
+    --warning-light: rgba(244, 172, 0, 0.12);
+    --warning-border: rgba(244, 172, 0, 0.3);
+    --danger: #E85D54;
+    --danger-light: rgba(232, 93, 84, 0.12);
+    --danger-border: rgba(232, 93, 84, 0.3);
+    --info: #38BDF8;
+    --info-light: rgba(56, 189, 248, 0.12);
+    --info-border: rgba(56, 189, 248, 0.3);
+    --bg: #0f1319;
+    --card-bg: #1a1f2e;
+    --text: #e2e8f0;
+    --text-muted: #8b9ab5;
+    --border: #2a3244;
+    --purple: #9B96FF;
+    --purple-light: rgba(155, 150, 255, 0.12);
+    --orange: #FF9473;
+    --teal: #2DD4BF;
+    --header-bg: linear-gradient(135deg, #1a2332 0%, #15202e 50%, #1a2838 100%);
+    --progress-track: #2a3244;
+    --milestone-future: #4a5568;
+    --alert-warning-text: #f0c040;
+    --alert-danger-text: #f08a84;
+    --alert-info-text: #6ecbf5;
+    --alert-success-text: #8ad45a;
+    --pill-success-text: #8ad45a;
+    --pill-info-text: #6ecbf5;
+    --pill-warning-text: #f0c040;
+    --area-warning-text: #f0c040;
+}
+[data-theme="light"] {
+    --primary: #3182B1;
+    --primary-dark: #256a94;
+    --primary-light: rgba(49, 130, 177, 0.1);
+    --secondary: #418F9D;
+    --success: #4C7E1B;
+    --success-light: rgba(76, 126, 27, 0.08);
+    --success-border: rgba(76, 126, 27, 0.25);
+    --warning: #F4AC00;
+    --warning-light: rgba(244, 172, 0, 0.08);
+    --warning-border: rgba(244, 172, 0, 0.25);
+    --danger: #C72F25;
+    --danger-light: rgba(199, 47, 37, 0.08);
+    --danger-border: rgba(199, 47, 37, 0.25);
+    --info: #0EA5E8;
+    --info-light: rgba(14, 165, 232, 0.08);
+    --info-border: rgba(14, 165, 232, 0.25);
+    --bg: #f4f6f9;
+    --card-bg: #ffffff;
+    --text: #212B37;
+    --text-muted: #6E829F;
+    --border: #e2e8f0;
+    --purple: #7B76FE;
+    --purple-light: rgba(123, 118, 254, 0.08);
+    --orange: #FE7C58;
+    --teal: #00D8D8;
+    --header-bg: linear-gradient(135deg, #3182B1 0%, #256a94 50%, #418F9D 100%);
+    --progress-track: #e9ecef;
+    --milestone-future: #adb5bd;
+    --alert-warning-text: #8a6600;
+    --alert-danger-text: #a52820;
+    --alert-info-text: #0878a8;
+    --alert-success-text: #3a6112;
+    --pill-success-text: #3a6112;
+    --pill-info-text: #0878a8;
+    --pill-warning-text: #9a6d00;
+    --area-warning-text: #8a6600;
+}
+
+html, body, div, span, h1, h2, h3, h4, h5, h6, p, a, img, ul, ol, li,
+header, footer, nav, section, article, aside, button, input, select, textarea,
+table, tr, td, th, form, label, fieldset, legend { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Poppins', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+.container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+.header { background: var(--header-bg); color: white; padding: 36px 0 0; position: relative; overflow: hidden; }
+.header::before { content: ''; position: absolute; top: -50%; right: -10%; width: 500px; height: 500px; background: rgba(255,255,255,0.03); border-radius: 50%; z-index: 0; }
+.header-content { position: relative; z-index: 1; }
+.header-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; }
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
+.header .subtitle { font-size: 0.95rem; opacity: 0.85; font-weight: 300; margin-top: 2px; }
+.header-right { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.header-badge { background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(10px); }
+
+.tabs-nav { display: flex; gap: 4px; margin-top: 20px; overflow-x: auto; }
+.tab-btn { padding: 10px 24px; background: rgba(255,255,255,0.1); border: none; border-radius: 10px 10px 0 0; color: rgba(255,255,255,0.7); font-family: 'Poppins', sans-serif; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tab-btn:hover { background: rgba(255,255,255,0.18); color: white; }
+.tab-btn.active { background: var(--bg); color: var(--primary); font-weight: 600; }
+.tab-btn i { font-size: 1.1rem; }
+.tab-content { display: none; padding-top: 24px; padding-bottom: 32px; }
+.tab-content.active { display: block; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+.stat-card { background: var(--card-bg); border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); border: 1px solid var(--border); display: flex; align-items: center; gap: 14px; }
+.stat-card-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; color: white; flex-shrink: 0; }
+.stat-card-info { flex: 1; }
+.stat-card-number { font-size: 1.12rem; font-weight: 700; line-height: 1.1; }
+.stat-card-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+
+.card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.03); overflow: hidden; margin-bottom: 20px; }
+.card-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.card-header-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: white; flex-shrink: 0; }
+.card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+.card-badge { padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+.card-body { padding: 18px; }
+
+.alert { padding: 12px 16px; border-radius: 8px; font-size: 0.82rem; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; border: 1px solid; }
+.alert i { font-size: 1.1rem; flex-shrink: 0; }
+.alert-warning { background: var(--warning-light); border-color: var(--warning-border); color: var(--alert-warning-text); }
+.alert-danger { background: var(--danger-light); border-color: var(--danger-border); color: var(--alert-danger-text); }
+.alert-info { background: var(--info-light); border-color: var(--info-border); color: var(--alert-info-text); }
+.alert-success { background: var(--success-light); border-color: var(--success-border); color: var(--alert-success-text); }
+
+.progress-container { margin-bottom: 16px; }
+.progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.progress-label { font-size: 0.82rem; font-weight: 500; }
+.progress-value { font-size: 0.82rem; font-weight: 600; }
+.progress-bar-bg { width: 100%; height: 8px; background: var(--progress-track); border-radius: 4px; overflow: hidden; }
+.progress-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+
+.table-wrapper { overflow-x: auto; margin-bottom: 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+th { text-align: left; padding: 10px 12px; background: var(--bg); font-weight: 600; border-bottom: 2px solid var(--border); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted); position: sticky; top: 0; z-index: 2; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:hover { background: var(--primary-light); }
+tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+[data-theme="light"] tbody tr:nth-child(even) { background: rgba(0,0,0,0.02); }
+tbody tr:nth-child(even):hover { background: var(--primary-light); }
+td.desvio-col { font-size: 0.75rem; min-width: 300px; line-height: 1.4; color: var(--text-muted); }
+td.desvio-col ul { list-style: none; padding: 0; margin: 0; }
+td.desvio-col ul li { padding: 1px 0; }
+td.desvio-col ul li::before { content: '\2022'; color: var(--warning); margin-right: 6px; font-weight: 700; }
+
+.bg-primary { background: var(--primary); }
+.bg-success { background: var(--success); }
+.bg-info { background: var(--info); }
+.bg-warning { background: var(--warning); }
+.bg-danger { background: var(--danger); }
+.bg-secondary { background: var(--secondary); }
+.bg-purple { background: var(--purple); }
+.bg-orange { background: var(--orange); }
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+.pill-success { background: var(--success-light); color: var(--pill-success-text); border: 1px solid var(--success-border); }
+.pill-info { background: var(--info-light); color: var(--pill-info-text); border: 1px solid var(--info-border); }
+.pill-warning { background: var(--warning-light); color: var(--pill-warning-text); border: 1px solid var(--warning-border); }
+.pill-danger { background: var(--danger-light); color: var(--alert-danger-text); border: 1px solid var(--danger-border); }
+.pill-muted { background: rgba(139,154,181,0.12); color: var(--text-muted); border: 1px solid rgba(139,154,181,0.3); }
+
+.score-cell { font-weight: 700; font-size: 0.82rem; }
+.score-green { color: var(--success); }
+.score-yellow { color: var(--warning); }
+.score-red { color: var(--danger); }
+
+.section { margin-bottom: 24px; }
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.section-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: white; flex-shrink: 0; }
+.section-title { font-weight: 600; font-size: 1.05rem; }
+.section-count { font-size: 0.7rem; background: var(--primary-light); color: var(--primary); padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+
+.badge { display: inline-flex; align-items: stretch; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.30); font-family: 'Poppins', sans-serif; margin-bottom: 10px; }
+.badge-bar { width: 5px; flex-shrink: 0; }
+.badge-body { display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; background: var(--card-bg); }
+.badge-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: var(--bg); flex-shrink: 0; }
+.badge-text { display: flex; flex-direction: column; gap: 1px; }
+.badge-name { font-weight: 700; font-size: 13px; color: var(--text); }
+.badge-role { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.badge-date { font-size: 10.5px; color: var(--text-muted); }
+.badge-seal { display: flex; align-items: center; justify-content: center; padding: 7px 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; writing-mode: vertical-rl; text-orientation: mixed; color: var(--bg); }
+.badge-footer .badge-bar, .badge-footer .badge-icon, .badge-footer .badge-seal { background: var(--primary); }
+
+.phase-header-row { background: var(--primary-light) !important; }
+.phase-header-row td { font-weight: 700; font-size: 0.82rem; color: var(--primary); padding: 10px 12px; border-bottom: 2px solid var(--primary); }
+.phase-header-row:hover { background: var(--primary-light) !important; }
+
+.phase-a td { color: var(--success); border-color: var(--success); }
+.phase-b td { color: var(--info); border-color: var(--info); }
+.phase-c td { color: var(--danger); border-color: var(--danger); }
+.phase-d td { color: var(--orange); border-color: var(--orange); }
+.phase-e td { color: var(--warning); border-color: var(--warning); }
+.phase-f td { color: var(--purple); border-color: var(--purple); }
+.phase-g td { color: var(--teal); border-color: var(--teal); }
+.phase-h td { color: var(--secondary); border-color: var(--secondary); }
+.phase-i td { color: var(--primary); border-color: var(--primary); }
+.phase-j td { color: var(--orange); border-color: var(--orange); }
+
+.issue-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); padding: 20px; margin-bottom: 16px; }
+.issue-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.issue-card-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: white; flex-shrink: 0; }
+.issue-card-title { font-weight: 600; font-size: 0.95rem; flex: 1; }
+.issue-card-desc { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5; }
+.issue-card-files { font-size: 0.75rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 14px; }
+.issue-card-files strong { color: var(--text); }
+.issue-tracker { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.issue-tracker-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.issue-tracker-label { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+.issue-tracker-stats { display: flex; gap: 12px; align-items: center; }
+.issue-tracker-affected { font-size: 0.72rem; font-weight: 600; padding: 2px 10px; border-radius: 10px; }
+.issue-tracker-resolved { font-size: 0.72rem; font-weight: 700; }
+.issue-tracker-bar { width: 100%; height: 8px; background: var(--progress-track); border-radius: 4px; overflow: hidden; position: relative; }
+.issue-tracker-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+.issue-tracker-footer { display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.7rem; color: var(--text-muted); }
+
+.qa-meter { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.qa-score-big { font-size: 2.5rem; font-weight: 700; color: var(--success); }
+.qa-score-label { font-size: 0.82rem; color: var(--text-muted); }
+.qa-bar { flex: 1; }
+.qa-category { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.qa-category:last-child { border-bottom: none; }
+.qa-cat-label { flex: 1; font-size: 0.82rem; font-weight: 500; }
+.qa-cat-value { font-size: 0.82rem; font-weight: 700; min-width: 50px; text-align: right; }
+.qa-cat-bar { width: 120px; height: 6px; background: var(--progress-track); border-radius: 3px; overflow: hidden; }
+.qa-cat-fill { height: 100%; border-radius: 3px; }
+
+@media print {
+    body { background: white; color: #212B37; }
+    .header { background: #3182B1 !important; }
+    .tab-btn { display: none; }
+    .tab-content { display: block !important; page-break-inside: avoid; }
+    .card { break-inside: avoid; }
+    .stat-card { break-inside: avoid; }
+    .badge-footer { break-inside: avoid; }
+    .issue-card { break-inside: avoid; }
+}
+@media (max-width: 768px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr; }
+    .header h1 { font-size: 1.2rem; }
+    .tabs-nav { flex-wrap: wrap; }
+}
+
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="header-top">
+                    <div class="header-left">
+                        <div>
+                            <h1><i class="ri-dashboard-3-line"></i> Fase 3 — Dashboard Completo de Pipeline</h1>
+                            <div class="subtitle">Promoção dos 54 ADRs: .txt → .beta.md → .md → .html</div>
+                        </div>
+                    </div>
+                    <div class="header-right">
+                        <div class="header-badge"><i class="ri-bookmark-line"></i> RAG Blueprint Series</div>
+                        <div class="header-badge"><i class="ri-calendar-line"></i> 23/03/2026</div>
+                        <div class="header-badge"><i class="ri-user-line"></i> JS</div>
+                        <div class="header-badge" style="cursor:pointer" onclick="toggleTheme()"><i id="theme-icon" class="ri-sun-line"></i></div>
+                    </div>
+                </div>
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchTab('macro')"><i class="ri-pie-chart-line"></i> Visão Macro</button>
+                    <button class="tab-btn" onclick="switchTab('transversais')"><i class="ri-file-list-3-line"></i> ADRs Transversais</button>
+                    <button class="tab-btn" onclick="switchTab('fases')"><i class="ri-stack-line"></i> ADRs por Fase</button>
+                    <button class="tab-btn" onclick="switchTab('problemas')"><i class="ri-bug-line"></i> Problemas Sistêmicos</button>
+                    <button class="tab-btn" onclick="switchTab('qa')"><i class="ri-shield-check-line"></i> Quality Assurance</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+
+        <!-- ======== TAB 1 — VISÃO MACRO ======== -->
+        <div id="tab-macro" class="tab-content active">
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-primary"><i class="ri-file-text-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number">54</div>
+                        <div class="stat-card-label">Total ADRs</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-success"><i class="ri-checkbox-circle-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number">54/54 <span class="pill pill-success" style="font-size:0.65rem;"><i class="ri-check-line"></i></span></div>
+                        <div class="stat-card-label">.beta.md gerados</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon bg-success"><i class="ri-draft-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number">54/54 <span class="pill pill-success" style="font-size:0.65rem;"><i class="ri-check-line"></i></span></div>
+                        <div class="stat-card-label">.md gerados</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-icon" style="background:var(--milestone-future);"><i class="ri-html5-line"></i></div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-number">0/54</div>
+                        <div class="stat-card-label">.html gerados</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-icon bg-primary"><i class="ri-bar-chart-box-line"></i></div>
+                        <div class="card-title">Progresso Geral</div>
+                        <div class="card-badge pill-info">67% completo</div>
+                    </div>
+                    <div class="card-body">
+                        <div style="text-align:center; margin-bottom:18px;">
+                            <span style="font-size:2.2rem; font-weight:700; color:var(--primary);">67%</span>
+                            <span style="font-size:0.85rem; color:var(--text-muted); display:block;">2 de 3 etapas concluídas</span>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header">
+                                <span class="progress-label"><i class="ri-check-double-line" style="color:var(--success);"></i> .txt → .beta.md</span>
+                                <span class="progress-value" style="color:var(--success);">100%</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill bg-success" style="width:100%;"></div>
+                            </div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header">
+                                <span class="progress-label"><i class="ri-check-double-line" style="color:var(--success);"></i> .beta.md → .md</span>
+                                <span class="progress-value" style="color:var(--success);">100%</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill bg-success" style="width:100%;"></div>
+                            </div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-header">
+                                <span class="progress-label"><i class="ri-time-line" style="color:var(--text-muted);"></i> .md → .html</span>
+                                <span class="progress-value" style="color:var(--text-muted);">0%</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill bg-purple" style="width:0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-header-icon bg-success"><i class="ri-medal-line"></i></div>
+                            <div class="card-title">Score dos .beta.md</div>
+                            <div class="card-badge pill-success">54 avaliados</div>
+                        </div>
+                        <div class="card-body">
+                            <div style="display:flex; justify-content:space-around; text-align:center; margin-bottom:12px;">
+                                <div>
+                                    <div style="font-size:1.8rem; font-weight:700; color:var(--success);">95.1%</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase;">Média</div>
+                                </div>
+                                <div>
+                                    <div style="font-size:1.8rem; font-weight:700; color:var(--warning);">95%</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase;">Mínimo</div>
+                                </div>
+                                <div>
+                                    <div style="font-size:1.8rem; font-weight:700; color:var(--primary);">96%</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase;">Máximo</div>
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:8px; align-items:center; margin-top:12px;">
+                                <span class="pill pill-success"><i class="ri-check-line"></i> 50 ADRs @ 95%</span>
+                                <span class="pill pill-info"><i class="ri-star-line"></i> 4 ADRs @ 96%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-success">
+                        <i class="ri-checkbox-circle-line"></i>
+                        <span><strong>Etapa 2 concluída</strong> — 54 .md gerados (score médio 95.2%). 7 problemas sistêmicos resolvidos. Próximo: .md → .html</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ======== TAB 2 — ADRs TRANSVERSAIS ======== -->
+        <div id="tab-transversais" class="tab-content">
+
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-primary"><i class="ri-global-line"></i></div>
+                    <div class="section-title">ADRs Transversais (001–011)</div>
+                    <span class="section-count">11 ADRs</span>
+                </div>
+
+                <div class="card">
+                    <div class="card-body" style="padding:0;">
+                        <div class="table-wrapper" style="max-height:700px; overflow-y:auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="min-width:80px;">ID</th>
+                                        <th style="min-width:200px;">Título</th>
+                                        <th style="min-width:60px;">.txt</th>
+                                        <th style="min-width:80px;">Score .beta.md</th>
+                                        <th style="min-width:300px;">Motivos de Desvio</th>
+                                        <th style="min-width:60px;">.md</th>
+                                        <th style="min-width:80px;">Score .md</th>
+                                        <th style="min-width:60px;">.html</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>ADR-001</strong></td>
+                                        <td>Pipeline de Geração de Conhecimento em 4 Fases</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano (0 [[BETA-XXX]])</li><li>Tag agrupa 4 conceitos em 1</li><li>Refs "B14","B03","B07" sem formato padrão</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">97%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-002</strong></td>
+                                        <td>Soberania de Dados: Cloud vs On-Premise</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano (0 [[BETA-XXX]])</li><li>Refs "B14","B03","B07" sem formato padrão</li><li>Sem heading H1</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">97%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-003</strong></td>
+                                        <td>Modelo de Dados da Base Vetorial</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Tags com 50 termos (margem zero)</li><li>Formato inline [] dificulta verificação de ordenação</li><li>Wikilinks inconsistentes (corpo vs referências)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-004</strong></td>
+                                        <td>Segurança e Classificação de Dados</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Tags com 48 termos (abaixo do mínimo 50)</li><li>Wikilinks inconsistentes (corpo com [[BETA-XXX]], refs sem)</li><li>Refs "B14","B04" sem formato</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-005</strong></td>
+                                        <td>Front Matter como Contrato de Metadados</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Comentários "# ===" no template YAML podem confundir parsers</li><li>Consolida 5 fontes (verificação complexa)</li><li>Formato inline tags</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-006</strong></td>
+                                        <td>Pipeline de Ingestão: Da Fonte à Base Vetorial</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Tags com 49 termos (falta 1)</li><li>Hífens inconsistentes nas tags</li><li>Usa H1 (inconsistente com 001-004)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-007</strong></td>
+                                        <td>Retrieval Híbrido e Agentes Especializados</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Usa H1 (inconsistente com 001-004)</li><li>Consolida 4 fontes</li><li>Refs acadêmicas sem links</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-008</strong></td>
+                                        <td>Governança: Papéis, Ciclo de Vida e Rollback</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Sources apontam para C05/I01/I02 (não 008.txt)</li><li>Usa H1</li><li>Consolida 3 fontes heterogêneas</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-009</strong></td>
+                                        <td>Seleção de Modelos de Embedding</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano (0 [[BETA-XXX]])</li><li>Tags com hífens violam spec (espaços)</li><li>Seção "Identificação" duplica front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-010</strong></td>
+                                        <td>Git Flow da Base de Conhecimento</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano (0 [[BETA-XXX]])</li><li>Tags com 49 termos (falta 1)</li><li>Tags com hífens violam spec</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-011</strong></td>
+                                        <td>Segregação de KBs por Confidencialidade</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano em Identificação/Referências</li><li>Tags com hífens violam spec</li><li>Seção "Identificação" duplica front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ======== TAB 3 — ADRs POR FASE ======== -->
+        <div id="tab-fases" class="tab-content">
+
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-purple"><i class="ri-stack-line"></i></div>
+                    <div class="section-title">ADRs por Fase (A01–J03)</div>
+                    <span class="section-count">43 ADRs</span>
+                </div>
+
+                <div class="card">
+                    <div class="card-body" style="padding:0;">
+                        <div class="table-wrapper" style="max-height:900px; overflow-y:auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="min-width:80px;">ID</th>
+                                        <th style="min-width:200px;">Título</th>
+                                        <th style="min-width:60px;">.txt</th>
+                                        <th style="min-width:80px;">Score .beta.md</th>
+                                        <th style="min-width:300px;">Motivos de Desvio</th>
+                                        <th style="min-width:60px;">.md</th>
+                                        <th style="min-width:80px;">Score .md</th>
+                                        <th style="min-width:60px;">.html</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- PHASE A -->
+                                    <tr class="phase-header-row phase-a"><td colspan="8"><i class="ri-compass-3-line"></i> Fase A — Fundação e Estrutura (5 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-A01</strong></td>
+                                        <td>Guia de Estrutura de Pastas</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano (6x ADR + 5x BETA sem [[]])</li><li>51 tags (OK)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-A02</strong></td>
+                                        <td>Guia de Contribuição Git</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks parciais (1 correto, 8 plano)</li><li>50 tags (limite)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-A03</strong></td>
+                                        <td>Política de Branches</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Tags com 49 termos (abaixo mínimo 50)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-A04</strong></td>
+                                        <td>Guia de Uso com Obsidian</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks mistos (5 corretos, 7 plano)</li><li>50 tags (limite)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-A05</strong></td>
+                                        <td>Glossário de Termos</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano (14x sem [[]])</li><li>0 wikilinks corretos</li><li>Tags com espaços (inconsistente com hífens de outros)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE B -->
+                                    <tr class="phase-header-row phase-b"><td colspan="8"><i class="ri-price-tag-3-line"></i> Fase B — Padrões e Metadados (7 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-B01</strong></td>
+                                        <td>Schema Front Matter Leve</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks parciais (2 corretos, 9 plano)</li><li>Tags com espaços (auto-referente: B01 define espaços)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-B02</strong></td>
+                                        <td>Schema Front Matter Rico</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td class="desvio-col"><ul><li>0 wikilinks corretos (4x BETA plano)</li><li>Tags com espaços</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">96%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-B03</strong></td>
+                                        <td>Regras de Validação Front Matter</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Tags com 47 termos (abaixo mínimo 50, faltam 3)</li><li>0 wikilinks</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-B04</strong></td>
+                                        <td>Métricas de Conversão</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>0 wikilinks corretos (1x ADR plano)</li><li>55 tags (OK)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-B05</strong></td>
+                                        <td>Conversão de Formatos RAW</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>0 wikilinks (1x ADR plano)</li><li>58 tags (OK)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-B06</strong></td>
+                                        <td>Política de Temporalidade</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>0 wikilinks e 0 refs cruzadas</li><li>51 tags (OK)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-B07</strong></td>
+                                        <td>Edição de Arquivos Beta</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>0 wikilinks e 0 refs cruzadas</li><li>51 tags (OK)</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE C -->
+                                    <tr class="phase-header-row phase-c"><td colspan="8"><i class="ri-shield-line"></i> Fase C — Segurança e Classificação (5 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-C01</strong></td>
+                                        <td>Checklist de Segurança LLM</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos (ASCII puro)</li><li>Título sem acentos</li><li>Wikilinks texto plano (2x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-C02</strong></td>
+                                        <td>Política de Revisão de Dados</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos</li><li>Título sem acentos</li><li>Wikilinks texto plano (5x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-C03</strong></td>
+                                        <td>Migração Auth API Key → JWT</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos</li><li>Título sem acentos</li><li>Wikilinks texto plano (4x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-C04</strong></td>
+                                        <td>Anonimização PII</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos</li><li>Título sem acentos</li><li>Wikilinks texto plano (6x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-C05</strong></td>
+                                        <td>Incidente PII</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos</li><li>Título sem acentos</li><li>Wikilinks texto plano (4x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE D -->
+                                    <tr class="phase-header-row phase-d"><td colspan="8"><i class="ri-server-line"></i> Fase D — Infraestrutura e Soberania (4 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-D01</strong></td>
+                                        <td>Catálogo de Componentes</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos</li><li>Título sem acentos</li><li>Wikilinks texto plano (4x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-D02</strong></td>
+                                        <td>Métricas de Observabilidade</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos</li><li>Título sem acentos</li><li>Wikilinks texto plano (5x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-D03</strong></td>
+                                        <td>Capacity Planning Infraestrutura</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos</li><li>Título sem acentos</li><li>Wikilinks texto plano (3x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-D04</strong></td>
+                                        <td>Checklist de Deploy</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Corpo SEM acentos</li><li>Título sem acentos</li><li>Wikilinks texto plano (5x ADR)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE E -->
+                                    <tr class="phase-header-row phase-e"><td colspan="8"><i class="ri-flow-chart"></i> Fase E — Pipeline de Ingestão (6 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-E01</strong></td>
+                                        <td>Pipeline de Ingestão Detalhado</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano (5x ADR)</li><li>Acentuação removida</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-E02</strong></td>
+                                        <td>Trigger de Ingestão</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-E03</strong></td>
+                                        <td>Gestão de Concorrência</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-E04</strong></td>
+                                        <td>Garantias de Idempotência</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-E05</strong></td>
+                                        <td>Reingestão com Merge</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-E06</strong></td>
+                                        <td>Reindexação Blue/Green</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Aliases mínimos (2)</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE F -->
+                                    <tr class="phase-header-row phase-f"><td colspan="8"><i class="ri-brain-line"></i> Fase F — Embeddings e Vetorização (3 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-F01</strong></td>
+                                        <td>Procedimento Benchmark Embeddings</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Links externos em Markdown puro</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-F02</strong></td>
+                                        <td>Guia de Deploy Embeddings</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Links externos em Markdown puro</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-F03</strong></td>
+                                        <td>Capacity Planning Vetorial</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Heading duplica título do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE G -->
+                                    <tr class="phase-header-row phase-g"><td colspan="8"><i class="ri-search-eye-line"></i> Fase G — Retrieval e Agentes (4 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-G01</strong></td>
+                                        <td>Estratégias de Busca</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-G02</strong></td>
+                                        <td>Pipeline de Query</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-G03</strong></td>
+                                        <td>Catálogo de Agentes</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-G04</strong></td>
+                                        <td>Feedback Loop</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE H -->
+                                    <tr class="phase-header-row phase-h"><td colspan="8"><i class="ri-database-2-line"></i> Fase H — Segregação e Multi-KB (3 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-H01</strong></td>
+                                        <td>Orquestrador Cross-KB</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-H02</strong></td>
+                                        <td>Guia de Deploy Multi-KB</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-H03</strong></td>
+                                        <td>Política de Backup</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE I -->
+                                    <tr class="phase-header-row phase-i"><td colspan="8"><i class="ri-settings-3-line"></i> Fase I — Governança e Operação (3 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-I01</strong></td>
+                                        <td>Calendário de Curadoria</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-I02</strong></td>
+                                        <td>Capacity Planning KB</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-I03</strong></td>
+                                        <td>Plano de Implementação Pipeline</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+
+                                    <!-- PHASE J -->
+                                    <tr class="phase-header-row phase-j"><td colspan="8"><i class="ri-rocket-line"></i> Fase J — Release e Deploy (3 ADRs)</td></tr>
+                                    <tr>
+                                        <td><strong>ADR-J01</strong></td>
+                                        <td>Promoção Staging → Produção</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>Metadados soltos fora do front matter</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-J02</strong></td>
+                                        <td>Rollback de Release</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>66 tags (genéricos: "release","staging")</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>ADR-J03</strong></td>
+                                        <td>Hotfix</td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td class="desvio-col"><ul><li>Wikilinks texto plano</li><li>Acentuação removida</li><li>67 tags (genéricos: "producao","staging","tag")</li></ul></td>
+                                        <td><span class="pill pill-success"><i class="ri-check-line"></i></span></td>
+                                        <td class="score-cell score-green">95%</td>
+                                        <td><span class="pill pill-muted"><i class="ri-subtract-line"></i></span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ======== TAB 4 — PROBLEMAS SISTÊMICOS ======== -->
+        <div id="tab-problemas" class="tab-content">
+
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-danger"><i class="ri-bug-line"></i></div>
+                    <div class="section-title">Problemas Sistêmicos Identificados</div>
+                    <span class="section-count">7 problemas</span>
+                </div>
+
+                <!-- Issue 1 -->
+                <div class="issue-card">
+                    <div class="issue-card-header">
+                        <div class="issue-card-icon bg-danger"><i class="ri-link-unlink"></i></div>
+                        <div class="issue-card-title">1. Wikilinks como texto plano</div>
+                    </div>
+                    <div class="issue-card-desc">
+                        Referências a outros ADRs aparecem como "ADR-006" ou "BETA-006" em vez de <code>[[BETA-006]]</code>. Impede interligação no Obsidian.
+                    </div>
+                    <div class="issue-card-files">
+                        <strong>Arquivos afetados:</strong> Todos os 54 arquivos .beta.md
+                    </div>
+                    <div class="issue-tracker">
+                        <div class="issue-tracker-header">
+                            <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
+                            <div class="issue-tracker-stats">
+                                <span class="issue-tracker-affected pill pill-danger">54 afetados</span>
+                                <span class="issue-tracker-resolved" style="color: var(--success)">54 resolvidos</span>
+                            </div>
+                        </div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-footer">
+                            <span>100%</span>
+                            <span>Meta: 54/54 no .md</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 2 -->
+                <div class="issue-card">
+                    <div class="issue-card-header">
+                        <div class="issue-card-icon bg-warning"><i class="ri-font-size"></i></div>
+                        <div class="issue-card-title">2. Acentuação removida</div>
+                    </div>
+                    <div class="issue-card-desc">
+                        Corpo e título sem acentos: "Ingestao" em vez de "Ingestão". Afeta legibilidade em pt-BR.
+                    </div>
+                    <div class="issue-card-files">
+                        <strong>Fases afetadas:</strong> C (C01–C05), D (D01–D04), E (E01–E06), F (F01–F03), G (G01–G04), H (H01–H03), I (I01–I03), J (J01–J03)
+                    </div>
+                    <div class="issue-tracker">
+                        <div class="issue-tracker-header">
+                            <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
+                            <div class="issue-tracker-stats">
+                                <span class="issue-tracker-affected pill pill-warning">32 afetados</span>
+                                <span class="issue-tracker-resolved" style="color: var(--success)">32 resolvidos</span>
+                            </div>
+                        </div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-footer">
+                            <span>100%</span>
+                            <span>Meta: 32/32 no .md</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 3 -->
+                <div class="issue-card">
+                    <div class="issue-card-header">
+                        <div class="issue-card-icon bg-danger"><i class="ri-bookmark-line"></i></div>
+                        <div class="issue-card-title">3. Aliases insuficientes</div>
+                    </div>
+                    <div class="issue-card-desc">
+                        Todos com apenas 2 aliases. Front matter rico exige mínimo 5.
+                    </div>
+                    <div class="issue-card-files">
+                        <strong>Arquivos afetados:</strong> Todos os 54 arquivos .beta.md
+                    </div>
+                    <div class="issue-tracker">
+                        <div class="issue-tracker-header">
+                            <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
+                            <div class="issue-tracker-stats">
+                                <span class="issue-tracker-affected pill pill-danger">54 afetados</span>
+                                <span class="issue-tracker-resolved" style="color: var(--success)">54 resolvidos</span>
+                            </div>
+                        </div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-footer">
+                            <span>100%</span>
+                            <span>Meta: 54/54 no .md</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 4 -->
+                <div class="issue-card">
+                    <div class="issue-card-header">
+                        <div class="issue-card-icon bg-info"><i class="ri-price-tag-line"></i></div>
+                        <div class="issue-card-title">4. Tags abaixo de 50</div>
+                    </div>
+                    <div class="issue-card-desc">
+                        Não atingem o mínimo de 50 tags semânticas definido pela spec.
+                    </div>
+                    <div class="issue-card-files">
+                        <strong>Arquivos afetados:</strong> ADR-004 (48), ADR-006 (49), ADR-010 (49), ADR-A03 (49), ADR-B03 (47)
+                    </div>
+                    <div class="issue-tracker">
+                        <div class="issue-tracker-header">
+                            <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
+                            <div class="issue-tracker-stats">
+                                <span class="issue-tracker-affected pill pill-info">5 afetados</span>
+                                <span class="issue-tracker-resolved" style="color: var(--success)">5 resolvidos</span>
+                            </div>
+                        </div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-footer">
+                            <span>100%</span>
+                            <span>Meta: 5/5 no .md</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 5 -->
+                <div class="issue-card">
+                    <div class="issue-card-header">
+                        <div class="issue-card-icon bg-warning"><i class="ri-subtract-line"></i></div>
+                        <div class="issue-card-title">5. Tags com hífens em vez de espaços</div>
+                    </div>
+                    <div class="issue-card-desc">
+                        Spec ADR-B01 define espaços para termos compostos, mas alguns usam hífens.
+                    </div>
+                    <div class="issue-card-files">
+                        <strong>Arquivos afetados:</strong> ADR-009, 010, 011, A01, A02, A03, A04, B01, B02, B03, B04
+                    </div>
+                    <div class="issue-tracker">
+                        <div class="issue-tracker-header">
+                            <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
+                            <div class="issue-tracker-stats">
+                                <span class="issue-tracker-affected pill pill-warning">11 afetados</span>
+                                <span class="issue-tracker-resolved" style="color: var(--success)">11 resolvidos</span>
+                            </div>
+                        </div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-footer">
+                            <span>100%</span>
+                            <span>Meta: 11/11 no .md</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 6 -->
+                <div class="issue-card">
+                    <div class="issue-card-header">
+                        <div class="issue-card-icon bg-orange"><i class="ri-file-copy-line"></i></div>
+                        <div class="issue-card-title">6. Metadados soltos fora do front matter</div>
+                    </div>
+                    <div class="issue-card-desc">
+                        Bloco "Tipo/Origem/Data" no corpo duplica informação do front matter YAML.
+                    </div>
+                    <div class="issue-card-files">
+                        <strong>Fases afetadas:</strong> G (G01–G04), H (H01–H03), I (I01–I03), J (J01–J03) — 16 arquivos
+                    </div>
+                    <div class="issue-tracker">
+                        <div class="issue-tracker-header">
+                            <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
+                            <div class="issue-tracker-stats">
+                                <span class="issue-tracker-affected pill pill-warning">16 afetados</span>
+                                <span class="issue-tracker-resolved" style="color: var(--success)">16 resolvidos</span>
+                            </div>
+                        </div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-footer">
+                            <span>100%</span>
+                            <span>Meta: 16/16 no .md</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 7 -->
+                <div class="issue-card">
+                    <div class="issue-card-header">
+                        <div class="issue-card-icon bg-purple"><i class="ri-heading"></i></div>
+                        <div class="issue-card-title">7. Inconsistência de heading H1</div>
+                    </div>
+                    <div class="issue-card-desc">
+                        Alguns usam # H1, outros começam em ## H2. Sem padrão uniforme.
+                    </div>
+                    <div class="issue-card-files">
+                        <strong>Arquivos afetados:</strong> Todos os 54 arquivos .beta.md — necessário definir padrão na promoção para .md
+                    </div>
+                    <div class="issue-tracker">
+                        <div class="issue-tracker-header">
+                            <span class="issue-tracker-label"><i class="ri-pulse-line"></i> Evolução</span>
+                            <div class="issue-tracker-stats">
+                                <span class="issue-tracker-affected pill pill-danger">54 afetados</span>
+                                <span class="issue-tracker-resolved" style="color: var(--success)">54 resolvidos</span>
+                            </div>
+                        </div>
+                        <div class="issue-tracker-bar"><div class="issue-tracker-fill" style="width: 100%; background: var(--success);"></div></div>
+                        <div class="issue-tracker-footer">
+                            <span>100%</span>
+                            <span>Meta: 54/54 no .md</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- ======== TAB 5 — QUALITY ASSURANCE ======== -->
+        <div id="tab-qa" class="tab-content">
+
+            <div class="section">
+                <div class="section-header">
+                    <div class="section-icon bg-success"><i class="ri-shield-check-line"></i></div>
+                    <div class="section-title">Quality Assurance — Avaliação dos .beta.md e .md</div>
+                    <span class="section-count">54 avaliados</span>
+                </div>
+
+                <div class="grid-2">
+                    <!-- Overall Score -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-header-icon bg-success"><i class="ri-medal-line"></i></div>
+                            <div class="card-title">Score Geral</div>
+                        </div>
+                        <div class="card-body" style="text-align:center;">
+                            <div class="qa-score-big">95.2%</div>
+                            <div class="qa-score-label">Score médio .md — 54/54 validados</div>
+                            <div style="margin-top:16px; display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+                                <span class="pill pill-success"><i class="ri-check-line"></i> 48 ADRs @ 95% (88.9%)</span>
+                                <span class="pill pill-info"><i class="ri-star-line"></i> 4 ADRs @ 96% (7.4%)</span>
+                                <span class="pill pill-info"><i class="ri-star-line"></i> 2 ADRs @ 97% (3.7%)</span>
+                            </div>
+                            <div style="margin-top:12px; font-size:0.75rem; color:var(--text-muted);">
+                                .beta.md: média 95.1% (50 @ 95, 4 @ 96) | .md: média 95.2% (48 @ 95, 4 @ 96, 2 @ 97)
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Breakdown -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-header-icon bg-primary"><i class="ri-bar-chart-grouped-line"></i></div>
+                            <div class="card-title">Breakdown por Critério</div>
+                        </div>
+                        <div class="card-body">
+                            <div class="qa-category">
+                                <div class="qa-cat-label">Completude de conteúdo</div>
+                                <div class="qa-cat-value score-green">100%</div>
+                                <div class="qa-cat-bar"><div class="qa-cat-fill bg-success" style="width:100%;"></div></div>
+                            </div>
+                            <div class="qa-category">
+                                <div class="qa-cat-label">Front matter campos obrigatórios</div>
+                                <div class="qa-cat-value score-green">100%</div>
+                                <div class="qa-cat-bar"><div class="qa-cat-fill bg-success" style="width:100%;"></div></div>
+                            </div>
+                            <div class="qa-category">
+                                <div class="qa-cat-label">Tags ≥ 50</div>
+                                <div class="qa-cat-value score-green">91%</div>
+                                <div class="qa-cat-bar"><div class="qa-cat-fill bg-success" style="width:91%;"></div></div>
+                            </div>
+                            <div class="qa-category">
+                                <div class="qa-cat-label">Wikilinks corretos</div>
+                                <div class="qa-cat-value" style="color:var(--danger);">0%</div>
+                                <div class="qa-cat-bar"><div class="qa-cat-fill bg-danger" style="width:0%;"></div></div>
+                            </div>
+                            <div class="qa-category">
+                                <div class="qa-cat-label">Acentuação preservada</div>
+                                <div class="qa-cat-value" style="color:var(--warning);">41%</div>
+                                <div class="qa-cat-bar"><div class="qa-cat-fill bg-warning" style="width:41%;"></div></div>
+                            </div>
+                            <div class="qa-category">
+                                <div class="qa-cat-label">Aliases ≥ 3</div>
+                                <div class="qa-cat-value" style="color:var(--danger);">0%</div>
+                                <div class="qa-cat-bar"><div class="qa-cat-fill bg-danger" style="width:0%;"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Strengths -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-icon bg-success"><i class="ri-thumb-up-line"></i></div>
+                        <div class="card-title">Pontos Fortes</div>
+                    </div>
+                    <div class="card-body">
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px,1fr)); gap:12px;">
+                            <div class="alert alert-success" style="margin:0;">
+                                <i class="ri-check-double-line"></i>
+                                <span>Conteúdo preservado integralmente — nenhuma perda de informação entre .txt e .beta.md</span>
+                            </div>
+                            <div class="alert alert-success" style="margin:0;">
+                                <i class="ri-check-double-line"></i>
+                                <span>Front matter completo — todos os 54 arquivos com campos obrigatórios preenchidos</span>
+                            </div>
+                            <div class="alert alert-success" style="margin:0;">
+                                <i class="ri-check-double-line"></i>
+                                <span>Tags semânticas relevantes — média acima de 50 termos por arquivo</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Improvements -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-icon bg-warning"><i class="ri-arrow-up-circle-line"></i></div>
+                        <div class="card-title">Top Melhorias para a Fase .beta.md → .md</div>
+                    </div>
+                    <div class="card-body">
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px,1fr)); gap:10px;">
+                            <div style="display:flex; align-items:flex-start; gap:10px; padding:10px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                                <div style="width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:0.85rem; color:white; flex-shrink:0; background:var(--danger);"><i class="ri-link"></i></div>
+                                <div>
+                                    <div style="font-weight:600; font-size:0.82rem;">Corrigir wikilinks</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted);">Converter "ADR-XXX" → [[BETA-XXX]] em todos os 54 arquivos</div>
+                                </div>
+                            </div>
+                            <div style="display:flex; align-items:flex-start; gap:10px; padding:10px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                                <div style="width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:0.85rem; color:white; flex-shrink:0; background:var(--warning);"><i class="ri-font-size"></i></div>
+                                <div>
+                                    <div style="font-weight:600; font-size:0.82rem;">Restaurar acentuação</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted);">Reprocessar 32 arquivos (Fases C–J) para restituir acentos pt-BR</div>
+                                </div>
+                            </div>
+                            <div style="display:flex; align-items:flex-start; gap:10px; padding:10px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                                <div style="width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:0.85rem; color:white; flex-shrink:0; background:var(--info);"><i class="ri-bookmark-line"></i></div>
+                                <div>
+                                    <div style="font-weight:600; font-size:0.82rem;">Expandir aliases</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted);">Adicionar 3+ aliases por arquivo (de 2 para 5+)</div>
+                                </div>
+                            </div>
+                            <div style="display:flex; align-items:flex-start; gap:10px; padding:10px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                                <div style="width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:0.85rem; color:white; flex-shrink:0; background:var(--purple);"><i class="ri-price-tag-line"></i></div>
+                                <div>
+                                    <div style="font-weight:600; font-size:0.82rem;">Normalizar tags (espaços)</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted);">Substituir hífens por espaços em termos compostos (11 arquivos)</div>
+                                </div>
+                            </div>
+                            <div style="display:flex; align-items:flex-start; gap:10px; padding:10px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">
+                                <div style="width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:0.85rem; color:white; flex-shrink:0; background:var(--orange);"><i class="ri-file-copy-line"></i></div>
+                                <div>
+                                    <div style="font-weight:600; font-size:0.82rem;">Remover metadados soltos</div>
+                                    <div style="font-size:0.72rem; color:var(--text-muted);">Eliminar blocos duplicados do corpo em 16 arquivos (Fases G–J)</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Why not 100% -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-icon bg-info"><i class="ri-question-line"></i></div>
+                        <div class="card-title">Por que não 100%?</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info" style="margin:0;">
+                            <i class="ri-information-line"></i>
+                            <span>
+                                Os desvios identificados são <strong>sistemáticos</strong> (wikilinks, acentuação, aliases) e não representam perda de conteúdo.
+                                Todos serão resolvidos na promoção <strong>.beta.md → .md</strong>, onde scripts de normalização aplicarão as correções em lote.
+                                O score de 95.1% reflete a alta qualidade da conversão .txt → .beta.md, com desvios previsíveis e tratáveis automaticamente.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div class="container" style="padding-bottom:40px;">
+        <div class="badge badge-footer" style="margin-bottom:40px; margin-top:10px; display:flex; width:100%;">
+            <div class="badge-bar"></div>
+            <div class="badge-body" style="flex:1;">
+                <div class="badge-icon">JS</div>
+                <div class="badge-text">
+                    <span class="badge-name">João da Silva</span>
+                    <span class="badge-role">Empresa XPTO · Arquitetura e Produtividade Corporativa</span>
+                    <span class="badge-date">23/03/2026</span>
+                </div>
+            </div>
+            <div class="badge-seal">Criado por</div>
+        </div>
+    </div>
+
+    <script>
+
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    event.currentTarget.classList.add('active');
+}
+function toggleTheme() {
+    const html = document.documentElement;
+    const icon = document.getElementById('theme-icon');
+    if (html.getAttribute('data-theme') === 'light') {
+        html.removeAttribute('data-theme');
+        icon.className = 'ri-sun-line';
+        localStorage.setItem('caefe-theme', 'dark');
+    } else {
+        html.setAttribute('data-theme', 'light');
+        icon.className = 'ri-moon-line';
+        localStorage.setItem('caefe-theme', 'light');
+    }
+}
+(function() {
+    const saved = localStorage.getItem('caefe-theme');
+    if (saved === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('theme-icon').className = 'ri-moon-line';
+        });
+    }
+})();
+
+    </script>
+</body>
+</html>

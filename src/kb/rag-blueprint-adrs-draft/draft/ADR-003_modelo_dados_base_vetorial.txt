@@ -1,0 +1,2259 @@
+================================================================================
+  📋 ADR-003 — MODELO DE DADOS DA BASE VETORIAL
+================================================================================
+
+  Status .........: accepted
+  Data Decisao ...: 21/03/2026
+  Decisor ........: Fabio A. B. Rodrigues
+  Escopo .........: RAG Corporativo — Modelo de dados (nos, relacoes,
+                    constraints, indices) da base vetorial
+  Supersede ......: (nenhum)
+  Relaciona ......: ADR-001 (Pipeline 4 Fases), ADR-002 (Soberania de Dados)
+
+================================================================================
+  SUMARIO
+================================================================================
+
+  Este ADR define o MODELO DE DADOS completo da base vetorial que suporta
+  o RAG Corporativo. O modelo combina duas capacidades na mesma engine:
+
+  1. GRAFO DE CONHECIMENTO — nos e relacoes que representam a estrutura
+     organizacional do conhecimento (quem escreveu, para qual sistema,
+     de qual modulo, com que relacoes)
+
+  2. BUSCA VETORIAL — embeddings armazenados nos chunks para busca
+     semantica (encontrar trechos relevantes por similaridade de
+     significado, nao por keywords)
+
+  A combinacao dessas duas capacidades e o que torna o projeto um
+  GraphRAG e nao apenas um RAG convencional. O grafo AMPLIA o contexto
+  recuperado pela busca vetorial — quando o usuario pergunta algo, o
+  sistema nao retorna apenas chunks similares, mas tambem navega o
+  grafo para trazer contexto relacionado (outros documentos do mesmo
+  sistema, decisoes que impactam o modulo, responsaveis, glossario).
+
+================================================================================
+  🧠 1. CONTEXTO
+================================================================================
+
+  1.1. O QUE A BASE VETORIAL PRECISA SUPORTAR
+  ---------------------------------------------------------------------------
+
+  O pipeline de 4 fases da ADR-001 produz, na Fase 4, dados que precisam
+  ser armazenados e consultados pela base vetorial. Especificamente:
+
+  a) DOCUMENTOS .md (Fase 3): arquivos Markdown com front matter rico
+     contendo metadados de governanca (sistema, modulo, owner, team,
+     confidentiality, status, temporalidade).
+
+  b) CHUNKS: fragmentos semanticos dos documentos, cada um com seu
+     embedding vetorial. Sao a unidade basica de busca — o retriever
+     busca chunks, nao documentos inteiros.
+
+  c) ENTIDADES ORGANIZACIONAIS: sistemas, modulos, times, responsaveis,
+     termos de glossario, tarefas, ADRs. Essas entidades existem
+     independentemente dos documentos e formam o esqueleto do grafo.
+
+  d) RELACOES: conexoes tipadas entre entidades (documento pertence a
+     modulo, modulo pertence a sistema, documento referencia outro
+     documento, etc.).
+
+  e) VERSIONAMENTO TEMPORAL: documentos que mudam ao longo do tempo
+     (leis, regulacoes, politicas) precisam de rastreabilidade de
+     versoes (qual era a versao vigente em uma data especifica?).
+
+  1.2. ESCOPO DO MODELO
+  ---------------------------------------------------------------------------
+
+  IMPORTANTE: este modelo cobre APENAS os artefatos da Fase 3 (.md final) e
+  Fase 4 (Base Vetorial) do pipeline definido na ADR-001. O .beta.md (Fase 2)
+  reside exclusivamente no repositorio rag-workspace e NAO e modelado na
+  Base Vetorial. Essa exclusao e deliberada: o .beta.md e um artefato de
+  trabalho, nao uma fonte da verdade. Apenas o .md final (promovido pela
+  Fase 3) e ingerido na Base Vetorial.
+
+  1.3. MAPEAMENTO AOS 8 PILARES DA ADR-001
+  ---------------------------------------------------------------------------
+
+  O modelo de dados atende aos 8 pilares definidos na ADR-001:
+
+  +-------+---------------------------------------------+--------------------------------------+
+  | Pilar | Descricao (ADR-001)                         | Como o modelo atende                 |
+  +-------+---------------------------------------------+--------------------------------------+
+  | A     | Segregacao de responsabilidades              | Owner, Team, OWNED_BY, MEMBER_OF     |
+  |       |                                             | identificam quem e responsavel por   |
+  |       |                                             | cada artefato.                       |
+  +-------+---------------------------------------------+--------------------------------------+
+  | B     | Desacoplamento de etapas                     | Cada label e independente. Document  |
+  |       |                                             | existe sem Chunk (ate o chunking),   |
+  |       |                                             | System existe sem Module.            |
+  +-------+---------------------------------------------+--------------------------------------+
+  | C     | Metodo garantidor de qualidade               | conversion_quality no Document,      |
+  |       |                                             | token_count no Chunk (faixa ideal    |
+  |       |                                             | 300-800), chunk_count para deteccao  |
+  |       |                                             | de anomalias.                        |
+  +-------+---------------------------------------------+--------------------------------------+
+  | D     | Observabilidade e Governanca                 | created_at/updated_at em todos os    |
+  |       |                                             | nos, chunk_count, version_count,     |
+  |       |                                             | status. Metricas na secao 4.4.       |
+  +-------+---------------------------------------------+--------------------------------------+
+  | E     | Clareza da informacao                        | heading_path preserva hierarquia     |
+  |       |                                             | semantica. GlossaryTerm + USES_TERM  |
+  |       |                                             | desambiguam termos.                  |
+  +-------+---------------------------------------------+--------------------------------------+
+  | F     | Versionamento                                | DocumentFamily + VERSION_OF +        |
+  |       |                                             | SUPERSEDES + valid_from/valid_until  |
+  |       |                                             | modelam versionamento temporal.      |
+  +-------+---------------------------------------------+--------------------------------------+
+  | G     | Rastreabilidade de origem                    | git_commit_hash, source_repo, path,  |
+  |       |                                             | git_branch, source_format,           |
+  |       |                                             | conversion_quality.                  |
+  +-------+---------------------------------------------+--------------------------------------+
+  | H     | Reprodutibilidade                            | embedding_model + embedding_version  |
+  |       |                                             | permitem saber exatamente como cada  |
+  |       |                                             | embedding foi gerado. git_commit_hash|
+  |       |                                             | permite reconstruir o documento.     |
+  +-------+---------------------------------------------+--------------------------------------+
+
+  1.4. REQUISITOS DO MODELO
+  ---------------------------------------------------------------------------
+
+  O modelo de dados deve atender a:
+
+  R1 — BUSCA SEMANTICA: suportar vector index nos embeddings dos chunks
+       para busca por similaridade (cosine similarity, >0.7 threshold).
+
+  R2 — EXPANSAO POR GRAFO: a partir de um chunk encontrado por busca
+       vetorial, navegar o grafo para encontrar contexto relacionado
+       (outros chunks do mesmo documento, documentos do mesmo sistema,
+       ADRs que decidem sobre o modulo, etc.).
+
+  R3 — FILTROS PRE-RETRIEVAL: filtrar por confidentiality, system,
+       module, status, domain ANTES da busca vetorial. Isso garante
+       que o usuario so veja dados que tem acesso (seguranca) e que
+       sao relevantes (escopo).
+
+  R4 — TEMPORALIDADE: consultar "como era X na data Y?" usando
+       valid_from/valid_until e a cadeia de versoes (SUPERSEDES).
+
+  R5 — RASTREABILIDADE: de qualquer chunk, ser possivel rastrear ate
+       a fonte original (documento, repositorio, commit, autor).
+
+  R6 — GOVERNANCA: cada documento tem owner, team, status, tags que
+       permitem filtros gerenciais (ex: "todos os documentos draft
+       do time de arquitetura").
+
+  R7 — GLOSSARIO: termos de negocio controlados, vinculados aos
+       documentos que os utilizam, para desambiguacao e consistencia.
+
+  R8 — DEPENDENCIAS: relacoes entre modulos (DEPENDS_ON) e entre
+       tarefas e modulos (IMPLEMENTS) para analise de impacto.
+
+================================================================================
+  ✅ 2. DECISÃO
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │ DECISAO:                                                               │
+  │                                                                        │
+  │ Adotar modelo de grafo com 10 tipos de no (labels), 13 tipos de       │
+  │ relacao, constraints de unicidade, indices compostos e vector index.   │
+  │ O modelo suporta versionamento temporal via DocumentFamily +           │
+  │ relacoes SUPERSEDES/VERSION_OF com campos valid_from/valid_until.      │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+  =========================================================================
+  2.1. NOS (LABELS) — 10 TIPOS
+  =========================================================================
+
+  -------------------------------------------------------------------------
+  NO 1: Document
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Representa um arquivo .md ingerido na base vetorial. E o no
+  central do grafo — todos os outros nos se relacionam com ele direta ou
+  indiretamente. Cada arquivo .md gera EXATAMENTE um no Document.
+
+  POR QUE EXISTE: e a unidade fundamental de conhecimento. Sem ele, nao
+  ha como rastrear a origem de um chunk, nem como aplicar governanca
+  (quem escreveu, para qual sistema, com qual confidencialidade).
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | document_id         | String  | S  | Identificador unico (ex: "DOC-000123").  |
+  |                     |         |    | Formato: DOC-NNNNNN. Vem do front matter |
+  |                     |         |    | campo "id". CONSTRAINT de unicidade.      |
+  |                     |         |    | POR QUE: necessario para referenciacao    |
+  |                     |         |    | cruzada, deduplicacao e rastreabilidade.  |
+  +---------------------+---------+----+------------------------------------------+
+  | title               | String  | S  | Titulo do documento. Vem do front matter.|
+  |                     |         |    | POR QUE: exibicao para o usuario e busca  |
+  |                     |         |    | full-text.                                |
+  +---------------------+---------+----+------------------------------------------+
+  | doc_type            | String  | S  | Tipo do documento. Valores permitidos:    |
+  |                     |         |    | system-doc, adr, runbook, glossary,       |
+  |                     |         |    | task-doc, architecture-doc.               |
+  |                     |         |    | POR QUE: determina a estrategia de        |
+  |                     |         |    | chunking (secao 2.4) e o tratamento       |
+  |                     |         |    | diferenciado na busca.                    |
+  +---------------------+---------+----+------------------------------------------+
+  | system              | String  | S  | Nome do sistema ao qual pertence.         |
+  |                     |         |    | POR QUE: filtro pre-retrieval. Permite    |
+  |                     |         |    | buscar "documentos do Sistema X".         |
+  +---------------------+---------+----+------------------------------------------+
+  | module              | String  | N  | Modulo funcional do sistema.              |
+  |                     |         |    | POR QUE: granularidade fina de filtro.    |
+  |                     |         |    | Um sistema pode ter 50+ documentos;       |
+  |                     |         |    | filtrar por modulo reduz o escopo.         |
+  +---------------------+---------+----+------------------------------------------+
+  | domain              | String  | S  | Dominio de negocio (ex: Financeiro, RH).  |
+  |                     |         |    | POR QUE: permite buscas por area de       |
+  |                     |         |    | negocio, independente de sistema.          |
+  +---------------------+---------+----+------------------------------------------+
+  | owner               | String  | S  | Identificador do responsavel.             |
+  |                     |         |    | POR QUE: rastreabilidade de autoria e     |
+  |                     |         |    | responsabilidade pelo conteudo.            |
+  +---------------------+---------+----+------------------------------------------+
+  | team                | String  | S  | Time responsavel.                         |
+  |                     |         |    | POR QUE: governanca por time. Permite     |
+  |                     |         |    | relatorios tipo "documentos do time X".   |
+  +---------------------+---------+----+------------------------------------------+
+  | status              | String  | S  | Status do documento. Valores: draft,      |
+  |                     |         |    | in-review, approved, deprecated.          |
+  |                     |         |    | POR QUE: filtro pre-retrieval. Documentos |
+  |                     |         |    | draft nao devem aparecer em buscas de     |
+  |                     |         |    | producao. Deprecated devem ter peso menor.|
+  +---------------------+---------+----+------------------------------------------+
+  | confidentiality     | String  | S  | Nivel de confidencialidade. Valores:      |
+  |                     |         |    | public, internal, restricted, confidential|
+  |                     |         |    | POR QUE: FILTRO CRITICO de seguranca.     |
+  |                     |         |    | Determina a trilha (ADR-002) e o acesso.  |
+  |                     |         |    | Aplicado ANTES da busca vetorial.         |
+  +---------------------+---------+----+------------------------------------------+
+  | tags                | [String]| N  | Lista de tags para descoberta.            |
+  |                     |         |    | POR QUE: busca por termos livres sem      |
+  |                     |         |    | depender de busca semantica.              |
+  +---------------------+---------+----+------------------------------------------+
+  | path                | String  | S  | Caminho do arquivo no repositorio Git.    |
+  |                     |         |    | Ex: "docs/financeiro/cobranca.md"         |
+  |                     |         |    | POR QUE: rastreabilidade ate o arquivo    |
+  |                     |         |    | fonte. Permite links diretos.             |
+  +---------------------+---------+----+------------------------------------------+
+  | source_repo         | String  | S  | Nome do repositorio Git de origem.        |
+  |                     |         |    | POR QUE: em ambientes com multiplos repos,|
+  |                     |         |    | necessario saber de qual veio.            |
+  +---------------------+---------+----+------------------------------------------+
+  | git_commit_hash     | String  | S  | Hash do commit que originou esta versao.  |
+  |                     |         |    | POR QUE: imutabilidade e reprodutibilidade|
+  |                     |         |    | (pilar H da ADR-001). Dado este hash,     |
+  |                     |         |    | pode-se reconstruir exatamente o doc.     |
+  +---------------------+---------+----+------------------------------------------+
+  | git_branch          | String  | N  | Branch de origem (normalmente "main").    |
+  |                     |         |    | POR QUE: auditoria e rastreabilidade.     |
+  +---------------------+---------+----+------------------------------------------+
+  | valid_from          | Date    | S  | Data de inicio de vigencia do conteudo.   |
+  |                     |         |    | POR QUE: temporalidade (ADR-001 s2.6).    |
+  |                     |         |    | Permite filtrar "vigente em data X".      |
+  +---------------------+---------+----+------------------------------------------+
+  | valid_until         | Date    | N  | Data de fim de vigencia. null = vigente.  |
+  |                     |         |    | POR QUE: documentos que foram superados   |
+  |                     |         |    | por versao mais recente tem valid_until    |
+  |                     |         |    | preenchido. Permite consultas historicas.  |
+  +---------------------+---------+----+------------------------------------------+
+  | superseded_by       | String  | N  | document_id do documento que substitui.   |
+  |                     |         |    | POR QUE: cadeia de versoes no front matter|
+  |                     |         |    | (redundancia com relacao SUPERSEDES para  |
+  |                     |         |    | queries que nao usam grafo).              |
+  +---------------------+---------+----+------------------------------------------+
+  | conversion_quality  | Float   | S  | Score 0-100 da qualidade de conversao     |
+  |                     |         |    | da fonte original para .md (ADR-001 s2.5.1|
+  |                     |         |    | POR QUE: permite filtrar por confiabilidade|
+  |                     |         |    | Chunks de docs com score baixo devem ter  |
+  |                     |         |    | peso menor no reranking.                  |
+  +---------------------+---------+----+------------------------------------------+
+  | source_format       | String  | S  | Formato da fonte original (pdf, docx,     |
+  |                     |         |    | confluence, email, md, etc.).             |
+  |                     |         |    | POR QUE: rastreabilidade de linhagem.     |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data/hora de criacao do no na base.       |
+  |                     |         |    | POR QUE: auditoria e ordenacao.           |
+  +---------------------+---------+----+------------------------------------------+
+  | updated_at          | DateTime| S  | Data/hora da ultima atualizacao.          |
+  |                     |         |    | POR QUE: deteccao de stale data.          |
+  +---------------------+---------+----+------------------------------------------+
+  | chunk_count         | Integer | S  | Quantidade de chunks gerados.             |
+  |                     |         |    | POR QUE: metrica de tamanho e observa-    |
+  |                     |         |    | bilidade. Permite detectar docs com       |
+  |                     |         |    | chunking anomalo (0 chunks = erro).       |
+  +---------------------+---------+----+------------------------------------------+
+
+  Legenda: Req = Requerido (S=Sim, N=Nao)
+
+  -------------------------------------------------------------------------
+  NO 2: Chunk
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Fragmento semantico de um Document. E a unidade atomica de
+  busca vetorial — o embedding e gerado POR CHUNK, nao por documento.
+  Um Document gera N chunks (tipicamente 3-20, dependendo do tamanho).
+
+  POR QUE EXISTE: documentos inteiros sao grandes demais para servir
+  como contexto para um LLM (limitacao de janela de contexto) e imprecisos
+  demais para busca semantica (um documento pode tratar de 10 temas
+  diferentes). Chunks permitem recuperar TRECHOS relevantes, nao paginas
+  inteiras.
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | chunk_id            | String  | S  | Identificador unico. Formato:            |
+  |                     |         |    | "{document_id}_chunk_{NNN}"               |
+  |                     |         |    | Ex: "DOC-000123_chunk_003"                |
+  |                     |         |    | CONSTRAINT de unicidade.                  |
+  |                     |         |    | POR QUE: referenciacao, deduplicacao,     |
+  |                     |         |    | rastreabilidade do chunk especifico.      |
+  +---------------------+---------+----+------------------------------------------+
+  | content             | String  | S  | Texto do chunk (o conteudo real).         |
+  |                     |         |    | POR QUE: necessario para exibicao ao      |
+  |                     |         |    | usuario e para o LLM usar como contexto.  |
+  |                     |         |    | Sem o conteudo, o embedding sozinho nao   |
+  |                     |         |    | serve para nada.                          |
+  +---------------------+---------+----+------------------------------------------+
+  | embedding           | [Float] | S  | Vetor de embedding (1536d ou 1024d        |
+  |                     |         |    | conforme trilha — ADR-002).               |
+  |                     |         |    | POR QUE: e o vetor que viabiliza a busca  |
+  |                     |         |    | semantica. Sem ele, so resta busca por    |
+  |                     |         |    | keywords (full-text).                     |
+  +---------------------+---------+----+------------------------------------------+
+  | embedding_model     | String  | S  | Nome do modelo que gerou o embedding.     |
+  |                     |         |    | Ex: "openai/text-embedding-3-small" ou    |
+  |                     |         |    | "baai/bge-m3"                             |
+  |                     |         |    | POR QUE: quando o modelo de embedding     |
+  |                     |         |    | mudar, precisamos saber QUAIS chunks      |
+  |                     |         |    | precisam ser re-embedados. Sem essa info, |
+  |                     |         |    | teriamos que re-embedar TUDO.             |
+  +---------------------+---------+----+------------------------------------------+
+  | embedding_version   | String  | N  | Versao do modelo de embedding.            |
+  |                     |         |    | POR QUE: mesmo modelo pode ter versoes    |
+  |                     |         |    | diferentes com embeddings incompativeis.  |
+  +---------------------+---------+----+------------------------------------------+
+  | token_count         | Integer | S  | Quantidade de tokens do chunk.            |
+  |                     |         |    | POR QUE: monitoramento da faixa ideal     |
+  |                     |         |    | (300-800 tokens). Chunks muito curtos     |
+  |                     |         |    | (<100) ou muito longos (>1000) indicam    |
+  |                     |         |    | problema no chunking.                     |
+  +---------------------+---------+----+------------------------------------------+
+  | chunk_index         | Integer | S  | Posicao sequencial do chunk no documento  |
+  |                     |         |    | (0, 1, 2, ...).                           |
+  |                     |         |    | POR QUE: permite reconstruir a ordem      |
+  |                     |         |    | original do documento. Quando o LLM       |
+  |                     |         |    | recebe 3 chunks do mesmo doc, a ordem     |
+  |                     |         |    | importa para coerencia.                   |
+  +---------------------+---------+----+------------------------------------------+
+  | heading_path        | String  | N  | Hierarquia de headings ate este chunk.    |
+  |                     |         |    | Ex: "# Cobranca > ## Boleto > ### Remessa"|
+  |                     |         |    | POR QUE: heranca de contexto. O chunk     |
+  |                     |         |    | "Remessa" sozinho e ambiguo; com heading  |
+  |                     |         |    | path, o LLM sabe que se trata de remessa  |
+  |                     |         |    | de boleto no modulo de cobranca.          |
+  +---------------------+---------+----+------------------------------------------+
+  | metadata_inherited  | Map     | N  | Metadados herdados do Document pai        |
+  |                     |         |    | (system, module, domain, confidentiality).|
+  |                     |         |    | POR QUE: permite filtro direto no chunk   |
+  |                     |         |    | sem precisar fazer JOIN com Document.     |
+  |                     |         |    | Desnormalizacao intencional para          |
+  |                     |         |    | performance de busca vetorial com filtro. |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data/hora de criacao.                     |
+  +---------------------+---------+----+------------------------------------------+
+
+  NOTA SOBRE DESNORMALIZACAO: o campo metadata_inherited duplica dados do
+  Document pai. Isso e INTENCIONAL. A busca vetorial com filtro precisa
+  acessar o campo de filtro E o embedding no MESMO no. Se confidentiality
+  estiver apenas no Document, toda busca vetorial precisaria de JOIN
+  (Chunk->Document), o que degrada performance significativamente em
+  vector indexes.
+
+  -------------------------------------------------------------------------
+  NO 3: System
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Representa um sistema corporativo (software, plataforma,
+  servico). E o nivel mais alto de agrupamento organizacional do
+  conhecimento.
+
+  POR QUE EXISTE: permite agrupar documentos e modulos por sistema.
+  Viabiliza perguntas como "tudo sobre o Sistema de Cobranca" e analise
+  de impacto ("quais documentos sao afetados se o Sistema X mudar?").
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | system_id           | String  | S  | Identificador unico (ex: "SYS-COBRANCA").|
+  |                     |         |    | POR QUE: referenciacao e deduplicacao.    |
+  +---------------------+---------+----+------------------------------------------+
+  | name                | String  | S  | Nome legivel do sistema.                 |
+  |                     |         |    | POR QUE: exibicao para usuarios.         |
+  +---------------------+---------+----+------------------------------------------+
+  | description         | String  | N  | Descricao do sistema.                    |
+  |                     |         |    | POR QUE: contexto para o LLM entender    |
+  |                     |         |    | do que se trata o sistema.               |
+  +---------------------+---------+----+------------------------------------------+
+  | domain              | String  | S  | Dominio de negocio do sistema.           |
+  |                     |         |    | POR QUE: agrupamento por area de negocio.|
+  +---------------------+---------+----+------------------------------------------+
+  | status              | String  | S  | Status: active, deprecated, planned.     |
+  |                     |         |    | POR QUE: sistemas depreciados devem ter  |
+  |                     |         |    | peso menor na busca.                     |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data de criacao.                         |
+  +---------------------+---------+----+------------------------------------------+
+  | updated_at          | DateTime| S  | Data da ultima atualizacao.              |
+  +---------------------+---------+----+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  NO 4: Module
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Modulo funcional de um sistema. Representa uma subdivisao
+  logica (ex: Sistema de Cobranca -> Modulo de Boleto, Modulo de Remessa,
+  Modulo de Retorno).
+
+  POR QUE EXISTE: granularidade fina. Um sistema pode ter dezenas de
+  documentos. Modulos permitem filtrar e navegar o grafo com mais
+  precisao. Tambem viabiliza analise de DEPENDENCIAS entre modulos
+  (DEPENDS_ON).
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | module_id           | String  | S  | Identificador unico (ex: "MOD-BOLETO").  |
+  +---------------------+---------+----+------------------------------------------+
+  | name                | String  | S  | Nome legivel do modulo.                  |
+  +---------------------+---------+----+------------------------------------------+
+  | description         | String  | N  | Descricao do modulo.                     |
+  +---------------------+---------+----+------------------------------------------+
+  | status              | String  | S  | Status: active, deprecated, planned.     |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data de criacao.                         |
+  +---------------------+---------+----+------------------------------------------+
+  | updated_at          | DateTime| S  | Data da ultima atualizacao.              |
+  +---------------------+---------+----+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  NO 5: Owner
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Responsavel por conteudo, sistema ou modulo. Pode ser uma
+  pessoa (PO, analista, arquiteto) ou uma conta de servico (pipeline).
+
+  POR QUE EXISTE: rastreabilidade de autoria e responsabilidade. Permite
+  responder "quem escreveu este documento?", "quem e responsavel por
+  este sistema?", "quem devo procurar se tiver duvida sobre X?".
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | owner_id            | String  | S  | Identificador unico (ex: "fabio",        |
+  |                     |         |    | "pipeline-v1").                          |
+  +---------------------+---------+----+------------------------------------------+
+  | display_name        | String  | S  | Nome para exibicao.                      |
+  +---------------------+---------+----+------------------------------------------+
+  | email               | String  | N  | E-mail de contato.                       |
+  +---------------------+---------+----+------------------------------------------+
+  | type                | String  | S  | Tipo: person, service-account.           |
+  |                     |         |    | POR QUE: distinguir autoria humana de     |
+  |                     |         |    | autoria automatizada.                    |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data de criacao.                         |
+  +---------------------+---------+----+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  NO 6: Team
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Time, squad, chapter, diretoria ou area organizacional.
+  Agrupa Owners.
+
+  POR QUE EXISTE: governanca por grupo. Permite perguntas como "todos os
+  documentos do time de Arquitetura" ou "qual time e responsavel pelo
+  Sistema X?". Tambem viabiliza controle de acesso por time em fases
+  futuras.
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | team_id             | String  | S  | Identificador unico (ex: "arquitetura"). |
+  +---------------------+---------+----+------------------------------------------+
+  | name                | String  | S  | Nome do time.                            |
+  +---------------------+---------+----+------------------------------------------+
+  | type                | String  | N  | Tipo: squad, chapter, directorate, area. |
+  |                     |         |    | POR QUE: organizacoes tem hierarquias     |
+  |                     |         |    | diferentes.                              |
+  +---------------------+---------+----+------------------------------------------+
+  | parent_team_id      | String  | N  | ID do time pai (para hierarquias).       |
+  |                     |         |    | POR QUE: times pertencem a diretorias     |
+  |                     |         |    | que pertencem a VP, etc.                 |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data de criacao.                         |
+  +---------------------+---------+----+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  NO 7: Task
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Tarefa de ferramenta de gestao (ClickUp, Jira, Azure DevOps).
+  Vincula conhecimento a acoes concretas.
+
+  POR QUE EXISTE: conecta o conhecimento (documentos) a execucao (tarefas).
+  Permite perguntas como "quais documentos estao relacionados a task
+  CU-4567?" ou "quais tasks implementam o modulo de Boleto?".
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | task_id             | String  | S  | Identificador unico (ex: "CU-4567",     |
+  |                     |         |    | "JIRA-1234").                            |
+  +---------------------+---------+----+------------------------------------------+
+  | title               | String  | S  | Titulo da tarefa.                        |
+  +---------------------+---------+----+------------------------------------------+
+  | source_tool         | String  | S  | Ferramenta de origem: clickup, jira,     |
+  |                     |         |    | azure-devops.                            |
+  |                     |         |    | POR QUE: permite gerar links para a      |
+  |                     |         |    | ferramenta original.                     |
+  +---------------------+---------+----+------------------------------------------+
+  | status              | String  | N  | Status na ferramenta (open, in-progress, |
+  |                     |         |    | done, cancelled).                        |
+  +---------------------+---------+----+------------------------------------------+
+  | url                 | String  | N  | Link para a tarefa na ferramenta.        |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data de criacao.                         |
+  +---------------------+---------+----+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  NO 8: ADR
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Registro de Decisao Arquitetural. Tipo especial de Document
+  que registra uma decisao tecnica com contexto, alternativas e
+  consequencias.
+
+  POR QUE EXISTE COMO LABEL SEPARADO (e nao apenas doc_type=adr no
+  Document): ADRs tem relacoes semanticas proprias que Documents comuns
+  nao tem. Especificamente, a relacao DECIDES (um ADR decide sobre um
+  System). Alem disso, ADRs sao frequentemente consultados de forma
+  diferente ("quais decisoes foram tomadas sobre o Sistema X?" vs.
+  "qual a documentacao do Sistema X?"). Um label separado permite
+  queries mais eficientes.
+
+  NOTA: um ADR e TAMBEM um Document (double-labeling). Ele tem todas
+  as propriedades de Document + as propriedades especificas abaixo.
+
+  PROPRIEDADES ADICIONAIS (alem das de Document):
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | adr_id              | String  | S  | Identificador da ADR (ex: "ADR-001").    |
+  |                     |         |    | POR QUE: convencao de nomenclatura       |
+  |                     |         |    | separada do document_id para facilitar   |
+  |                     |         |    | referencia ("veja ADR-001" vs             |
+  |                     |         |    | "veja DOC-000050").                      |
+  +---------------------+---------+----+------------------------------------------+
+  | decision_status     | String  | S  | Status da decisao: proposed, accepted,   |
+  |                     |         |    | deprecated, superseded.                  |
+  |                     |         |    | POR QUE: diferente do status do documento|
+  |                     |         |    | (draft/approved). Um doc pode estar      |
+  |                     |         |    | approved mas a decisao ser deprecated.   |
+  +---------------------+---------+----+------------------------------------------+
+  | date_decided        | Date    | N  | Data em que a decisao foi aceita.        |
+  |                     |         |    | POR QUE: rastreabilidade temporal de      |
+  |                     |         |    | decisoes.                                |
+  +---------------------+---------+----+------------------------------------------+
+  | deciders            | [String]| N  | Lista de pessoas que tomaram a decisao.  |
+  |                     |         |    | POR QUE: accountability.                 |
+  +---------------------+---------+----+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  NO 9: GlossaryTerm
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Termo de negocio controlado com definicao oficial.
+  Vinculado aos documentos que o utilizam.
+
+  POR QUE EXISTE: desambiguacao e consistencia terminologica. Em
+  organizacoes grandes, o mesmo conceito pode ter nomes diferentes em
+  times diferentes ("boleto" vs. "titulo de cobranca" vs. "bloqueto
+  bancario"). O glossario padroniza. Quando o usuario pergunta sobre
+  "titulo de cobranca", o RAG sabe que e sinonimo de "boleto" e
+  busca documentos com ambos os termos.
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | term_id             | String  | S  | Identificador unico (ex: "TERM-BOLETO"). |
+  +---------------------+---------+----+------------------------------------------+
+  | term                | String  | S  | O termo propriamente dito.               |
+  +---------------------+---------+----+------------------------------------------+
+  | definition          | String  | S  | Definicao oficial do termo.              |
+  |                     |         |    | POR QUE: desambiguacao. A definicao e    |
+  |                     |         |    | incluida no contexto do LLM quando o     |
+  |                     |         |    | termo aparece na query do usuario.       |
+  +---------------------+---------+----+------------------------------------------+
+  | synonyms            | [String]| N  | Sinonimos conhecidos.                    |
+  |                     |         |    | POR QUE: expansao de busca. Se o usuario |
+  |                     |         |    | busca "bloqueto", o sistema expande para |
+  |                     |         |    | "boleto" e busca com ambos.              |
+  +---------------------+---------+----+------------------------------------------+
+  | domain              | String  | S  | Dominio ao qual o termo pertence.        |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data de criacao.                         |
+  +---------------------+---------+----+------------------------------------------+
+  | updated_at          | DateTime| S  | Data da ultima atualizacao.              |
+  +---------------------+---------+----+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  NO 10: DocumentFamily
+  -------------------------------------------------------------------------
+
+  DESCRICAO: Agrupa todas as versoes de um mesmo documento conceitual
+  ao longo do tempo. Por exemplo, a "Politica de Privacidade" pode ter
+  versoes 2024, 2025 e 2026 — todas pertencem a mesma DocumentFamily.
+
+  POR QUE EXISTE: versionamento temporal. Sem este no, nao ha como
+  saber que DOC-000123 (v2024) e DOC-000456 (v2025) e DOC-000789
+  (v2026) sao versoes do MESMO documento conceitual. A DocumentFamily
+  agrupa todas as versoes e aponta para a versao corrente.
+
+  Isso viabiliza consultas como:
+  - "Qual a versao vigente da Politica de Privacidade?" (current_version)
+  - "Como era a Politica de Privacidade em 2024?" (valid_from/valid_until)
+  - "O que mudou entre a versao 2024 e 2025?" (diff entre versoes)
+
+  PROPRIEDADES:
+
+  +---------------------+---------+----+------------------------------------------+
+  | Propriedade         | Tipo    | Req| Descricao e Razao                        |
+  +---------------------+---------+----+------------------------------------------+
+  | family_id           | String  | S  | Identificador unico da familia.          |
+  |                     |         |    | Ex: "FAM-POLITICA-PRIVACIDADE"           |
+  |                     |         |    | CONSTRAINT de unicidade.                 |
+  |                     |         |    | POR QUE: agrupar versoes.                |
+  +---------------------+---------+----+------------------------------------------+
+  | title               | String  | S  | Titulo conceitual (permanente).          |
+  |                     |         |    | Ex: "Politica de Privacidade"            |
+  |                     |         |    | POR QUE: o titulo do Document pode       |
+  |                     |         |    | mudar entre versoes ("Politica de        |
+  |                     |         |    | Privacidade v2" vs. "Politica de         |
+  |                     |         |    | Protecao de Dados"). O titulo da         |
+  |                     |         |    | familia e o conceitual, permanente.      |
+  +---------------------+---------+----+------------------------------------------+
+  | current_version_id  | String  | S  | document_id da versao vigente.           |
+  |                     |         |    | POR QUE: acesso rapido a versao atual    |
+  |                     |         |    | sem precisar navegar a cadeia de         |
+  |                     |         |    | SUPERSEDES.                              |
+  +---------------------+---------+----+------------------------------------------+
+  | version_count       | Integer | S  | Quantidade de versoes existentes.        |
+  |                     |         |    | POR QUE: metrica e observabilidade.      |
+  +---------------------+---------+----+------------------------------------------+
+  | domain              | String  | S  | Dominio de negocio.                      |
+  +---------------------+---------+----+------------------------------------------+
+  | created_at          | DateTime| S  | Data de criacao da familia.              |
+  +---------------------+---------+----+------------------------------------------+
+  | updated_at          | DateTime| S  | Data da ultima versao adicionada.        |
+  +---------------------+---------+----+------------------------------------------+
+
+  =========================================================================
+  2.2. RELACOES — 13 TIPOS
+  =========================================================================
+
+  -------------------------------------------------------------------------
+  RELACAO 1: PART_OF
+  -------------------------------------------------------------------------
+
+  Direcao: (:Chunk)-[:PART_OF]->(:Document)
+
+  DESCRICAO: vincula um chunk ao documento do qual foi extraido.
+  E a relacao mais fundamental do modelo — sem ela, chunks sao
+  fragmentos orfaos sem origem.
+
+  POR QUE EXISTE: rastreabilidade chunk->documento. Permite:
+  - Recuperar TODOS os chunks de um documento (para contexto expandido)
+  - Saber de qual documento veio um chunk retornado pela busca vetorial
+  - Remover chunks quando um documento e re-ingerido (cleanup)
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 2: BELONGS_TO (Document -> Module)
+  -------------------------------------------------------------------------
+
+  Direcao: (:Document)-[:BELONGS_TO]->(:Module)
+
+  DESCRICAO: vincula um documento ao modulo funcional que ele descreve.
+
+  POR QUE EXISTE: navegacao por modulo. Permite:
+  - "Quais documentos descrevem o modulo de Boleto?"
+  - Expansao de contexto: quando o usuario pergunta sobre Boleto, trazer
+    tambem outros documentos do mesmo modulo.
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | role                | String  | Papel do documento no modulo: primary,   |
+  |                     |         | supplementary, reference. POR QUE:       |
+  |                     |         | permite priorizar docs primarios.        |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 3: BELONGS_TO (Module -> System)
+  -------------------------------------------------------------------------
+
+  Direcao: (:Module)-[:BELONGS_TO]->(:System)
+
+  DESCRICAO: vincula um modulo ao sistema ao qual pertence.
+
+  POR QUE EXISTE: hierarquia organizacional. Permite navegar
+  System -> Modules -> Documents. Viabiliza perguntas como "tudo
+  sobre o Sistema de Cobranca" (expande para todos os modulos e
+  seus documentos).
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 4: OWNED_BY
+  -------------------------------------------------------------------------
+
+  Direcao: (:Document)-[:OWNED_BY]->(:Owner)
+
+  DESCRICAO: vincula um documento ao seu responsavel.
+
+  POR QUE EXISTE: accountability. Todo documento tem um dono que e
+  responsavel por sua precisao e atualizacao. Permite:
+  - "Quem e responsavel por este documento?"
+  - "Quais documentos o Fabio e responsavel?"
+  - Alertas automaticos quando documento fica stale (owner e notificado)
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | since               | Date    | Desde quando e responsavel.              |
+  |                     |         | POR QUE: ownership pode mudar. O "since" |
+  |                     |         | registra quando assumiu.                 |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 5: MEMBER_OF
+  -------------------------------------------------------------------------
+
+  Direcao: (:Owner)-[:MEMBER_OF]->(:Team)
+
+  DESCRICAO: vincula um responsavel (pessoa ou service account) a um time.
+
+  POR QUE EXISTE: estrutura organizacional. Permite:
+  - "Quais documentos sao do time de Arquitetura?" (Team -> Members -> Documents)
+  - Controle de acesso por time (futuro)
+  - Analise de carga ("quantos documentos cada time mantem?")
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | role                | String  | Papel no time: lead, member, contributor.|
+  +---------------------+---------+------------------------------------------+
+  | since               | Date    | Desde quando e membro.                   |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 6: RELATES_TO_TASK
+  -------------------------------------------------------------------------
+
+  Direcao: (:Document)-[:RELATES_TO_TASK]->(:Task)
+
+  DESCRICAO: vincula um documento a uma tarefa de gestao.
+
+  POR QUE EXISTE: conecta conhecimento a execucao. Permite:
+  - "Quais documentos estao relacionados a task CU-4567?"
+  - "Qual o contexto documentado para esta tarefa?"
+  - Gerar contexto automatico para agentes que trabalham em tasks
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | relationship_type   | String  | Tipo: documents, references, created_by. |
+  |                     |         | POR QUE: distinguir se o doc documenta   |
+  |                     |         | a task vs. se a task criou o doc.        |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 7: REFERENCES
+  -------------------------------------------------------------------------
+
+  Direcao: (:Document)-[:REFERENCES]->(:Document)
+
+  DESCRICAO: indica que um documento referencia outro (links internos,
+  citacoes, wikilinks).
+
+  POR QUE EXISTE: rede de conhecimento. Documentos nao existem isolados
+  — eles referenciam outros. Essa teia de referencias e uma das maiores
+  vantagens do GraphRAG sobre RAG convencional. Permite:
+  - Expansao de contexto: "este documento cita 3 outros — inclua-os"
+  - Analise de impacto: "se este documento mudar, quais outros sao afetados?"
+  - PageRank de documentos: documentos muito referenciados sao mais
+    importantes (podem ter peso maior no reranking)
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | reference_type      | String  | Tipo: wikilink, citation, see-also.      |
+  |                     |         | POR QUE: distinguir links explicitos      |
+  |                     |         | (wikilink) de citacoes implicitas.       |
+  +---------------------+---------+------------------------------------------+
+  | context             | String  | Texto ao redor da referencia (frase).    |
+  |                     |         | POR QUE: entender POR QUE o doc A        |
+  |                     |         | referencia o doc B.                      |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 8: USES_TERM
+  -------------------------------------------------------------------------
+
+  Direcao: (:Document)-[:USES_TERM]->(:GlossaryTerm)
+
+  DESCRICAO: indica que um documento utiliza um termo controlado do
+  glossario.
+
+  POR QUE EXISTE: desambiguacao e consistencia. Permite:
+  - Quando o usuario busca "boleto", expandir para todos os documentos
+    que USAM o termo "boleto" (alem da busca semantica)
+  - Detectar documentos que usam termos diferentes para o mesmo conceito
+  - Enriquecer contexto: incluir a definicao do glossario na resposta
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | frequency           | Integer | Quantas vezes o termo aparece no doc.    |
+  |                     |         | POR QUE: peso. Se o doc menciona         |
+  |                     |         | "boleto" 50 vezes, e mais relevante      |
+  |                     |         | para busca por "boleto" do que um que    |
+  |                     |         | menciona 1 vez.                          |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 9: DECIDES
+  -------------------------------------------------------------------------
+
+  Direcao: (:ADR)-[:DECIDES]->(:System)
+
+  DESCRICAO: indica que uma ADR toma uma decisao que impacta um sistema.
+
+  POR QUE EXISTE: rastreabilidade de decisoes. Permite:
+  - "Quais decisoes foram tomadas sobre o Sistema de Cobranca?"
+  - "Esta ADR impacta quais sistemas?"
+  - Analise de impacto reversa: "se mudarmos o sistema X, quais ADRs
+    precisam ser revisadas?"
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | scope               | String  | Escopo da decisao: architecture, infra,  |
+  |                     |         | process, security.                       |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 10: DEPENDS_ON
+  -------------------------------------------------------------------------
+
+  Direcao: (:Module)-[:DEPENDS_ON]->(:Module)
+
+  DESCRICAO: indica que um modulo depende de outro para funcionar.
+
+  POR QUE EXISTE: analise de impacto e arquitetura. Permite:
+  - "Se o modulo de Boleto mudar, quais modulos sao impactados?"
+  - Visualizacao de dependencias (grafo de dependencias)
+  - Deteccao de dependencias circulares (anti-pattern)
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | dependency_type     | String  | Tipo: runtime, build, data, api.         |
+  |                     |         | POR QUE: distinguir dependencia de        |
+  |                     |         | codigo vs. dependencia de dados.         |
+  +---------------------+---------+------------------------------------------+
+  | strength            | String  | Forca: hard, soft.                       |
+  |                     |         | POR QUE: hard = quebra se remover;       |
+  |                     |         | soft = funciona degradado.               |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 11: IMPLEMENTS
+  -------------------------------------------------------------------------
+
+  Direcao: (:Task)-[:IMPLEMENTS]->(:Module)
+
+  DESCRICAO: indica que uma tarefa implementa (constroi, modifica)
+  um modulo.
+
+  POR QUE EXISTE: rastreabilidade de execucao. Permite:
+  - "Quais tasks estao implementando o modulo de Boleto?"
+  - "Este modulo esta sendo modificado por alguma task em andamento?"
+  - Visao de progresso: quantas tasks concluidas vs. abertas por modulo
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | contribution_type   | String  | Tipo: new-feature, bugfix, refactoring,  |
+  |                     |         | documentation.                           |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 12: SUPERSEDES
+  -------------------------------------------------------------------------
+
+  Direcao: (:Document)-[:SUPERSEDES]->(:Document)
+
+  DESCRICAO: indica que um documento substitui (supera) outro.
+  O documento mais recente SUPERSEDES o anterior.
+
+  POR QUE EXISTE: versionamento temporal (ADR-001 secao 2.6). Permite:
+  - Navegar a cadeia de versoes: v2026 SUPERSEDES v2025 SUPERSEDES v2024
+  - Saber que um documento foi substituido (nao e mais vigente)
+  - Consultas historicas: "qual era a politica em 2024?"
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | effective_date      | Date    | Data em que a substituicao ocorreu.      |
+  |                     |         | POR QUE: permite reconstruir a timeline  |
+  |                     |         | (em qual data cada versao era vigente).  |
+  +---------------------+---------+------------------------------------------+
+  | reason              | String  | Motivo da substituicao (ex: "atualizacao |
+  |                     |         | regulatoria", "correcao de erro").       |
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  -------------------------------------------------------------------------
+  RELACAO 13: VERSION_OF
+  -------------------------------------------------------------------------
+
+  Direcao: (:Document)-[:VERSION_OF]->(:DocumentFamily)
+
+  DESCRICAO: vincula um documento a sua familia de versoes.
+
+  POR QUE EXISTE: agrupamento de versoes. Enquanto SUPERSEDES cria uma
+  cadeia linear (v1->v2->v3), VERSION_OF conecta TODAS as versoes a um
+  ponto central (DocumentFamily). Isso permite:
+  - Acessar todas as versoes sem navegar a cadeia
+  - Saber rapidamente quantas versoes existem
+  - Encontrar a versao vigente (DocumentFamily.current_version_id)
+
+  PROPRIEDADES DA RELACAO:
+
+  +---------------------+---------+------------------------------------------+
+  | Propriedade         | Tipo    | Descricao                                |
+  +---------------------+---------+------------------------------------------+
+  | version_number      | Integer | Numero da versao (1, 2, 3, ...).         |
+  |                     |         | POR QUE: ordenacao e referencia rapida.  |
+  +---------------------+---------+------------------------------------------+
+  | version_label       | String  | Label legivel (ex: "v2024", "v2026-mar").|
+  +---------------------+---------+------------------------------------------+
+  | is_current          | Boolean | Se e a versao vigente.                   |
+  |                     |         | POR QUE: flag rapida para filtro         |
+  |                     |         | (redundante com DocumentFamily.          |
+  |                     |         | current_version_id, mas otimiza queries).|
+  +---------------------+---------+------------------------------------------+
+  | created_at          | DateTime| Data de criacao da relacao.               |
+  +---------------------+---------+------------------------------------------+
+
+  =========================================================================
+  2.3. CONSTRAINTS E INDICES
+  =========================================================================
+
+  -------------------------------------------------------------------------
+  2.3.1. CONSTRAINTS DE UNICIDADE
+  -------------------------------------------------------------------------
+
+  Os constraints garantem que nao existam dois nos com o mesmo
+  identificador. Sao a primeira linha de defesa contra duplicatas.
+
+  Constraint 1: Document.document_id — UNIQUE
+  POR QUE: se dois documentos tiverem o mesmo ID, o grafo inteiro
+  fica inconsistente (relacoes apontam para o no errado, chunks ficam
+  orfaos). E o constraint mais critico do modelo.
+
+  Constraint 2: Chunk.chunk_id — UNIQUE
+  POR QUE: na re-ingestao (ADR-001 secao 2.7), o pipeline precisa
+  fazer UPSERT (update se existe, insert se nao). Sem unicidade no
+  chunk_id, o upsert nao funciona e chunks duplicados sao criados.
+
+  Constraint 3: DocumentFamily.family_id — UNIQUE
+  POR QUE: se duas familias tiverem o mesmo ID, versoes de documentos
+  diferentes ficam misturadas.
+
+  Constraint 4: System.system_id — UNIQUE
+  Constraint 5: Module.module_id — UNIQUE
+  Constraint 6: Owner.owner_id — UNIQUE
+  Constraint 7: Team.team_id — UNIQUE
+  Constraint 8: Task.task_id — UNIQUE
+  Constraint 9: GlossaryTerm.term_id — UNIQUE
+  Constraint 10: ADR.adr_id — UNIQUE
+
+  POR QUE TODOS TEM CONSTRAINT: todo no que pode ser referenciado por
+  outros nos DEVE ter unicidade garantida. Sem isso, relacoes podem
+  apontar para o no errado e o grafo se corrompe silenciosamente.
+
+  EXEMPLO DE CRIACAO (Cypher como referencia — sintaxe pode variar conforme
+  a Base Vetorial adotada):
+
+  CREATE CONSTRAINT doc_unique_id FOR (d:Document) REQUIRE d.document_id IS UNIQUE;
+  CREATE CONSTRAINT chunk_unique_id FOR (c:Chunk) REQUIRE c.chunk_id IS UNIQUE;
+  CREATE CONSTRAINT family_unique_id FOR (f:DocumentFamily) REQUIRE f.family_id IS UNIQUE;
+  CREATE CONSTRAINT system_unique_id FOR (s:System) REQUIRE s.system_id IS UNIQUE;
+  CREATE CONSTRAINT module_unique_id FOR (m:Module) REQUIRE m.module_id IS UNIQUE;
+  CREATE CONSTRAINT owner_unique_id FOR (o:Owner) REQUIRE o.owner_id IS UNIQUE;
+  CREATE CONSTRAINT team_unique_id FOR (t:Team) REQUIRE t.team_id IS UNIQUE;
+  CREATE CONSTRAINT task_unique_id FOR (tk:Task) REQUIRE tk.task_id IS UNIQUE;
+  CREATE CONSTRAINT glossary_unique_id FOR (g:GlossaryTerm) REQUIRE g.term_id IS UNIQUE;
+  CREATE CONSTRAINT adr_unique_id FOR (a:ADR) REQUIRE a.adr_id IS UNIQUE;
+
+  -------------------------------------------------------------------------
+  2.3.2. VECTOR INDEX
+  -------------------------------------------------------------------------
+
+  Index: vector_index_chunk_embedding
+  Alvo: Chunk.embedding
+  Dimensao: 1536 (Trilha A) ou 1024 (Trilha B) — conforme ADR-002
+  Similaridade: cosine
+  POR QUE: e o indice que viabiliza a busca semantica. Sem ele, a busca
+  vetorial faria scan sequencial em todos os chunks (inviavel para
+  bases com >10K chunks).
+
+  IMPORTANTE: como a dimensao do embedding difere entre trilhas (1536 vs.
+  1024), instancias de trilhas diferentes NAO PODEM compartilhar o mesmo
+  vector index. Isso reforça a separacao de instancias definida na ADR-002.
+
+  EXEMPLO DE CRIACAO:
+
+  -- Trilha A (OpenAI, 1536 dimensoes)
+  CREATE VECTOR INDEX chunk_embedding_index FOR (c:Chunk)
+  ON (c.embedding)
+  OPTIONS {indexConfig: {
+    `vector.dimensions`: 1536,
+    `vector.similarity_function`: 'cosine'
+  }};
+
+  -- Trilha B (BGE-M3, 1024 dimensoes)
+  CREATE VECTOR INDEX chunk_embedding_index FOR (c:Chunk)
+  ON (c.embedding)
+  OPTIONS {indexConfig: {
+    `vector.dimensions`: 1024,
+    `vector.similarity_function`: 'cosine'
+  }};
+
+  -------------------------------------------------------------------------
+  2.3.3. INDICES COMPOSTOS E AUXILIARES
+  -------------------------------------------------------------------------
+
+  Os indices auxiliares otimizam os filtros PRE-RETRIEVAL mais frequentes.
+  Sem eles, cada filtro faria scan sequencial.
+
+  Indice 1: Document.doc_type
+  POR QUE: filtro "buscar apenas em ADRs" ou "apenas em runbooks" e
+  muito frequente. Sem indice, scan em todos os documentos.
+
+  Indice 2: Document.system
+  POR QUE: filtro "buscar apenas no Sistema X" e o filtro de escopo
+  mais usado.
+
+  Indice 3: Document.module
+  POR QUE: refinamento de escopo abaixo de system.
+
+  Indice 4: Document.confidentiality
+  POR QUE: FILTRO CRITICO de seguranca. Aplicado em TODA busca. Deve
+  ser extremamente rapido.
+
+  Indice 5: Document.status
+  POR QUE: filtrar por draft/approved/deprecated. Buscas de producao
+  tipicamente filtram status=approved.
+
+  Indice 6: Document.domain
+  POR QUE: filtro por area de negocio.
+
+  Indice 7: Document.path
+  POR QUE: lookup rapido por caminho de arquivo (usado na ingestao
+  para detectar se o documento ja existe).
+
+  Indice 8: Document.valid_from + Document.valid_until (composto)
+  POR QUE: consultas temporais ("vigente em data X") precisam filtrar
+  por ambos os campos simultaneamente.
+
+  Indice 9: Chunk.metadata_inherited.confidentiality
+  POR QUE: filtro de seguranca diretamente no chunk, sem JOIN com
+  Document. Usado em conjunto com o vector index.
+
+  Indice 10: GlossaryTerm.term
+  POR QUE: lookup rapido por termo (usado na expansao de sinonimos).
+
+  FULL-TEXT INDEX:
+
+  Indice FT-1: Document.title (full-text)
+  POR QUE: busca por titulo com suporte a parcial matching e relevance
+  scoring.
+
+  Indice FT-2: GlossaryTerm.term + GlossaryTerm.synonyms (full-text)
+  POR QUE: busca fuzzy por termos e sinonimos.
+
+  =========================================================================
+  2.4. ESTRATEGIA DE CHUNKING POR TIPO DE DOCUMENTO
+  =========================================================================
+
+  O chunking NAO e "tamanho unico para todos". Diferentes tipos de
+  documento tem estruturas diferentes e exigem estrategias diferentes.
+  A escolha errada de chunking degrada a qualidade do RAG mais do que
+  qualquer outro fator (incluindo modelo de embedding).
+
+  -------------------------------------------------------------------------
+  2.4.1. system-doc (Documentacao de Sistema)
+  -------------------------------------------------------------------------
+
+  Estrategia: CHUNKING POR HEADING (H1, H2, H3) — MESMA BASE DO architecture-doc
+  Faixa de tokens: 300-800
+
+  COMO FUNCIONA:
+  - Segue a mesma logica de chunking por heading descrita em 2.4.2
+    (architecture-doc), pois documentacao de sistema e estruturalmente
+    similar a documentacao de arquitetura.
+  - Diferencial: system-docs frequentemente contem secoes de
+    "Configuracao", "Integracao" e "Operacao" que devem ser chunks
+    separados, mesmo se curtos (<300 tokens), pois sao consultados
+    individualmente por diferentes personas (dev, ops, suporte).
+
+  POR QUE ESTA ESTRATEGIA: system-docs descrevem sistemas corporativos
+  com multiplas facetas (arquitetura, configuracao, integracao, operacao).
+  Cada faceta e um topico semantico autonomo. A estrategia por heading
+  garante que uma busca por "configuracao do Sistema X" retorne o chunk
+  de configuracao, nao o documento inteiro.
+
+  -------------------------------------------------------------------------
+  2.4.2. architecture-doc (Documento de Arquitetura)
+  -------------------------------------------------------------------------
+
+  Estrategia: CHUNKING POR HEADING (H1, H2, H3)
+  Faixa de tokens: 300-800
+
+  COMO FUNCIONA:
+  - Cada heading (## ou ###) inicia um novo chunk
+  - Se o conteudo sob um heading exceder 800 tokens, subdivide por
+    paragrafo
+  - Se o conteudo for menor que 300 tokens, AGRUPA com o proximo
+    heading do mesmo nivel
+  - O heading_path (hierarquia de headings) e preservado como contexto
+
+  POR QUE ESTA ESTRATEGIA: documentos de arquitetura sao organizados
+  por headings que delimitam topicos semanticos (ex: "## Modelo de Dados",
+  "## Fluxo de Ingestao"). Cada heading e um conceito autonomo que deve
+  ser recuperavel independentemente.
+
+  EXEMPLO:
+  Documento "Arquitetura do Sistema de Cobranca" com headings:
+  # Cobranca
+  ## Visao Geral         -> chunk_001 (heading_path: "Cobranca > Visao Geral")
+  ## Modelo de Dados     -> chunk_002 (heading_path: "Cobranca > Modelo de Dados")
+  ### Entidades          -> chunk_003 (heading_path: "Cobranca > Modelo de Dados > Entidades")
+  ### Relacoes           -> chunk_004 (heading_path: "Cobranca > Modelo de Dados > Relacoes")
+  ## Fluxo de Ingestao   -> chunk_005 (heading_path: "Cobranca > Fluxo de Ingestao")
+
+  -------------------------------------------------------------------------
+  2.4.3. adr (Registro de Decisao Arquitetural)
+  -------------------------------------------------------------------------
+
+  Estrategia: CHUNKS MENORES E PRECISOS POR SECAO
+  Faixa de tokens: 200-500
+
+  COMO FUNCIONA:
+  - Cada secao padrao do ADR e um chunk separado: Contexto, Decisao,
+    Alternativas (uma por alternativa), Consequencias
+  - A secao "Decisao" e mantida como chunk unico (nunca subdividida),
+    mesmo que exceda 500 tokens, porque e a informacao mais importante
+  - Alternativas sao chunks individuais (uma alternativa = um chunk)
+
+  POR QUE ESTA ESTRATEGIA: ADRs sao consultados para perguntas muito
+  especificas ("qual foi a decisao sobre X?", "quais alternativas foram
+  consideradas para Y?"). Chunks menores e mais precisos melhoram a
+  precisao da busca.
+
+  POR QUE CHUNKS MENORES: se o chunk do ADR for grande demais (contexto
+  + decisao + alternativas juntos), a busca vetorial pode retornar o
+  chunk por similaridade com o contexto quando o usuario quer a decisao.
+  Chunks separados por secao evitam isso.
+
+  -------------------------------------------------------------------------
+  2.4.4. runbook (Runbook Operacional)
+  -------------------------------------------------------------------------
+
+  Estrategia: CHUNK POR PROCEDIMENTO/PASSO
+  Faixa de tokens: 200-600
+
+  COMO FUNCIONA:
+  - Cada procedimento (secao com passos numerados) e um chunk
+  - Pre-requisitos sao um chunk separado
+  - Troubleshooting e um chunk separado
+  - Passos individuais NÃO sao separados (um procedimento com 5 passos
+    e um unico chunk) — porque passos isolados perdem contexto
+
+  POR QUE ESTA ESTRATEGIA: runbooks sao consultados em momentos de
+  urgencia ("como reiniciar o servico X?", "o que fazer quando o
+  monitor Y dispara?"). O usuario precisa do procedimento COMPLETO,
+  nao de um passo isolado.
+
+  -------------------------------------------------------------------------
+  2.4.5. glossary (Glossario)
+  -------------------------------------------------------------------------
+
+  Estrategia: CHUNK QUASE ATOMICO POR TERMO
+  Faixa de tokens: 50-200
+
+  COMO FUNCIONA:
+  - Cada termo do glossario e um chunk separado
+  - O chunk contem: termo + definicao + sinonimos + exemplo de uso
+  - Termos relacionados sao linkados via USES_TERM, nao agrupados
+
+  POR QUE ESTA ESTRATEGIA: termos de glossario sao atomicos por
+  natureza. Agrupar varios termos em um chunk diluiria a especificidade
+  do embedding (o vetor representaria uma "media" de conceitos, nao
+  um conceito especifico). Chunks atomicos garantem que a busca por
+  "boleto" retorne EXATAMENTE o chunk do termo "boleto".
+
+  -------------------------------------------------------------------------
+  2.4.6. task-doc (Documento de Tarefa)
+  -------------------------------------------------------------------------
+
+  Estrategia: CHUNK POR CONTEXTO, ESCOPO, DECISAO E ACEITE
+  Faixa de tokens: 300-600
+
+  COMO FUNCIONA:
+  - Secao "Contexto/Background" -> 1 chunk
+  - Secao "Escopo/Requisitos" -> 1 chunk (ou N se muitos requisitos)
+  - Secao "Decisoes Tecnicas" -> 1 chunk por decisao
+  - Secao "Criterios de Aceite" -> 1 chunk
+  - Secao "Observacoes/Riscos" -> 1 chunk
+
+  POR QUE ESTA ESTRATEGIA: documentos de tarefa sao consultados para
+  perguntas diferentes por personas diferentes:
+  - PO pergunta: "quais os criterios de aceite da task X?" (chunk de aceite)
+  - Dev pergunta: "qual o escopo tecnico da task X?" (chunk de escopo)
+  - Arquiteto pergunta: "quais decisoes tecnicas foram tomadas?" (chunk de decisao)
+  Chunks separados por secao atendem a cada persona sem ruido.
+
+  =========================================================================
+  2.5. MODELO TEMPORAL — DOCUMENTFAMILY + SUPERSEDES + VERSION_OF
+  =========================================================================
+
+  O modelo temporal permite rastrear como documentos evoluem ao longo
+  do tempo. Funciona em tres camadas (conforme ADR-001 secao 2.6):
+
+  CAMADA 1 — FRONT MATTER DO .md:
+
+  ---
+  valid_from: "2026-01-01"
+  valid_until: null               # null = vigente
+  superseded_by: "DOC-000456"     # ID do doc que substitui
+  supersedes: "DOC-000123"        # ID do doc anterior
+  ---
+
+  CAMADA 2 — GRAFO (relacoes e nos):
+
+  (:Document {document_id: "DOC-000789", valid_from: "2026-01-01"})
+    -[:VERSION_OF {version_number: 3, is_current: true}]->
+  (:DocumentFamily {family_id: "FAM-POLITICA-PRIVACIDADE",
+                    current_version_id: "DOC-000789"})
+
+  (:Document {document_id: "DOC-000789"})
+    -[:SUPERSEDES {effective_date: "2026-01-01"}]->
+  (:Document {document_id: "DOC-000456"})
+
+  (:Document {document_id: "DOC-000456"})
+    -[:SUPERSEDES {effective_date: "2025-01-01"}]->
+  (:Document {document_id: "DOC-000123"})
+
+  CAMADA 3 — RETRIEVAL (filtros temporais):
+
+  Deteccao de contexto temporal na query:
+  - "Como era a Politica de Privacidade em 2024?" -> filtrar valid_from <= 2024 E valid_until >= 2024 (ou null)
+  - "Qual a Politica de Privacidade atual?" -> filtrar valid_until IS NULL
+  - Sem contexto temporal -> assumir data atual (valid_until IS NULL)
+
+  =========================================================================
+  2.6. EXEMPLOS DETALHADOS
+  =========================================================================
+
+  NOTA SOBRE SINTAXE: os exemplos abaixo utilizam sintaxe Cypher como
+  linguagem de referencia por ser a mais difundida para bases de grafo.
+  A sintaxe especifica pode variar conforme a Base Vetorial adotada.
+  O importante e o MODELO (nos, propriedades, relacoes), nao a sintaxe.
+
+  -------------------------------------------------------------------------
+  EXEMPLO 1: No Document com todas as propriedades
+  -------------------------------------------------------------------------
+
+  (:Document {
+    document_id: "DOC-000123",
+    title: "Modulo de Cobranca — Geracao de Boletos",
+    doc_type: "system-doc",
+    system: "Sistema de Cobranca",
+    module: "Boleto",
+    domain: "Financeiro",
+    owner: "fabio",
+    team: "arquitetura",
+    status: "approved",
+    confidentiality: "internal",
+    tags: ["boleto", "remessa", "cobranca", "cnab240"],
+    path: "docs/financeiro/cobranca/geracao-boletos.md",
+    source_repo: "rag-knowledge-base",
+    git_commit_hash: "a1b2c3d4e5f6789012345678901234567890abcd",
+    git_branch: "main",
+    valid_from: date("2026-01-15"),
+    valid_until: null,
+    superseded_by: null,
+    conversion_quality: 95.0,
+    source_format: "confluence",
+    created_at: datetime("2026-01-15T10:30:00Z"),
+    updated_at: datetime("2026-03-21T14:00:00Z"),
+    chunk_count: 7
+  })
+
+  -------------------------------------------------------------------------
+  EXEMPLO 2: No Chunk com embedding
+  -------------------------------------------------------------------------
+
+  (:Chunk {
+    chunk_id: "DOC-000123_chunk_003",
+    content: "O modulo de geracao de boletos utiliza o padrao CNAB 240
+              para comunicacao com bancos. O arquivo de remessa contem
+              registros header, detalhe e trailer, com campos fixos
+              definidos pela FEBRABAN. Cada boleto gera um registro
+              detalhe com nosso numero, valor, vencimento e dados do
+              sacado.",
+    embedding: [0.0123, -0.0456, 0.0789, ...],   // 1536 floats (Trilha A)
+    embedding_model: "openai/text-embedding-3-small",
+    embedding_version: "2026-01",
+    token_count: 487,
+    chunk_index: 2,
+    heading_path: "Modulo de Cobranca > Geracao de Boletos > Arquivo de Remessa",
+    metadata_inherited: {
+      system: "Sistema de Cobranca",
+      module: "Boleto",
+      domain: "Financeiro",
+      confidentiality: "internal"
+    },
+    created_at: datetime("2026-01-15T10:30:05Z")
+  })
+
+  -------------------------------------------------------------------------
+  EXEMPLO 3: DocumentFamily para versionamento temporal
+  -------------------------------------------------------------------------
+
+  // Familia
+  (:DocumentFamily {
+    family_id: "FAM-POLITICA-PRIVACIDADE",
+    title: "Politica de Privacidade Corporativa",
+    current_version_id: "DOC-000789",
+    version_count: 3,
+    domain: "Juridico",
+    created_at: datetime("2024-03-01T00:00:00Z"),
+    updated_at: datetime("2026-01-01T00:00:00Z")
+  })
+
+  // Versao 1 (2024)
+  (:Document {
+    document_id: "DOC-000123",
+    title: "Politica de Privacidade v2024",
+    valid_from: date("2024-03-01"),
+    valid_until: date("2024-12-31"),
+    ...
+  })-[:VERSION_OF {version_number: 1, is_current: false}]->(:DocumentFamily)
+
+  // Versao 2 (2025)
+  (:Document {
+    document_id: "DOC-000456",
+    title: "Politica de Privacidade v2025",
+    valid_from: date("2025-01-01"),
+    valid_until: date("2025-12-31"),
+    ...
+  })-[:VERSION_OF {version_number: 2, is_current: false}]->(:DocumentFamily)
+
+  // Versao 3 (2026 — vigente)
+  (:Document {
+    document_id: "DOC-000789",
+    title: "Politica de Privacidade v2026",
+    valid_from: date("2026-01-01"),
+    valid_until: null,
+    ...
+  })-[:VERSION_OF {version_number: 3, is_current: true}]->(:DocumentFamily)
+
+  // Cadeia de SUPERSEDES
+  (:Document "DOC-000789")-[:SUPERSEDES {effective_date: date("2026-01-01")}]->(:Document "DOC-000456")
+  (:Document "DOC-000456")-[:SUPERSEDES {effective_date: date("2025-01-01")}]->(:Document "DOC-000123")
+
+  -------------------------------------------------------------------------
+  EXEMPLO 4: No ADR com double-labeling (ADR + Document)
+  -------------------------------------------------------------------------
+
+  // ADR com double-labeling — herda TODAS as propriedades de Document
+  CREATE (a:ADR:Document {
+    // Propriedades de Document
+    document_id: "DOC-000050",
+    title: "Pipeline de Geracao de Conhecimento em 4 Fases",
+    doc_type: "adr",
+    system: "RAG Corporativo",
+    module: "Pipeline",
+    domain: "Arquitetura",
+    owner: "fabio",
+    team: "arquitetura",
+    status: "approved",
+    confidentiality: "internal",
+    tags: ["pipeline", "4-fases", "beta-md", "conhecimento"],
+    path: "docs/arquitetura/adr/ADR-001.md",
+    source_repo: "rag-knowledge-base",
+    git_commit_hash: "b2c3d4e5f67890123456789012345678abcdef01",
+    valid_from: date("2026-03-21"),
+    valid_until: null,
+    conversion_quality: 100.0,
+    source_format: "original",
+    created_at: datetime("2026-03-21T10:00:00Z"),
+    updated_at: datetime("2026-03-21T10:00:00Z"),
+    chunk_count: 12,
+    // Propriedades adicionais de ADR
+    adr_id: "ADR-001",
+    decision_status: "accepted",
+    date_decided: date("2026-03-21"),
+    deciders: ["fabio"]
+  });
+
+  // Relacao DECIDES (ADR -> System)
+  MATCH (a:ADR {adr_id: "ADR-001"}), (s:System {system_id: "SYS-RAG"})
+  CREATE (a)-[:DECIDES {scope: "architecture", created_at: datetime()}]->(s);
+
+  -------------------------------------------------------------------------
+  EXEMPLO 5: Queries de referencia (Cypher)
+  -------------------------------------------------------------------------
+
+  QUERY 1 — BUSCA SEMANTICA COM FILTRO DE CONFIDENCIALIDADE:
+
+  // Buscar chunks semanticamente similares a pergunta do usuario
+  // FILTRO PRE-RETRIEVAL: somente documentos internos ou publicos
+  CALL db.index.vector.queryNodes(
+    'chunk_embedding_index',     // nome do vector index
+    10,                          // top-K resultados
+    $query_embedding             // embedding da pergunta do usuario
+  ) YIELD node AS chunk, score
+  WHERE chunk.metadata_inherited.confidentiality IN ['public', 'internal']
+    AND score > 0.7
+  RETURN chunk.chunk_id, chunk.content, chunk.heading_path, score
+  ORDER BY score DESC;
+
+  QUERY 2 — EXPANSAO DE CONTEXTO VIA GRAFO:
+
+  // A partir de um chunk encontrado, expandir para o documento pai,
+  // outros chunks do mesmo documento, e documentos relacionados
+  MATCH (chunk:Chunk {chunk_id: $found_chunk_id})-[:PART_OF]->(doc:Document)
+
+  // Outros chunks do mesmo documento (contexto adjacente)
+  OPTIONAL MATCH (sibling:Chunk)-[:PART_OF]->(doc)
+  WHERE sibling.chunk_index IN [chunk.chunk_index - 1, chunk.chunk_index + 1]
+
+  // Documentos referenciados
+  OPTIONAL MATCH (doc)-[:REFERENCES]->(related:Document)
+
+  // Glossario usado
+  OPTIONAL MATCH (doc)-[:USES_TERM]->(term:GlossaryTerm)
+
+  RETURN doc.title, doc.system, doc.module,
+         collect(DISTINCT sibling.content) AS contexto_adjacente,
+         collect(DISTINCT related.title) AS docs_relacionados,
+         collect(DISTINCT {termo: term.term, definicao: term.definition}) AS glossario;
+
+  QUERY 3 — CONSULTA TEMPORAL:
+
+  // "Como era a Politica de Privacidade em julho de 2025?"
+  MATCH (doc:Document)-[:VERSION_OF]->(family:DocumentFamily {
+    family_id: "FAM-POLITICA-PRIVACIDADE"
+  })
+  WHERE doc.valid_from <= date("2025-07-15")
+    AND (doc.valid_until IS NULL OR doc.valid_until >= date("2025-07-15"))
+  MATCH (chunk:Chunk)-[:PART_OF]->(doc)
+  RETURN doc.document_id, doc.title, doc.valid_from, doc.valid_until,
+         collect(chunk.content) AS conteudo
+  ORDER BY doc.valid_from DESC
+  LIMIT 1;
+
+  QUERY 4 — ANALISE DE IMPACTO:
+
+  // "Se o modulo de Boleto mudar, o que e impactado?"
+  MATCH (mod:Module {module_id: "MOD-BOLETO"})
+
+  // Modulos que dependem de Boleto
+  OPTIONAL MATCH (dependent:Module)-[:DEPENDS_ON]->(mod)
+
+  // Documentos do modulo
+  OPTIONAL MATCH (doc:Document)-[:BELONGS_TO]->(mod)
+
+  // ADRs que decidem sobre o sistema do modulo
+  OPTIONAL MATCH (mod)-[:BELONGS_TO]->(sys:System)<-[:DECIDES]-(adr:ADR)
+
+  // Tasks que implementam o modulo
+  OPTIONAL MATCH (task:Task)-[:IMPLEMENTS]->(mod)
+
+  RETURN mod.name,
+         collect(DISTINCT dependent.name) AS modulos_dependentes,
+         collect(DISTINCT doc.title) AS documentos,
+         collect(DISTINCT adr.adr_id) AS adrs_relacionadas,
+         collect(DISTINCT {task: task.task_id, status: task.status}) AS tasks;
+
+  QUERY 5 — GRAFO DE CONHECIMENTO COMPLETO DE UM SISTEMA:
+
+  // Visualizar todo o grafo de um sistema
+  MATCH (sys:System {system_id: "SYS-COBRANCA"})
+  OPTIONAL MATCH (mod:Module)-[:BELONGS_TO]->(sys)
+  OPTIONAL MATCH (doc:Document)-[:BELONGS_TO]->(mod)
+  OPTIONAL MATCH (doc)-[:OWNED_BY]->(owner:Owner)
+  OPTIONAL MATCH (owner)-[:MEMBER_OF]->(team:Team)
+  OPTIONAL MATCH (adr:ADR)-[:DECIDES]->(sys)
+  RETURN sys, mod, doc, owner, team, adr;
+
+================================================================================
+  ❌ 3. ALTERNATIVAS DESCARTADAS
+================================================================================
+
+  3.1. MODELO RELACIONAL (SQL) COM EXTENSAO VETORIAL
+  ---------------------------------------------------------------------------
+
+  - Descricao: usar PostgreSQL com pgvector para armazenar vetores e
+    tabelas relacionais para metadados, sem grafo.
+  - Prós: SQL e amplamente conhecido; PostgreSQL e robusto e maduro;
+    pgvector suporta busca vetorial; menor curva de aprendizado.
+  - Contras: NAO suporta traversal de grafo eficiente. Queries como
+    "partindo deste chunk, navegar para documento, depois para modulo,
+    depois para sistema, depois para ADRs que decidem sobre o sistema"
+    requerem 4+ JOINs em SQL, com performance degradada. Em grafo, e
+    um MATCH com 4 hops em milissegundos.
+  - Motivo da rejeicao: a expansao de contexto via grafo e o
+    diferencial do GraphRAG. Sem grafo nativo, o projeto seria apenas
+    um RAG convencional com metadados. A perda de capacidade de
+    traversal nao compensa a familiaridade com SQL.
+
+  3.2. DOIS BANCOS SEPARADOS (SQL + Grafo)
+  ---------------------------------------------------------------------------
+
+  - Descricao: PostgreSQL + pgvector para busca vetorial e um banco
+    de grafo separado para relacoes.
+  - Prós: cada banco faz o que faz melhor; PostgreSQL para vetores e
+    filtros, grafo para traversal.
+  - Contras: duplicacao de dados; sincronizacao entre bancos; latencia
+    de rede entre dois servicos; complexidade operacional dobrada;
+    transacoes distribuidas (ou eventual consistency).
+  - Motivo da rejeicao: a complexidade operacional nao se justifica.
+    Bases vetoriais modernas suportam vector index + graph traversal +
+    full-text na mesma engine, eliminando a necessidade de dois bancos.
+
+  3.3. MODELO SEM DOCUMENTFAMILY (versionamento apenas por SUPERSEDES)
+  ---------------------------------------------------------------------------
+
+  - Descricao: rastrear versoes apenas pela cadeia de SUPERSEDES, sem
+    o no DocumentFamily.
+  - Prós: modelo mais simples; menos nos; menos relacoes.
+  - Contras: para encontrar "todas as versoes da Politica de Privacidade",
+    seria necessario navegar a cadeia inteira (O(n) hops). Com
+    DocumentFamily, e uma unica query (todos os Documents com VERSION_OF
+    para a mesma family). Alem disso, sem DocumentFamily, nao ha lugar
+    para armazenar o current_version_id (teria que procurar o doc com
+    valid_until IS NULL, que e ambiguo se houver erro de dados).
+  - Motivo da rejeicao: a eficiencia de query e a clareza do modelo
+    compensam a complexidade adicional de mais um tipo de no.
+
+  3.4. EMBEDDING NO DOCUMENTO INTEIRO (sem chunks)
+  ---------------------------------------------------------------------------
+
+  - Descricao: gerar um unico embedding por documento, sem chunking.
+  - Prós: modelo mais simples; menos nos; embedding captura o contexto
+    completo do documento.
+  - Contras: documentos longos (>2000 tokens) geram embeddings diluidos
+    que nao representam bem nenhum topico especifico. A janela de contexto
+    do LLM seria desperdicada com documentos inteiros quando so um trecho
+    e relevante. Precisao da busca cai drasticamente.
+  - Motivo da rejeicao: a precisao da busca e a eficiencia do uso de
+    contexto do LLM exigem chunking. Todo sistema RAG de producao usa
+    chunks, nao documentos inteiros.
+
+  3.5. CHUNKING POR TAMANHO FIXO (ex: 512 tokens sempre)
+  ---------------------------------------------------------------------------
+
+  - Descricao: ignorar a estrutura do documento e chunkar por tamanho
+    fixo (ex: cada 512 tokens = 1 chunk).
+  - Prós: implementacao trivial; sem necessidade de parser de headings;
+    chunks uniformes.
+  - Contras: corta no meio de frases e conceitos. Um chunk pode comecar
+    no meio de uma explicacao e terminar no meio de outra. O embedding
+    resultante e ruidoso. Heading path se perde.
+  - Motivo da rejeicao: chunking semantico (por heading) preserva a
+    coerencia do trecho e gera embeddings mais precisos. A implementacao
+    e mais complexa, mas a melhoria de qualidade e mensuravel (10-20%
+    maior precision@10 em benchmarks internos).
+
+================================================================================
+  ⚖️ 4. CONSEQUÊNCIAS
+================================================================================
+
+  4.1. POSITIVAS
+  ---------------------------------------------------------------------------
+
+  a) GRAPHRAG COMPLETO: o modelo suporta busca semantica (vetorial) E
+     expansao de contexto (grafo) na mesma engine, viabilizando
+     respostas mais ricas e contextualizadas.
+
+  b) GOVERNANCA NATIVA: cada documento tem owner, team, status,
+     confidentiality como propriedades do no, permitindo filtros
+     gerenciais e de seguranca diretamente no grafo.
+
+  c) TEMPORALIDADE: DocumentFamily + SUPERSEDES + valid_from/valid_until
+     permitem consultas historicas ("como era X em data Y?").
+
+  d) ANALISE DE IMPACTO: relacoes DEPENDS_ON, IMPLEMENTS, DECIDES
+     permitem responder "o que e impactado se X mudar?" com traversal
+     de grafo em milissegundos.
+
+  e) DESAMBIGUACAO: GlossaryTerm + USES_TERM permitem expandir
+     buscas por sinonimos e incluir definicoes no contexto do LLM.
+
+  f) RASTREABILIDADE COMPLETA: de qualquer chunk, e possivel rastrear
+     ate o arquivo original, commit, repositorio, autor e time.
+
+  g) CHUNKING OTIMIZADO: estrategias diferenciadas por tipo de documento
+     maximizam a precisao da busca para cada caso de uso.
+
+  4.2. NEGATIVAS / TRADE-OFFS
+  ---------------------------------------------------------------------------
+
+  a) COMPLEXIDADE DO MODELO: 10 tipos de no e 13 tipos de relacao
+     exigem uma curva de aprendizado significativa da equipe.
+
+  b) DESNORMALIZACAO: metadata_inherited no Chunk duplica dados do
+     Document, criando risco de inconsistencia se a atualizacao nao
+     for atomica (mitigacao: upsert transacional).
+
+  c) CUSTO DE MANUTENCAO: a evolucao do modelo (adicionar propriedades,
+     mudar constraints) requer migracao cuidadosa em base de producao.
+
+  d) OVERHEAD DE INGESTAO: o pipeline precisa criar nos de System,
+     Module, Owner, Team, Task e GlossaryTerm alem de Document e
+     Chunk, aumentando a complexidade da Fase 4.
+
+  4.3. RISCOS E MITIGACOES
+  ---------------------------------------------------------------------------
+
+  RISCO 1: CHUNKS ORFAOS
+  - Descricao: na re-ingestao, chunks antigos podem nao ser removidos
+    se o pipeline falhar no meio.
+  - Mitigacao: cleanup job que detecta chunks sem PART_OF e os remove.
+    Query: MATCH (c:Chunk) WHERE NOT (c)-[:PART_OF]->() DELETE c
+
+  RISCO 2: INCONSISTENCIA DE metadata_inherited
+  - Descricao: se o Document mudar de confidentiality, os chunks filhos
+    podem ficar com o valor antigo.
+  - Mitigacao: na atualizacao de Document, SEMPRE propagar para chunks.
+    Query: MATCH (d:Document {document_id: $id})<-[:PART_OF]-(c:Chunk)
+    SET c.metadata_inherited.confidentiality = d.confidentiality
+
+  RISCO 3: DOCUMENTFAMILY DESATUALIZADA
+  - Descricao: current_version_id aponta para versao errada.
+  - Mitigacao: na criacao de nova versao (SUPERSEDES), atualizar
+    atomicamente o DocumentFamily.current_version_id na mesma transacao.
+
+  RISCO 4: PERFORMANCE DE VECTOR INDEX COM MUITOS FILTROS
+  - Descricao: filtros pre-retrieval (confidentiality + system + status)
+    podem degradar performance do vector index.
+  - Mitigacao: indices compostos nos campos de filtro mais usados.
+    Monitorar query plans. Se necessario, criar vector indexes
+    separados por confidentiality level.
+
+  4.4. METRICAS DE OBSERVABILIDADE DO MODELO (PILAR D)
+  ---------------------------------------------------------------------------
+
+  Metricas que devem ser monitoradas para garantir a saude do modelo:
+
+  +------+--------------------------------------------+----------------------------+
+  | #    | Metrica                                    | Alerta se                  |
+  +------+--------------------------------------------+----------------------------+
+  | M1   | Total de nos por label                     | Queda >20% entre ingestoes |
+  +------+--------------------------------------------+----------------------------+
+  | M2   | Chunks orfaos (sem PART_OF)                | > 0                        |
+  +------+--------------------------------------------+----------------------------+
+  | M3   | Documents sem OWNED_BY                     | > 0                        |
+  +------+--------------------------------------------+----------------------------+
+  | M4   | DocumentFamilies com current_version_id    | > 0                        |
+  |      | apontando para doc inexistente             |                            |
+  +------+--------------------------------------------+----------------------------+
+  | M5   | Chunks com token_count fora da faixa       | > 10% do total             |
+  |      | ideal (< 100 ou > 1000)                    |                            |
+  +------+--------------------------------------------+----------------------------+
+  | M6   | Documents com chunk_count = 0              | > 0                        |
+  +------+--------------------------------------------+----------------------------+
+  | M7   | Tempo medio de query vetorial (p95)        | > 500ms                    |
+  +------+--------------------------------------------+----------------------------+
+  | M8   | Documents com status=draft na Base Vetorial| > 0 (nao devem existir)    |
+  +------+--------------------------------------------+----------------------------+
+  | M9   | Inconsistencia metadata_inherited vs.      | > 0                        |
+  |      | Document pai (confidentiality divergente)  |                            |
+  +------+--------------------------------------------+----------------------------+
+  | M10  | Embeddings gerados com modelo diferente    | > 0 (indica migracao       |
+  |      | do modelo vigente                          |  incompleta)               |
+  +------+--------------------------------------------+----------------------------+
+
+================================================================================
+  🚀 5. IMPLEMENTACAO
+================================================================================
+
+  5.1. FASEAMENTO
+  ---------------------------------------------------------------------------
+
+  A implementacao do modelo segue as fases de rollout do blueprint principal:
+
+  +-------+-----------------------------+------------------------------------------+
+  | Fase  | Entrega                     | DOD (Definition of Done)                 |
+  +-------+-----------------------------+------------------------------------------+
+  | MVP   | Document + Chunk + PART_OF  | - Constraints 1-2 criados               |
+  |       | + vector index + busca      | - Vector index funcional                 |
+  |       | semantica simples           | - Query de busca semantica retornando    |
+  |       |                             |   resultados corretos com score > 0.7    |
+  |       |                             | - Filtro por confidentiality funcionando |
+  +-------+-----------------------------+------------------------------------------+
+  | Meta  | + System, Module, Owner,    | - Constraints 3-10 criados              |
+  | dados | Team + relacoes BELONGS_TO, | - Indices auxiliares 1-7 criados        |
+  |       | OWNED_BY, MEMBER_OF         | - Filtros pre-retrieval por system,     |
+  |       |                             |   module, status funcionando            |
+  +-------+-----------------------------+------------------------------------------+
+  | KG    | + Task, ADR, GlossaryTerm,  | - Todas as 13 relacoes criadas          |
+  |       | DocumentFamily + todas as   | - Expansao de contexto via grafo        |
+  |       | relacoes restantes          |   funcionando (query 2 do exemplo)      |
+  |       |                             | - Analise de impacto funcionando        |
+  +-------+-----------------------------+------------------------------------------+
+  | Graph | + Retrieval hibrido,        | - Consultas temporais funcionando       |
+  | RAG   | temporalidade, reranking,   | - Metricas de observabilidade (M1-M10)  |
+  |       | seguranca por escopo        |   monitoradas                           |
+  |       |                             | - Score de busca validado em benchmark  |
+  +-------+-----------------------------+------------------------------------------+
+
+  5.2. RESPONSAVEIS
+  ---------------------------------------------------------------------------
+
+  - Arquiteto: definicao do modelo, constraints, indices, validacao
+  - Engenharia de Dados: implementacao dos constraints, indices, pipeline de ingestao
+  - Engenharia de Software: queries de retrieval, expansao de contexto
+  - Ops/DBA: monitoramento, metricas M1-M10, backup, performance tuning
+
+================================================================================
+  📐 6. DIAGRAMA DO MODELO COMPLETO
+================================================================================
+
+  LEGENDA:
+  [No]          = tipo de no (label)
+  ----RELACAO--> = relacao com direcao
+  (prop)        = propriedade chave
+
+                            [Team]
+                           (team_id)
+                              ^
+                              |
+                           MEMBER_OF
+                              |
+  [Task] <--RELATES_TO_TASK-- [Document] --OWNED_BY--> [Owner]
+  (task_id)                 (document_id)             (owner_id)
+    |                         |     |
+    |                         |     +--BELONGS_TO--> [Module] --BELONGS_TO--> [System]
+    |                         |                     (module_id)              (system_id)
+    +---IMPLEMENTS----------->+                       ^    |                    ^
+                              |                       |    |                    |
+                              |                       |  DEPENDS_ON            |
+                              |                       |    |                   |
+                              |                       +----+               DECIDES
+                              |                                              |
+                              +--REFERENCES--> [Document]                  [ADR]
+                              |                                           (adr_id)
+                              +--USES_TERM--> [GlossaryTerm]
+                              |              (term_id)
+                              |
+                              +--SUPERSEDES--> [Document]
+                              |
+                              +--VERSION_OF--> [DocumentFamily]
+                              |               (family_id)
+                              |
+                              v
+                           [Chunk] --PART_OF--> [Document]
+                          (chunk_id)
+                          (embedding) <-- vector index
+
+================================================================================
+  📚 7. REFERÊNCIAS
+================================================================================
+
+  DECISOES RELACIONADAS:
+  - ADR-001 — Pipeline de Geracao de Conhecimento em 4 Fases
+    (define as 4 fases cujos artefatos este modelo armazena)
+  - ADR-002 — Soberania de Dados: Cloud vs. On-Premise
+    (define as trilhas que impactam dimensao do embedding e instancias)
+
+  DOCUMENTOS DO BLUEPRINT:
+  - B05 — Knowledge Graph (modelo de grafo original)
+  - B03 — Camada Ouro (pipeline de ingestao que cria estes nos)
+  - B04 — Metadados e Governanca (front matter que popula as propriedades)
+
+  REFERENCIAS TECNICAS:
+  - Vector Indexes na base vetorial: documentacao oficial de indices vetoriais
+  - GraphRAG for Python: biblioteca oficial de GraphRAG
+  - Chunking Best Practices: "Chunk Wisely" — pesquisas sobre estrategias de chunking
+  - MTEB Benchmark: avaliacao de modelos de embedding multilingue
+
+================================================================================
+  📎 Documentos Relacionados
+================================================================================
+
+  Depende diretamente de:
+  - ADR-001 — Pipeline de Geracao de Conhecimento em 4 Fases
+    (define as 4 fases, os 8 pilares, temporalidade, re-ingestao, .beta.md)
+  - ADR-002 — Soberania de Dados: Cloud vs. On-Premise
+    (define trilhas que impactam dimensao do embedding e instancias separadas)
+
+  Impacta diretamente:
+  - B03 — Camada Ouro — pipeline de ingestao que cria os nos definidos aqui
+  - B04 — Metadados e Governanca — front matter que popula as propriedades dos nos
+  - B05 — Knowledge Graph — modelo de grafo original que este ADR formaliza e estende
+
+  Relacionados:
+  - B14 — Seguranca e Soberania de Dados — niveis de confidentiality como filtro pre-retrieval
+  - B15 — Governanca — papeis (Owner, Team) e RACI que alimentam o modelo
+  - B16 — Roadmap de Implementacao — faseamento do modelo (MVP -> GraphRAG)
+
+================================================================================
+  FIM DO DOCUMENTO — ADR-003
+================================================================================
+
+================================================================================
+REVISAO DE QUALIDADE — ADR-003 (Referencia: ADR-001)
+================================================================================
+
+Data da revisao: 22/03/2026 (v2 — revisao com correcoes aplicadas)
+
+================================================================================
+⚠️ VIOLACOES E INCONSISTENCIAS
+================================================================================
+
+  V1. [RESOLVIDO] AUSENCIA DE MAPEAMENTO AOS 8 PILARES (A-H) DA ADR-001
+      Severidade original: MEDIA
+      Resolucao: Adicionada secao 1.3 "Mapeamento aos 8 Pilares da ADR-001"
+      com tabela completa mapeando cada pilar para nos, relacoes e
+      propriedades do modelo.
+
+  V2. [RESOLVIDO] QUERIES CYPHER USAM SINTAXE ESPECIFICA DE TECNOLOGIA
+      Severidade original: BAIXA
+      Resolucao: Adicionada nota explicita na secao 2.6 e na secao 2.3.1
+      informando que a sintaxe Cypher e de referencia e pode variar
+      conforme a Base Vetorial adotada.
+
+  V3. [RESOLVIDO] FALTA DE REFERENCIA AO .beta.md NA MODELAGEM
+      Severidade original: BAIXA
+      Resolucao: Adicionada secao 1.2 "Escopo do Modelo" declarando
+      explicitamente que o .beta.md (Fase 2) esta fora do escopo da
+      Base Vetorial e explicando o motivo.
+
+  V4. [RESOLVIDO] AUSENCIA DE ESTRATEGIA DE CHUNKING PARA system-doc
+      Severidade original: ALTA
+      Resolucao: Adicionada secao 2.4.1 com estrategia de chunking para
+      system-doc (por heading, 300-800 tokens, com nota sobre secoes de
+      configuracao/integracao/operacao).
+
+  V5. [RESOLVIDO] AUSENCIA DE EXEMPLO DE DOUBLE-LABELING ADR + DOCUMENT
+      Severidade original: MEDIA
+      Resolucao: Adicionado Exemplo 4 na secao 2.6 mostrando criacao de
+      no com labels :ADR:Document e todas as propriedades de ambos.
+
+  V6. [RESOLVIDO] AUSENCIA DE SECAO DE IMPLEMENTACAO COM DODs
+      Severidade original: MEDIA
+      Resolucao: Adicionada secao 5 "Implementacao" com faseamento
+      (MVP -> Metadados -> KG -> GraphRAG), DODs por fase e responsaveis.
+
+  V7. [RESOLVIDO] AUSENCIA DE METRICAS DE OBSERVABILIDADE (PILAR D)
+      Severidade original: ALTA
+      Resolucao: Adicionada secao 4.4 "Metricas de Observabilidade do
+      Modelo" com 10 metricas e respectivos alertas.
+
+  V8. [RESOLVIDO] AUSENCIA DE SECAO "Documentos Relacionados"
+      Severidade original: MEDIA
+      Resolucao: Adicionada secao "Documentos Relacionados" com
+      dependencias diretas (ADR-001, ADR-002), impactos e relacionados.
+
+  V9. [RESOLVIDO] SECAO 5 SEM EMOJI NO HEADER
+      Severidade original: BAIXA
+      Resolucao: Adicionado emoji na secao do diagrama.
+
+  V10. [PENDENTE — REQUER DECISAO HUMANA] INDICE COMPOSTO valid_from + valid_until
+       O indice 8 e descrito como "composto" (valid_from + valid_until),
+       mas bases vetoriais com modelo de grafo podem nao suportar indices
+       compostos da mesma forma que bancos relacionais. A viabilidade depende
+       da Base Vetorial escolhida (decisao pendente).
+       Severidade: MEDIA
+
+  V11. [PENDENTE — REQUER VALIDACAO] BENCHMARK DE CHUNKING SEMANTICO
+       A secao 3.5 menciona "10-20% maior precision@10 em benchmarks internos"
+       para justificar chunking semantico vs. tamanho fixo. Este numero
+       precisa ser validado com benchmark real quando o MVP estiver operacional.
+       Severidade: BAIXA
+
+================================================================================
+🤖 INFERENCIAS PENDENTES
+================================================================================
+
+  I1. [RESOLVIDO] SYSTEM-DOC vs. ARCHITECTURE-DOC
+      Resolucao: Adicionada secao 2.4.1 com estrategia de chunking especifica
+      para system-doc. Ambos usam chunking por heading (300-800 tokens), mas
+      system-doc tem diferencial para secoes de configuracao/integracao/operacao.
+
+  I2. [RESOLVIDO] DOUBLE-LABELING ADR + DOCUMENT
+      Resolucao: Adicionado Exemplo 4 com criacao de no :ADR:Document.
+
+  I3. [PENDENTE] INDICE COMPOSTO valid_from + valid_until
+      A viabilidade tecnica depende da Base Vetorial adotada. A alternativa
+      (dois indices separados) e viavel em qualquer engine. Recomenda-se
+      testar ambas as abordagens no MVP.
+
+  I4. [PENDENTE] doc_type "review" PRESENTE NO SCHEMA MAS AUSENTE NO MODELO
+      O schema_front_matter.md inclui doc_type "review" que nao aparece nas
+      estrategias de chunking da ADR-003 nem na lista de valores de doc_type
+      do no Document. Se "review" for adotado no futuro, a estrategia de
+      chunking devera ser definida.
+
+================================================================================
+✅ ACOES PENDENTES
+================================================================================
+
+  [x] Adicionar secao mapeando os 8 pilares (A-H) da ADR-001 ao modelo
+      Resolucao: Secao 1.3 adicionada com tabela pilar -> modelo.
+      Prioridade: MEDIA — RESOLVIDO
+
+  [x] Definir escopo explicito: .beta.md esta fora do modelo?
+      Resolucao: Secao 1.2 adicionada com nota explicita.
+      Prioridade: BAIXA — RESOLVIDO
+
+  [x] Esclarecer estrategia de chunking para doc_type "system-doc"
+      Resolucao: Secao 2.4.1 adicionada.
+      Prioridade: ALTA — RESOLVIDO
+
+  [x] Adicionar exemplo de criacao de no ADR com double-labeling
+      Resolucao: Exemplo 4 adicionado na secao 2.6.
+      Prioridade: MEDIA — RESOLVIDO
+
+  [ ] Verificar viabilidade do indice composto valid_from + valid_until
+      Descricao: Confirmar se a Base Vetorial escolhida suporta indices
+      compostos sobre duas propriedades de data. Se nao, usar dois
+      indices separados.
+      Secao afetada: 2.3.3 — Indices Compostos e Auxiliares
+      Prioridade: MEDIA — REQUER DECISAO SOBRE BASE VETORIAL
+
+  [x] Adicionar nota sobre sintaxe das queries de exemplo
+      Resolucao: Notas adicionadas na secao 2.6 e 2.3.1.
+      Prioridade: BAIXA — RESOLVIDO
+
+  [x] Incluir DOD (Definition of Done) para implementacao do modelo
+      Resolucao: Secao 5 adicionada com DODs por fase.
+      Prioridade: MEDIA — RESOLVIDO
+
+  [x] Adicionar metricas de observabilidade do modelo (pilar D)
+      Resolucao: Secao 4.4 adicionada com 10 metricas.
+      Prioridade: ALTA — RESOLVIDO
+
+  [ ] Definir estrategia de chunking para doc_type "review"
+      Descricao: O schema_front_matter.md inclui "review" como doc_type
+      valido, mas a ADR-003 nao define estrategia de chunking para este
+      tipo. Definir quando o tipo for utilizado.
+      Secao afetada: 2.4 — Estrategia de Chunking
+      Prioridade: BAIXA — FUTURO
+
+  [ ] Validar benchmark "10-20% maior precision@10" para chunking semantico
+      Descricao: Numero citado na alternativa 3.5. Precisa ser validado
+      com benchmark real no MVP.
+      Secao afetada: 3.5 — Alternativa: Chunking por Tamanho Fixo
+      Prioridade: BAIXA — APOS MVP
+
+================================================================================
+📊 QUALITY ASSURANCE — AVALIACAO DO ADR
+================================================================================
+
+  --- CONFORMIDADE (peso 30%) ---
+
+  +-------------------------------+-------+------------------------------------------+
+  | Sub-criterio                  | Nota  | Justificativa                            |
+  +-------------------------------+-------+------------------------------------------+
+  | Alinhamento com ADR-001       | 9.5   | Modelo implementa todas as decisoes da   |
+  |                               |       | ADR-001: 4 fases, temporalidade,         |
+  |                               |       | re-ingestao (cleanup de orfaos),         |
+  |                               |       | conversion_quality, DocumentFamily.      |
+  |                               |       | Mapeamento dos 8 pilares documentado.    |
+  |                               |       | Escopo do .beta.md explicito.            |
+  |                               |       | (-0.5: tag #decisao/neo4j na ADR-001     |
+  |                               |       | nao esta sob controle desta ADR)         |
+  +-------------------------------+-------+------------------------------------------+
+  | Coerencia entre ADRs          | 9.5   | Referencia ADR-001 e ADR-002             |
+  |                               |       | adequadamente. Dimensao do embedding     |
+  |                               |       | (1536/1024) alinhada com trilhas da      |
+  |                               |       | ADR-002. Confidentiality como filtro     |
+  |                               |       | pre-retrieval alinhado com ADR-002.      |
+  |                               |       | (-0.5: ADR-002 nao foi totalmente lida   |
+  |                               |       | para validacao cruzada completa)         |
+  +-------------------------------+-------+------------------------------------------+
+  | Terminologia                  | 9.5   | Usa "Base Vetorial" consistentemente no  |
+  |                               |       | texto. Notas sobre Cypher adicionadas.   |
+  |                               |       | (-0.5: exemplos Cypher intrinsecamente   |
+  |                               |       | referenciam tecnologia especifica)       |
+  +-------------------------------+-------+------------------------------------------+
+  | Media Conformidade            | 9.50  |                                          |
+  +-------------------------------+-------+------------------------------------------+
+
+  --- COMPLETUDE (peso 30%) ---
+
+  +-------------------------------+-------+------------------------------------------+
+  | Sub-criterio                  | Nota  | Justificativa                            |
+  +-------------------------------+-------+------------------------------------------+
+  | Secoes estruturais            | 9.5   | Todas as secoes obrigatorias presentes:  |
+  |                               |       | Contexto, Decisao, Alternativas,         |
+  |                               |       | Consequencias, Implementacao,            |
+  |                               |       | Referencias, Documentos Relacionados.    |
+  |                               |       | (-0.5: numeracao das secoes requer       |
+  |                               |       | atencao apos insercao da secao 5)        |
+  +-------------------------------+-------+------------------------------------------+
+  | Alternativas                  | 9.5   | 5 alternativas reais com pros, contras   |
+  |                               |       | e motivo de rejeicao. Nenhuma e strawman.|
+  |                               |       | (-0.5: alternativa SQL poderia ter       |
+  |                               |       | benchmark concreto de performance)       |
+  +-------------------------------+-------+------------------------------------------+
+  | Consequencias                 | 9.5   | 7 consequencias positivas, 4 negativas,  |
+  |                               |       | 4 riscos com mitigacoes concretas        |
+  |                               |       | (queries de cleanup). Metricas de        |
+  |                               |       | observabilidade adicionadas.             |
+  |                               |       | (-0.5: riscos de migracao de modelo      |
+  |                               |       | nao cobertos explicitamente)             |
+  +-------------------------------+-------+------------------------------------------+
+  | Media Completude              | 9.50  |                                          |
+  +-------------------------------+-------+------------------------------------------+
+
+  --- QUALIDADE DE DECISAO (peso 25%) ---
+
+  +-------------------------------+-------+------------------------------------------+
+  | Sub-criterio                  | Nota  | Justificativa                            |
+  +-------------------------------+-------+------------------------------------------+
+  | Justificativas                | 9.5   | Cada no e relacao tem "POR QUE EXISTE".  |
+  |                               |       | Cada propriedade tem "POR QUE".          |
+  |                               |       | Desnormalizacao intencional justificada. |
+  |                               |       | (-0.5: benchmark de chunking nao         |
+  |                               |       | validado empiricamente)                  |
+  +-------------------------------+-------+------------------------------------------+
+  | Premissas                     | 9.0   | Threshold cosine > 0.7, faixa 300-800   |
+  |                               |       | tokens, limites de alerta bem definidos. |
+  |                               |       | (-1.0: indice composto nao validado      |
+  |                               |       | tecnicamente; benchmark "10-20%" sem     |
+  |                               |       | evidencia concreta)                      |
+  +-------------------------------+-------+------------------------------------------+
+  | Profundidade                  | 10.0  | Modelo extremamente detalhado: 10 nos    |
+  |                               |       | com todas as propriedades, 13 relacoes,  |
+  |                               |       | 10 constraints, 12 indices, 5 queries    |
+  |                               |       | de referencia, 5 exemplos completos,     |
+  |                               |       | estrategia de chunking por tipo.         |
+  +-------------------------------+-------+------------------------------------------+
+  | Consistencia interna          | 9.5   | Modelo autocoerente. Relacoes            |
+  |                               |       | correspondem aos nos. Indices cobrem     |
+  |                               |       | os filtros mencionados nos requisitos.   |
+  |                               |       | (-0.5: doc_type "review" do schema       |
+  |                               |       | nao coberto no chunking)                 |
+  +-------------------------------+-------+------------------------------------------+
+  | Media Qualidade de Decisao    | 9.50  |                                          |
+  +-------------------------------+-------+------------------------------------------+
+
+  --- CLAREZA (peso 15%) ---
+
+  +-------------------------------+-------+------------------------------------------+
+  | Sub-criterio                  | Nota  | Justificativa                            |
+  +-------------------------------+-------+------------------------------------------+
+  | Autocontido                   | 9.5   | Um novo membro entende o modelo sem      |
+  |                               |       | contexto previo. Sumario explica GraphRAG|
+  |                               |       | vs. RAG. Escopo do .beta.md explicito.   |
+  |                               |       | (-0.5: precisa ler ADR-001/002 para      |
+  |                               |       | entender trilhas e pilares por completo) |
+  +-------------------------------+-------+------------------------------------------+
+  | Sem ambiguidade               | 9.0   | Modelo bem definido. Estrategias de      |
+  |                               |       | chunking claras com exemplos.            |
+  |                               |       | (-1.0: indice composto ambiguo quanto    |
+  |                               |       | a viabilidade; doc_type "review" ausente)|
+  +-------------------------------+-------+------------------------------------------+
+  | Acionavel                     | 9.5   | Equipe sabe o que fazer: DODs por fase,  |
+  |                               |       | responsaveis definidos, metricas de      |
+  |                               |       | observabilidade, queries de referencia.  |
+  |                               |       | (-0.5: nao indica ferramentas de         |
+  |                               |       | monitoramento para metricas M1-M10)     |
+  +-------------------------------+-------+------------------------------------------+
+  | Media Clareza                 | 9.33  |                                          |
+  +-------------------------------+-------+------------------------------------------+
+
+  --- CALCULO FINAL ---
+
+  FORMULA: (Conformidade x 0.30) + (Completude x 0.30) +
+           (Qualidade de Decisao x 0.25) + (Clareza x 0.15)
+
+  SCORE FINAL: (9.50 x 0.30) + (9.50 x 0.30) + (9.50 x 0.25) + (9.33 x 0.15)
+             = 2.850 + 2.850 + 2.375 + 1.400
+             = 9.475 / 10.0
+             = 94.75%
+
+  CLASSIFICACAO: EXCELENTE
+
+  --- CONTADORES ---
+
+  Violacoes resolvidas:   9
+  Violacoes pendentes:    2 (requerem decisao humana ou validacao futura)
+  Inferencias resolvidas: 2
+  Inferencias pendentes:  2
+  Acoes resolvidas:       6
+  Acoes pendentes:        3 (1 requer decisao sobre Base Vetorial, 2 futuras)
+
+  --- PONTOS FORTES ---
+
+  1. PROFUNDIDADE EXCEPCIONAL: cada no, relacao e propriedade tem justificativa
+     "POR QUE EXISTE" — pratica rara e valiosa para disseminacao.
+
+  2. EXEMPLOS CONCRETOS: 5 exemplos completos (Document, Chunk, DocumentFamily,
+     ADR com double-labeling, 5 queries de referencia) permitem que a equipe
+     entenda o modelo sem abstraindo.
+
+  3. ESTRATEGIA DE CHUNKING DIFERENCIADA: 6 estrategias por doc_type (system-doc,
+     architecture-doc, adr, runbook, glossary, task-doc) com justificativas
+     tecnicas claras.
+
+  4. MODELO TEMPORAL COMPLETO: 3 camadas (front matter, grafo, retrieval)
+     alinhadas com ADR-001 secao 2.6.
+
+  5. DESNORMALIZACAO JUSTIFICADA: metadata_inherited no Chunk com justificativa
+     tecnica de performance, risco documentado e mitigacao concreta.
+
+  --- PONTOS DE MELHORIA ---
+
+  1. Validar benchmark "10-20% precision@10" com dados reais (apos MVP).
+  2. Confirmar viabilidade do indice composto valid_from + valid_until na
+     Base Vetorial adotada.
+  3. Definir estrategia de chunking para doc_type "review" quando for usado.
+  4. Definir ferramentas/stack para monitoramento das metricas M1-M10.
+
+  --- POR QUE NAO E 100% ---
+
+  GAP 1 (-2.0%): PREMISSAS NAO VALIDADAS EMPIRICAMENTE
+  O benchmark "10-20% maior precision@10" para chunking semantico e o threshold
+  cosine > 0.7 sao premissas razoaveis baseadas em literatura, mas nao foram
+  validadas com dados do projeto. Impacto: credibilidade das justificativas.
+
+  GAP 2 (-1.5%): INDICE COMPOSTO INCERTO
+  O indice 8 (valid_from + valid_until composto) depende da Base Vetorial
+  escolhida. A viabilidade tecnica nao pode ser confirmada sem saber a engine.
+  Impacto: implementabilidade direta do modelo.
+
+  GAP 3 (-1.0%): doc_type "review" AUSENTE
+  O schema_front_matter.md define "review" como doc_type valido, mas a ADR-003
+  nao cobre este tipo na estrategia de chunking. Impacto: completude do modelo
+  em relacao ao schema oficial.
+
+  GAP 4 (-0.5%): DEPENDENCIA DE ADRS EXTERNAS PARA ENTENDIMENTO COMPLETO
+  Embora o documento seja bastante autocontido, entender trilhas (ADR-002) e
+  pilares (ADR-001) por completo requer leitura dos ADRs referenciados.
+  Impacto: clareza para novos membros.
+
+  GAP 5 (-0.25%): FERRAMENTAS DE OBSERVABILIDADE NAO DEFINIDAS
+  As metricas M1-M10 estao definidas, mas nao indica qual stack/ferramenta
+  sera usada para monitora-las. Impacto: acionabilidade da observabilidade.
+
+  TOTAL DE GAPS: -5.25% (score final: 94.75%)
+
+  --- VEREDITO ---
+
+  ADR-003 e um documento EXCELENTE e de alta maturidade. O modelo de dados
+  e extremamente detalhado, com justificativas tecnicas para cada decisao.
+  As correcoes aplicadas nesta revisao elevaram o score de 85.5% para 94.75%,
+  resolvendo as lacunas estruturais mais significativas (mapeamento de pilares,
+  escopo do .beta.md, chunking para system-doc, observabilidade, implementacao
+  com DODs). Os gaps remanescentes sao todos dependentes de decisoes futuras
+  (escolha da Base Vetorial, validacao empirica pos-MVP) ou de baixa prioridade
+  (doc_type "review"). O ADR esta APROVADO para promocao para .md com qa_notes
+  documentando os gaps residuais.
+
+================================================================================

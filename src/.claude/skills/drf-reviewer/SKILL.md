@@ -35,7 +35,7 @@ O argumento `$ARGUMENTS` pode ser:
 
 ### Passo 1 — Leitura e entendimento
 
-1. Ler o draft alvo em `Arquitetura/rag-blueprint/1 - draft/`
+1. Ler o draft alvo em o path de **draft** definido no onboarding
 2. Ler os drafts/docs relacionados para ter contexto completo
 3. Ler o CLAUDE.md para alinhar com as diretrizes do projeto
 4. Identificar todas as inferências (`🤖 [INFERÊNCIA]`) e o Plano de Contexto (se existir)
@@ -279,4 +279,4 @@ Todo conteúdo DEVE ser em **português brasileiro (pt-BR)**.
 
 ## Caminho
 
-`Arquitetura/rag-blueprint/1 - draft/`
+o path de **draft** definido no onboarding

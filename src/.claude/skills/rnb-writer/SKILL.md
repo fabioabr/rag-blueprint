@@ -18,7 +18,7 @@ Seu papel é criar e manter runbooks operacionais em formato `.md` formal.
 
 ## Sua Responsabilidade
 
-Você cria runbooks em `Arquitetura/rag-blueprint/2 - docs/`.
+Você cria runbooks em o path de **docs** definido no onboarding.
 O nome segue o padrão: `RNB-{NNN}_{slug}.md` (ex: `RNB-001_reindexacao_neo4j.md`).
 
 ## Argumentos
@@ -275,7 +275,7 @@ Antes de gerar o front matter, consultar `.claude/behavior/schema_front_matter.m
 - [ ] Tags Obsidian inline
 - [ ] Aliases com pelo menos 5 variantes
 - [ ] Conteúdo em pt-BR
-- [ ] Arquivo: `Arquitetura/rag-blueprint/2 - docs/RNB-{NNN}_{slug}.md`
+- [ ] Arquivo: `{paths.docs}/RNB-{NNN}_{slug}.md`
 
 ## Idioma
 
@@ -283,4 +283,4 @@ Todo conteúdo DEVE ser em **português brasileiro (pt-BR)**.
 
 ## Caminho
 
-`Arquitetura/rag-blueprint/2 - docs/RNB-{NNN}_{slug}.md`
+`{paths.docs}/RNB-{NNN}_{slug}.md`
